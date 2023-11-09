@@ -1,0 +1,100 @@
+
+server:
+  http_listen_port: 3100
+  http_server_read_timeout: 10m
+  http_server_write_timeout: 10m
+
+auth_enabled: false
+
+schema_config:
+ configs:
+   - from: 2023-01-01
+     store: boltdb-shipper
+     object_store: filesystem
+     schema: v11
+     index:
+       prefix: index_
+       period: 24h
+
+storage_config:
+ boltdb_shipper:
+   active_index_directory: /tmp/loki/boltdb-shipper-active
+   cache_location: /tmp/loki/boltdb-shipper-cache
+   cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+   shared_store: filesystem
+ filesystem:
+   directory: /tmp/loki/chunks
+
+
+compactor:
+  retention_enabled: true
+  working_directory: /tmp/loki/boltdb-shipper-compactor
+  shared_store: filesystem
+      
+limits_config:
+  max_entries_limit_per_query: 1000000
+  max_label_value_length: 20480
+  max_label_name_length: 10240
+  max_label_names_per_series: 300
+  max_streams_per_user: 100000 
+  max_global_streams_per_user: 100000 
+  max_cache_freshness_per_query: 10m
+
+  retention_period: 2160h
+  query_timeout: 300s
+  per_stream_rate_limit: "512M"
+  per_stream_rate_limit_burst: "1024M"
+  # max_query_length: 0h # Default: 721h
+  reject_old_samples: true
+  reject_old_samples_max_age: 1w
+  ingestion_burst_size_mb: 1000
+  ingestion_rate_mb: 10000
+  
+  split_queries_by_interval: 15m
+  max_query_parallelism: 32
+
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 104857600  # 100 Mb
+    max_send_msg_size: 104857600  # 100 Mb
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 4096
+frontend:
+  max_outstanding_per_tenant: 4096
+
+ingester:
+  wal:
+    enabled: true
+    dir: /tmp/wal
+  lifecycler:
+    address: 0.0.0.0
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_encoding: snappy
+  chunk_idle_period: 1h # Any chunk not receiving new logs in this time will be flushed
+  max_chunk_age: 1h # All chunks will be flushed when they hit this age, default is 1h
+  chunk_target_size: 1536000 # Loki will attempt to build chunks up to 1.5MB, flushing first if chunk_idle_period or max_chunk_age is reached first
+  chunk_retain_period: 30s
+  max_transfer_retries: 0     # Chunk transfers disabled
+
+query_range:
+  parallelise_shardable_queries: true
+
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      enable_fifocache: true
+      fifocache:
+        max_size_items: 1024
+        ttl: 24h
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 1440h
+
