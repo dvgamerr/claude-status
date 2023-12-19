@@ -6,4 +6,3 @@ echo "$(date) @ $(hostname)"
 echo "-------------------------------------------"
 echo "GPU => $(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')"
 echo "CPU => $((cpu/1000))'C"
-
