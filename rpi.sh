@@ -1,8 +1,11 @@
 #!/bin/bash
 cd /home/pi/lab > /dev/null
 if [ -f "/usr/bin/git" ]; then
-  echo Checking version latest...
-  /usr/bin/git pull origin > /dev/null
+  if [[ $(tty) = /dev/tty1 ]]; then
+    echo Checking version latest...
+    /usr/bin/git pull origin --quiet
+    echo "----------------------------------"
+  fi
 fi
 
 if [ -f "/home/pi/lab/bin/raspi" ]; then
@@ -15,6 +18,6 @@ if [[ $(tty) != /dev/tty1 ]]; then
   cpu=$(</sys/class/thermal/thermal_zone0/temp)
   gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
   echo "CPU => $((cpu/1000))'C GPU => $gpu"
-  echo "-------------------------------------------"
+  echo "----------------------------------"
 fi
 
