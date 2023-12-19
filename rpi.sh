@@ -14,7 +14,7 @@ if [[ $(tty) != /dev/tty1 ]]; then
   # -------------------------------------------------------
   cpu=$(</sys/class/thermal/thermal_zone0/temp)
   gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
-  echo "CPU => $((cpu/1000))'C GPU => $(gpu)"
+  echo "CPU => $((cpu/1000))'C GPU => $gpu"
   echo "-------------------------------------------"
 fi
 
