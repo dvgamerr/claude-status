@@ -1,10 +1,15 @@
 #!/bin/bash
+
+check_updated () {
+  echo Checking version latest...
+  /usr/bin/git pull origin --quiet
+  echo "----------------------------------"
+}
+
 cd /home/pi/lab > /dev/null
 if [ -f "/usr/bin/git" ]; then
-  if [[ $(tty) = /dev/tty1 ]]; then
-    echo Checking version latest...
-    /usr/bin/git pull origin --quiet
-    echo "----------------------------------"
+  if [[ "$1" != "-w" ] || [ $(tty) == /dev/tty1 ]]; then
+    check_updated
   fi
 fi
 
