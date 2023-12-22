@@ -1,7 +1,7 @@
 #!/bin/bash
 
 check_updated () {
-  echo Checking version latest...
+  echo Checking `aide-pi` version latest...
   /usr/bin/git pull origin --quiet
   echo "----------------------------------"
 }
@@ -13,10 +13,6 @@ if [ -f "/usr/bin/git" ]; then
   fi
 fi
 
-if [ -f "/home/pi/lab/bin/raspi" ]; then
-  /home/pi/lab/bin/raspi --tty $(tty)
-fi
-
 if [[ $(tty) != /dev/tty1 ]]; then
   # Purpose: Display the ARM CPU and GPU  temperature of Raspberry Pi 2/3 
   # -------------------------------------------------------
@@ -26,3 +22,6 @@ if [[ $(tty) != /dev/tty1 ]]; then
   echo "----------------------------------"
 fi
 
+if [ -f "/home/pi/lab/bin/raspi" ]; then
+  /home/pi/lab/bin/raspi --tty $(tty)
+fi
