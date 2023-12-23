@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ "$1" != "--blacklight" ]]; then
-  if [[ "$2" == "off" ]];
+  if [[ "$2" == "off" ]]; then
     for v in 255 239 223 207 191 175 159 143 127 111 95 79 63 47 31 15 0; do
       vcgencmd set_backlight $v;
       sleep 0.04;
