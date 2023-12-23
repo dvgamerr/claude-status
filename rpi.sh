@@ -1,16 +1,9 @@
 #!/bin/bash
 check_updated () {
-  echo Checking \`aide-pi\` version latest...
+  echo Checking \`aide-pi\` latest version...
   /usr/bin/git pull origin --quiet
   echo "----------------------------------"
 }
-
-cd /home/pi/lab > /dev/null
-if [ -f "/usr/bin/git" ]; then
-  if [[ "$1" != "-w" ]]; then
-    check_updated
-  fi
-fi
 
 if [[ "$1" == "--blacklight" ]]; then
   if [[ "$2" == "off" ]]; then
@@ -23,6 +16,14 @@ if [[ "$1" == "--blacklight" ]]; then
       vcgencmd set_backlight $v;
       sleep 0.04;
     done;
+  fi
+  exit 0
+fi
+
+cd /home/pi/lab > /dev/null
+if [ -f "/usr/bin/git" ]; then
+  if [[ "$1" != "-w" ]]; then
+    check_updated
   fi
 fi
 
