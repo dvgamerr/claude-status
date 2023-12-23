@@ -9,7 +9,7 @@ if [[ "$1" == "--blacklight" ]]; then
   if [[ "$2" == "off" ]]; then
     for v in 255 239 223 207 191 175 159 143 127 111 95 79 63 47 31 15 0; do
       vcgencmd set_backlight $v > /dev/null
-      sleep 0.04;
+      sleep 0.02;
     done;
   else
     for v in 0 15 31 47 63 79 95 111 127 143 159 175 191 207 223 239 255 ; do
