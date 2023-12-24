@@ -34,10 +34,9 @@ if [[ $(tty) != /dev/tty1 ]]; then
   gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
   echo "CPU => $((cpu/1000))'C GPU => $gpu"
   echo "----------------------------------"
-else if [ -f "/home/pi/lab/bin/raspi-lab" ]; then
+elif [ -f "/home/pi/lab/bin/raspi-lab" ]; then
   echo "``raspi-lab`` compiling..."
   go get . > /dev/null
   go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
   /home/pi/lab/bin/raspi-lab --tty $(tty)
 fi
-
