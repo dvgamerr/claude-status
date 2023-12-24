@@ -2,7 +2,6 @@
 check_updated () {
   echo Checking \`aide-pi\` latest version...
   /usr/bin/git pull origin --quiet
-  echo "----------------------------------"
 }
 
 if [[ "$1" == "--blacklight" ]]; then
@@ -33,7 +32,7 @@ if [[ $(tty) != /dev/tty1 ]]; then
   cpu=$(</sys/class/thermal/thermal_zone0/temp)
   gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
   echo "CPU => $((cpu/1000))'C GPU => $gpu"
-  echo "----------------------------------"
+  echo Ready, What you want to do? ...
 elif [ -f "/home/pi/lab/bin/raspi-lab" ]; then
   echo "``raspi-lab`` compiling..."
   go get . > /dev/null
