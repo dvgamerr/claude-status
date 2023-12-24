@@ -40,5 +40,5 @@ if [ -f "/home/pi/lab/bin/raspi-lab" ]; then
   echo "``raspi-lab`` compiling..."
   go get . > /dev/null
   go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
-  /home/pi/lab/bin/raspi --tty $(tty)
+  /home/pi/lab/bin/raspi-lab --tty $(tty)
 fi
