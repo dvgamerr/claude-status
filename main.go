@@ -36,12 +36,13 @@ func checkEnvVars(envs ...string) {
 const refreshInterval = 500 * time.Millisecond
 
 var (
-	grid *tview.Grid
+	view *tview.Box
 	app  *tview.Application
 )
 
-func drawTime(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	// mem, _ := MemoryInfo()
+// Define a draw function to draw a cross in the center of each cell.
+func drawTimer(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	mem, _ := MemoryInfo()
 	// if err != nil {
 	// 	log.Fatal("Error:", err)
 	// }
@@ -53,19 +54,17 @@ func drawTime(screen tcell.Screen, x int, y int, width int, height int) (int, in
 	// fmt.Printf("Used Memory: %v bytes\n", mem.Used)
 
 	// w, h := screen.Size()
-	tview.Print(screen, fmt.Sprintf("%dx%dpx",
-		width,
-		height,
-	), x, y, width, tview.AlignRight, tcell.ColorBrown)
-
+	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time: %s", width, height, time.Now().Format("15:04:05")), x, y, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("CPU: %s (%s)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("GPU: %s|%s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("MEM: %s|%s/%s", mem.Percent(), mem.TotalText(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
 	return 0, 0, 0, 0
 }
 
-func refresh() {
+func refreshTimer() {
 	tick := time.NewTicker(refreshInterval)
 	for {
-		_, ok := <-tick.C
-		if !ok {
+		if _, ok := <-tick.C; !ok {
 			break
 		}
 		app.Draw()
@@ -73,38 +72,21 @@ func refresh() {
 }
 
 func main() {
+	app = tview.NewApplication()
+	view = tview.NewBox().SetDrawFunc(drawTimer)
+	go refreshTimer()
+	// Add the views to the grid
+
 	// bold := color.New(color.FgHiBlack).SprintFunc()
 	// info := color.New(color.FgHiBlue).SprintFunc()
 
-	app = tview.NewApplication()
-
-	grid = tview.NewGrid().
-		SetRows(4, 0, 0).
-		SetColumns(40, 0, 0).
-		SetBorders(true)
-
-	leftView := tview.NewTextView().
-		SetText("Left Column\n40% Width").
-		SetTextAlign(tview.AlignLeft)
-
-	rightView := tview.NewTextView().
-		SetText("Right Column\n60% Width").
-		SetTextAlign(tview.AlignLeft)
-
-	header := tview.NewTextView().
-		SetText("Header").
-		SetTextAlign(tview.AlignLeft)
-
-	// Add the views to the grid
-	grid.
-		AddItem(header, 0, 0, 1, 5, 0, 0, false).
-		AddItem(leftView, 1, 0, 1, 1, 0, 0, false).
-		AddItem(rightView, 1, 1, 1, 1, 0, 0, false)
-
-	go refresh()
-	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
+	if err := app.SetRoot(view, true).Run(); err != nil {
 		panic(err)
 	}
+
+	// if err := app.SetRoot(box, true).Run(); err != nil {
+	// 	panic(err)
+	// }
 	// var asset okx.ResponseAPI
 	// // Rate Limit: 6 Requests per second
 	// if err := okx.Fetch("GET", "/api/v5/asset/bills?type=117", nil, &asset); err != nil {

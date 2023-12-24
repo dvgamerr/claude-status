@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,6 +25,29 @@ func Exec(name string, args ...string) string {
 		return ""
 	}
 	return string(out)
+}
+
+func CPUTemp() string {
+	// Open the file
+	file, err := os.Open("/sys/class/thermal/thermal_zone0/temp")
+	if err != nil {
+		return "n/a"
+	}
+	defer file.Close()
+
+	cpuTemp, err := io.ReadAll(file)
+	if err != nil {
+		return "n/a"
+	}
+
+	// Convert the CPU temperature to an integer
+	tempInt, err := strconv.Atoi(strings.TrimSpace(string(cpuTemp)))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Convert the temperature to Celsius
+	return fmt.Sprintf("%d°C", tempInt/1000)
 }
 
 // CPUTemp return cpu temp.
@@ -52,15 +78,15 @@ func CPUCoreVolt() string {
 }
 
 type Memory struct {
-	Total string
-	Used  string
+	Total uint64
+	Used  uint64
 }
 
 // vcgencmd measure_volts core
 func MemoryInfo() (*Memory, error) {
 	output := Exec("free", "-b")
 	if output == "" {
-		return &Memory{Total: "n/a", Used: "n/a"}, nil
+		return &Memory{Total: 0, Used: 0}, nil
 	}
 
 	lines := strings.Split(output, "\n")
@@ -86,9 +112,22 @@ func MemoryInfo() (*Memory, error) {
 	}
 
 	return &Memory{
-		Total: BytesToText(total),
-		Used:  BytesToText(used),
+		Total: total,
+		Used:  used,
 	}, nil
+}
+
+func (m *Memory) TotalText() string {
+	return BytesToText(m.Total)
+}
+func (m *Memory) UsedText() string {
+	return BytesToText(m.Used)
+}
+func (m *Memory) Percent() string {
+	if m.Total > 0 {
+		return fmt.Sprintf("%d", m.Used*100.0/m.Total)
+	}
+	return "0%"
 }
 
 func BytesToText(size uint64) string {
