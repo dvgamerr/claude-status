@@ -55,9 +55,9 @@ func drawTimer(screen tcell.Screen, x int, y int, width int, height int) (int, i
 
 	// w, h := screen.Size()
 	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time: %s", width, height, time.Now().Format("15:04:05")), x, y, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("CPU: %s (%s)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("GPU: %s|%s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("MEM: %s|%s/%s", mem.Percent(), mem.TotalText(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("CPU: %s (%sV)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("MEM: %s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("GPU: %s MEM: %s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
 	return 0, 0, 0, 0
 }
 

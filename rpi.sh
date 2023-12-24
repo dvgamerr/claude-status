@@ -1,5 +1,6 @@
 #!/bin/bash
 check_updated () {
+  cd /home/pi/lab > /dev/null
   echo Checking \`aide-pi\` latest version...
   /usr/bin/git pull origin --quiet
 }
@@ -19,12 +20,6 @@ if [[ "$1" == "--blacklight" ]]; then
   exit 0
 fi
 
-cd /home/pi/lab > /dev/null
-if [ -f "/usr/bin/git" ]; then
-  if [[ "$1" != "-w" ]]; then
-    check_updated
-  fi
-fi
 
 if [[ $(tty) != /dev/tty1 ]]; then
   # Purpose: Display the ARM CPU and GPU  temperature of Raspberry Pi 2/3 
@@ -34,6 +29,12 @@ if [[ $(tty) != /dev/tty1 ]]; then
   echo "CPU => $((cpu/1000))'C GPU => $gpu"
   echo Ready, What you want to do? ...
 elif [ -f "/home/pi/lab/bin/raspi-lab" ]; then
+  if [ -f "/usr/bin/git" ]; then
+    if [[ "$1" != "-w" ]]; then
+      check_updated
+    fi
+  fi
+
   echo "``raspi-lab`` compiling..."
   go get . > /dev/null
   go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
