@@ -36,6 +36,9 @@ if [[ $(tty) != /dev/tty1 ]]; then
   echo "----------------------------------"
 fi
 
-if [ -f "/home/pi/lab/bin/raspi" ]; then
+if [ -f "/home/pi/lab/bin/raspi-lab" ]; then
+  echo "``raspi-lab`` compiling..."
+  go get . > /dev/null
+  go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
   /home/pi/lab/bin/raspi --tty $(tty)
 fi
