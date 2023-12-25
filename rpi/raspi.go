@@ -1,4 +1,4 @@
-package main
+package rpi
 
 import (
 	"fmt"
@@ -28,6 +28,7 @@ func Exec(name string, args ...string) string {
 	return string(out)
 }
 
+// CPUTemp return cpu temp.
 func CPUTemp() string {
 	// Open the file
 	file, err := os.Open("/sys/class/thermal/thermal_zone0/temp")
@@ -48,16 +49,15 @@ func CPUTemp() string {
 	}
 
 	// Convert the temperature to Celsius
-	return fmt.Sprintf("%d°C", tempInt/1000)
+	return fmt.Sprintf("%.1f°C", float64(tempInt)/1000)
 }
 
-// CPUTemp return cpu temp.
 func GPUTemp() string {
 	cpuTemp := Clean(Exec("vcgencmd", "measure_temp"), "temp=", "'C")
 	if cpuTemp == "" {
 		return "n/a"
 	}
-	return cpuTemp
+	return fmt.Sprintf("%s°C", cpuTemp)
 }
 
 // CPUMemory return cpu memory.
