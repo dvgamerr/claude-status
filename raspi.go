@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func Clean(str string, args ...string) string {
@@ -147,4 +148,65 @@ func BytesToText(size uint64) string {
 	default:
 		return fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
 	}
+}
+
+func GetUptime() (string, error) {
+	// Read the /proc/uptime file
+	content, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return "n/a", nil
+	}
+
+	// Extract the uptime value from the file
+	fields := strings.Fields(string(content))
+	if len(fields) < 1 {
+		return "0", fmt.Errorf("unexpected format in /proc/uptime")
+	}
+
+	uptimeSeconds, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return "0", err
+	}
+
+	// Convert uptime to time.Duration
+	uptimeDuration := time.Duration(int64(uptimeSeconds)) * time.Second
+
+	return formatUptime(uptimeDuration), nil
+}
+
+func formatUptime(uptime time.Duration) string {
+	years := uptime / (365 * 24 * time.Hour)
+	uptime %= 365 * 24 * time.Hour
+
+	months := uptime / (30 * 24 * time.Hour)
+	uptime %= 30 * 24 * time.Hour
+
+	days := uptime / (24 * time.Hour)
+	uptime %= 24 * time.Hour
+
+	hours := uptime / time.Hour
+	uptime %= time.Hour
+
+	minutes := uptime / time.Minute
+	uptime %= time.Minute
+
+	seconds := uptime / time.Second
+
+	var result string
+
+	if years > 0 {
+		result += fmt.Sprintf("%d year, ", years)
+	}
+
+	if months > 0 {
+		result += fmt.Sprintf("%d month, ", months)
+	}
+
+	if days > 0 {
+		result += fmt.Sprintf("%d day, ", days)
+	}
+
+	result += fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+
+	return strings.TrimSuffix(result, ", ")
 }

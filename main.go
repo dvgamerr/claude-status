@@ -13,6 +13,12 @@ import (
 	"github.com/rivo/tview"
 )
 
+type Args struct {
+	TTY string `arg:"--tty" help:"tty source"`
+}
+
+var cli Args
+
 func init() {
 	// Load environment variables from .env
 	if err := godotenv.Load(); err != nil {
@@ -34,15 +40,30 @@ func checkEnvVars(envs ...string) {
 }
 
 const refreshInterval = 500 * time.Millisecond
+const osInterval = 3 * time.Second
 
 var (
-	view *tview.Box
-	app  *tview.Application
+	app *tview.Application
+)
+var (
+	cpuTemp string = "n/a"
+	gpuTemp string = "n/a"
 )
 
+func osTimer() {
+	tick := time.NewTicker(osInterval)
+	for {
+		if _, ok := <-tick.C; !ok {
+			break
+		}
+		cpuTemp = CPUTemp()
+		gpuTemp = GPUTemp()
+	}
+}
+
 // Define a draw function to draw a cross in the center of each cell.
-func drawTimer(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	mem, _ := MemoryInfo()
+func drawHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	// mem, _ := MemoryInfo()
 	// if err != nil {
 	// 	log.Fatal("Error:", err)
 	// }
@@ -53,11 +74,23 @@ func drawTimer(screen tcell.Screen, x int, y int, width int, height int) (int, i
 	// fmt.Printf("Total Memory: %v bytes\n", mem.Total)
 	// fmt.Printf("Used Memory: %v bytes\n", mem.Used)
 
-	// w, h := screen.Size()
-	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time: %s", width, height, time.Now().Format("15:04:05")), x, y, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("CPU: %s (%sV)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("MEM: %s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("GPU: %s MEM: %s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
+	uptime, _ := GetUptime()
+	w, h := screen.Size()
+	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time:", w, h), x-15, y, width, tview.AlignRight, tcell.ColorGray)
+	tview.Print(screen, "Time:", x-15, y, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "Uptime:", x-15, y+1, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "GPU:", x-15, y+2, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "CPU:", x-15, y+3, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "MEM:", x-15, y+4, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, time.Now().Format("15:04:05"), x+86, y, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, uptime, x+86, y+1, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, cpuTemp, x+86, y+2, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, gpuTemp, x+86, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+
+	// tview.Print(screen, fmt.Sprintf("CPU: %s (%sV)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
+	// tview.Print(screen, fmt.Sprintf("MEM: %s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
+	// tview.Print(screen, fmt.Sprintf("GPU: %s MEM: %s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
+
 	return 0, 0, 0, 0
 }
 
@@ -73,14 +106,36 @@ func refreshTimer() {
 
 func main() {
 	app = tview.NewApplication()
-	view = tview.NewBox().SetDrawFunc(drawTimer)
+	// view = tview.NewBox().SetDrawFunc(drawTimer)
+	// if err := app.SetRoot(view, true).Run(); err != nil {
+	// 	panic(err)
+	// }
+
+	newPrimitive := func(text string) tview.Primitive {
+		return tview.NewTextView().
+			SetTextAlign(tview.AlignRight).
+			SetText(text)
+	}
+
+	menu := newPrimitive("Menu")
+	main := newPrimitive("Main content")
+	header := tview.NewBox().SetDrawFunc(drawHeader)
+	grid := tview.NewGrid().
+		SetRows(5, 0).
+		SetColumns(32, 0).
+		AddItem(header, 0, 0, 1, 2, 0, 0, false)
+
+	// Layout for screens narrower than 100 cells (menu and side bar are hidden).
+	grid.AddItem(menu, 0, 0, 0, 0, 0, 0, false).
+		AddItem(main, 1, 0, 1, 2, 0, 0, false)
+
+	// Layout for screens wider than 100 cells.
+	grid.AddItem(menu, 1, 0, 1, 1, 0, 100, false).
+		AddItem(main, 1, 1, 1, 1, 0, 100, false)
+
+	go osTimer()
 	go refreshTimer()
-	// Add the views to the grid
-
-	// bold := color.New(color.FgHiBlack).SprintFunc()
-	// info := color.New(color.FgHiBlue).SprintFunc()
-
-	if err := app.SetRoot(view, true).Run(); err != nil {
+	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
 		panic(err)
 	}
 
