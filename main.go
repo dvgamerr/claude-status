@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"math"
+	"log"
 	"os"
-	"strconv"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/alexflint/go-arg"
+	"github.com/dvgamerr/aide-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/rivo/tview"
@@ -39,16 +39,23 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
-const refreshInterval = 500 * time.Millisecond
+const refreshInterval = 1 * time.Second
 const osInterval = 3 * time.Second
 
 var (
 	app *tview.Application
 )
 var (
-	cpuTemp string = "n/a"
-	gpuTemp string = "n/a"
+	cpuTemp string
+	gpuTemp string
+	cpuVolt string
 )
+
+func getAllStats() {
+	cpuTemp = rpi.CPUTemp()
+	cpuVolt = rpi.CPUCoreVolt()
+	gpuTemp = rpi.GPUTemp()
+}
 
 func osTimer() {
 	tick := time.NewTicker(osInterval)
@@ -56,17 +63,16 @@ func osTimer() {
 		if _, ok := <-tick.C; !ok {
 			break
 		}
-		cpuTemp = CPUTemp()
-		gpuTemp = GPUTemp()
+		getAllStats()
 	}
 }
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	// mem, _ := MemoryInfo()
-	// if err != nil {
-	// 	log.Fatal("Error:", err)
-	// }
+	mem, err := rpi.MemoryInfo()
+	if err != nil {
+		log.Fatal("Error:", err)
+	}
 	// fmt.Printf("GPU --- Temp: %s Memory: %s\n",
 	// 	high(GPUTemp()),
 	// 	high(GPUMemory()),
@@ -74,7 +80,7 @@ func drawHeader(screen tcell.Screen, x int, y int, width int, height int) (int, 
 	// fmt.Printf("Total Memory: %v bytes\n", mem.Total)
 	// fmt.Printf("Used Memory: %v bytes\n", mem.Used)
 
-	uptime, _ := GetUptime()
+	uptime, _ := rpi.GetUptime()
 	w, h := screen.Size()
 	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time:", w, h), x-15, y, width, tview.AlignRight, tcell.ColorGray)
 	tview.Print(screen, "Time:", x-15, y, width, tview.AlignRight, tcell.ColorTeal)
@@ -84,8 +90,9 @@ func drawHeader(screen tcell.Screen, x int, y int, width int, height int) (int, 
 	tview.Print(screen, "MEM:", x-15, y+4, width, tview.AlignRight, tcell.ColorTeal)
 	tview.Print(screen, time.Now().Format("15:04:05"), x+86, y, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, uptime, x+86, y+1, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, cpuTemp, x+86, y+2, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, gpuTemp, x+86, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, gpuTemp, x+86, y+2, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", cpuTemp, cpuVolt), x+86, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x+86, y+4, width, tview.AlignLeft, tcell.ColorWhite)
 
 	// tview.Print(screen, fmt.Sprintf("CPU: %s (%sV)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
 	// tview.Print(screen, fmt.Sprintf("MEM: %s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
@@ -105,6 +112,11 @@ func refreshTimer() {
 }
 
 func main() {
+	arg.MustParse(&cli)
+
+	log.Println("Preplare...")
+	getAllStats()
+
 	app = tview.NewApplication()
 	// view = tview.NewBox().SetDrawFunc(drawTimer)
 	// if err := app.SetRoot(view, true).Run(); err != nil {
@@ -121,7 +133,7 @@ func main() {
 	main := newPrimitive("Main content")
 	header := tview.NewBox().SetDrawFunc(drawHeader)
 	grid := tview.NewGrid().
-		SetRows(5, 0).
+		SetRows(6, 0).
 		SetColumns(32, 0).
 		AddItem(header, 0, 0, 1, 2, 0, 0, false)
 
@@ -187,36 +199,4 @@ func main() {
 	// 	fmt.Println(err)
 	// }
 	// fmt.Printf("%#v\n", asset)
-}
-
-func printfProfit(f string, n float64) string {
-	high := color.New(color.FgGreen).SprintFunc()
-	low := color.New(color.FgRed).SprintFunc()
-	if n == 0.0 {
-		return fmt.Sprintf(f, n)
-	} else if n > 0.0 {
-		return high(fmt.Sprintf(f, n))
-	} else {
-		return low(fmt.Sprintf(f, n))
-	}
-}
-
-// func toUnix(date string) string {
-// 	ct := time.Now()
-// 	if date != "" {
-// 		ct, _ = time.Parse("02-01-2006", date)
-// 	}
-
-// 	// Convert to Unix timestamp in milliseconds
-// 	return fmt.Sprintf("%d", ct.UnixNano()/int64(time.Millisecond))
-// }
-
-// Parse string to float64
-func toFloat64(s interface{}) (float64, error) {
-	f, err := strconv.ParseFloat(s.(string), 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return math.Ceil(f*10000) / 10000, nil
 }
