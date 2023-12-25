@@ -68,12 +68,12 @@ func BytesToText(size uint64) string {
 
 	switch {
 	case size < KB:
-		return fmt.Sprintf("%d bytes", size)
+		return fmt.Sprintf("%d b", size)
 	case size < MB:
-		return fmt.Sprintf("%.0f KB", float64(size)/float64(KB))
+		return fmt.Sprintf("%.0f Kb", float64(size)/float64(KB))
 	case size < GB:
-		return fmt.Sprintf("%.0f MB", float64(size)/float64(MB))
+		return fmt.Sprintf("%.0f Mb", float64(size)/float64(MB))
 	default:
-		return fmt.Sprintf("%.0f GB", float64(size)/float64(GB))
+		return fmt.Sprintf("%.0f Gb", float64(size)/float64(GB))
 	}
 }
