@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/zsh
 check_updated () {
   cd /home/pi/lab > /dev/null
   echo Checking \`aide-pi\` latest version...
