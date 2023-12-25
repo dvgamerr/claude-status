@@ -54,7 +54,7 @@ func (m *Memory) UsedText() string {
 }
 func (m *Memory) Percent() string {
 	if m.Total > 0 {
-		return fmt.Sprintf("%.1f", float64(m.Used)*100.0/float64(m.Total))
+		return fmt.Sprintf("%.1f%%", float64(m.Used)*100.0/float64(m.Total))
 	}
 	return "0.0%"
 }
@@ -70,10 +70,10 @@ func BytesToText(size uint64) string {
 	case size < KB:
 		return fmt.Sprintf("%d bytes", size)
 	case size < MB:
-		return fmt.Sprintf("%.2f KB", float64(size)/float64(KB))
+		return fmt.Sprintf("%.0f KB", float64(size)/float64(KB))
 	case size < GB:
-		return fmt.Sprintf("%.2f MB", float64(size)/float64(MB))
+		return fmt.Sprintf("%.0f MB", float64(size)/float64(MB))
 	default:
-		return fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
+		return fmt.Sprintf("%.0f GB", float64(size)/float64(GB))
 	}
 }
