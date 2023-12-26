@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/gdamore/tcell/v2"
+	"github.com/leekchan/accounting"
 )
 
 // checkEnvVars checks that all specified environment variables are set and not empty.
@@ -20,15 +21,19 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
-func printfProfit(f string, n float64) string {
-	high := color.New(color.FgGreen).SprintFunc()
-	low := color.New(color.FgRed).SprintFunc()
-	if n == 0.0 {
-		return fmt.Sprintf(f, n)
-	} else if n > 0.0 {
-		return high(fmt.Sprintf(f, n))
+func showUSD(n float64) (string, tcell.Color) {
+	ac := accounting.Accounting{Symbol: "$", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	if n >= 0.0 {
+		return ac.FormatMoney(n), tcell.ColorGreen
 	} else {
-		return low(fmt.Sprintf(f, n))
+		return ac.FormatMoney(n), tcell.ColorRed
+	}
+}
+func showPercent(n float64) string {
+	if n >= 0.0 {
+		return "+" + fmt.Sprintf("%.2f%%", n)
+	} else {
+		return fmt.Sprintf("%.2f%%", n)
 	}
 }
 

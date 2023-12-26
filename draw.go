@@ -7,8 +7,15 @@ import (
 
 	"github.com/dvgamerr/aide-lab/rpi"
 	"github.com/gdamore/tcell/v2"
+	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
 )
+
+// type OSStats struct {
+// 	CPUTemp string
+// 	GPUTemp string
+// 	CPUVolt string
+// }
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
@@ -30,30 +37,50 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "GPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "CPU:", x-1, y+3, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "MEM:", x-1, y+4, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorBlue)
+	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorBlue)
+	tview.Print(screen, "GPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorBlue)
+	tview.Print(screen, "CPU:", x-1, y+3, width, tview.AlignRight, tcell.ColorBlue)
+	tview.Print(screen, "MEM:", x-1, y+4, width, tview.AlignRight, tcell.ColorBlue)
 	return 0, 0, 0, 0
 }
+
+var aNum accounting.Accounting = accounting.Accounting{Precision: 2, Thousand: ",", Format: "%s%v"}
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 
-	// percent := (totalEqual * 100 / fulfill) - 100
+	// okxPnlPercent := (okxTotal * 100 / okxFulfill) - 100
 	// _, _, day := time.Now().Date()
 	// fmt.Printf("%s %s USD | %s (%s) %s",
 	// 	bold("OKX Total PnL:"),
-	// 	info(fmt.Sprintf("$%.2f", totalEqual)),
-	// 	printfProfit("$%.2f", totalEqual-fulfill),
-	// 	printfProfit("%.2f%%", percent),
+	// 	info(fmt.Sprintf("$%.2f", okxTotal)),
+	// 	printfProfit("$%.2f", okxTotal-okxFulfill),
+	// 	printfProfit("%.2f%%", okxPnlPercent),
 	// 	bold(fmt.Sprintf("%dDay", day)),
 	// )
+	todayPnL := 1294.48
 
-	tview.Print(screen, "OKX PnL:", x+2, y+1, width, tview.AlignLeft, tcell.ColorLightSeaGreen)
-	tview.Print(screen, "BTK PnL:", x+2, y+2, width, tview.AlignLeft, tcell.ColorLightGrey)
-	tview.Print(screen, "Uptime:", x+2, y+3, width, tview.AlignLeft, tcell.ColorDarkOliveGreen)
-	tview.Print(screen, "GPU:", x+2, y+4, width, tview.AlignLeft, tcell.ColorMediumSpringGreen)
+	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - todayPnL)
+	balanceName := "Est total:"
+	balanceText := aNum.FormatMoney(okxTotal)
+	fulfillText := aNum.FormatMoney(okxFulfill)
+	okxPnLText, okxPnLColor := showUSD(okxTotal - okxFulfill)
+
+	tview.Print(screen, fmt.Sprintf("(Capital: %s)", fulfillText), x-2, y+1, width, tview.AlignRight, tcell.ColorWhite)
+
+	tview.Print(screen, balanceName, x+2, y+1, width, tview.AlignLeft, tcell.ColorBlue)
+	tview.Print(screen, balanceText, x+3+len(balanceName), y+1, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+3+len(balanceName)+len(fulfillText)+1, y+1, width, tview.AlignLeft, okxPnLColor)
+
+	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorBlue)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/todayPnL-100)), x+13, y+2, width, tview.AlignLeft, okxTodayPnLColor)
+
+	// btkFulfill := 90000
+	// btkPnLText, btkPnLColor := showUSD(1000)
+	// tview.Print(screen, "BTK PnL:", x+vw, y+1, vw, tview.AlignLeft, tcell.ColorGreen)
+	// tview.Print(screen, aNum.FormatMoney(btkFulfill), x+vw, y+1, vw, tview.AlignLeft, tcell.ColorWhite)
+	// tview.Print(screen, fmt.Sprintf("(%s)", btkPnLText), x+vw, y+1, vw, tview.AlignLeft, btkPnLColor)
+
 	return 0, 0, 0, 0
 }
