@@ -39,8 +39,8 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
-const refreshInterval = 1 * time.Second
-const osInterval = 3 * time.Second
+const refreshInterval = 500 * time.Millisecond
+const osInterval = 3000 * time.Millisecond
 
 var (
 	app *tview.Application
@@ -68,36 +68,28 @@ func osTimer() {
 }
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	mem, err := rpi.MemoryInfo()
 	if err != nil {
 		log.Fatal("Error:", err)
 	}
-	// fmt.Printf("GPU --- Temp: %s Memory: %s\n",
-	// 	high(GPUTemp()),
-	// 	high(GPUMemory()),
-	// )
-	// fmt.Printf("Total Memory: %v bytes\n", mem.Total)
-	// fmt.Printf("Used Memory: %v bytes\n", mem.Used)
 
 	uptime, _ := rpi.GetUptime()
-	w, h := screen.Size()
-	tview.Print(screen, fmt.Sprintf("(%dx%dpx) Time:", w, h), x-15, y, width, tview.AlignRight, tcell.ColorGray)
-	tview.Print(screen, "Time:", x-15, y, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "Uptime:", x-15, y+1, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "GPU:", x-15, y+2, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "CPU:", x-15, y+3, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, "MEM:", x-15, y+4, width, tview.AlignRight, tcell.ColorTeal)
-	tview.Print(screen, time.Now().Format("15:04:05"), x+86, y, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, uptime, x+86, y+1, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, gpuTemp, x+86, y+2, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", cpuTemp, cpuVolt), x+86, y+3, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x+86, y+4, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, time.Now().Format("15:04:05"), x, y, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, uptime, x, y+1, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, gpuTemp, x, y+2, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", cpuTemp, cpuVolt), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+4, width, tview.AlignLeft, tcell.ColorWhite)
+	return 0, 0, 0, 0
+}
 
-	// tview.Print(screen, fmt.Sprintf("CPU: %s (%sV)", CPUTemp(), CPUCoreVolt()), x, y+1, width, tview.AlignRight, tcell.ColorWhite)
-	// tview.Print(screen, fmt.Sprintf("MEM: %s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignRight, tcell.ColorWhite)
-	// tview.Print(screen, fmt.Sprintf("GPU: %s MEM: %s", GPUTemp(), GPUMemory()), x, y+2, width, tview.AlignRight, tcell.ColorWhite)
-
+// Define a draw function to draw a cross in the center of each cell.
+func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "GPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "CPU:", x-1, y+3, width, tview.AlignRight, tcell.ColorTeal)
+	tview.Print(screen, "MEM:", x-1, y+4, width, tview.AlignRight, tcell.ColorTeal)
 	return 0, 0, 0, 0
 }
 
@@ -123,27 +115,25 @@ func main() {
 	// 	panic(err)
 	// }
 
-	newPrimitive := func(text string) tview.Primitive {
+	primTextCenter := func(text string) tview.Primitive {
 		return tview.NewTextView().
 			SetTextAlign(tview.AlignRight).
 			SetText(text)
 	}
-
-	menu := newPrimitive("Menu")
-	main := newPrimitive("Main content")
-	header := tview.NewBox().SetDrawFunc(drawHeader)
+	menu := primTextCenter("Menu")
+	// main := primTextCenter("Content")
+	flex := tview.NewFlex().
+		AddItem(tview.NewBox().SetBorder(true).SetTitle("Left (1/2 x width of Top)"), 0, 1, false).
+		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderText), 22, 0, false).
+		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderValue), 18, 0, false)
 	grid := tview.NewGrid().
 		SetRows(6, 0).
 		SetColumns(32, 0).
-		AddItem(header, 0, 0, 1, 2, 0, 0, false)
-
-	// Layout for screens narrower than 100 cells (menu and side bar are hidden).
-	grid.AddItem(menu, 0, 0, 0, 0, 0, 0, false).
-		AddItem(main, 1, 0, 1, 2, 0, 0, false)
+		AddItem(flex, 0, 0, 1, 2, 0, 0, false)
 
 	// Layout for screens wider than 100 cells.
 	grid.AddItem(menu, 1, 0, 1, 1, 0, 100, false).
-		AddItem(main, 1, 1, 1, 1, 0, 100, false)
+		AddItem(tview.NewBox().SetBorder(true).SetTitle("Content"), 1, 1, 1, 1, 0, 100, false)
 
 	go osTimer()
 	go refreshTimer()
@@ -151,9 +141,6 @@ func main() {
 		panic(err)
 	}
 
-	// if err := app.SetRoot(box, true).Run(); err != nil {
-	// 	panic(err)
-	// }
 	// var asset okx.ResponseAPI
 	// // Rate Limit: 6 Requests per second
 	// if err := okx.Fetch("GET", "/api/v5/asset/bills?type=117", nil, &asset); err != nil {

@@ -20,23 +20,24 @@ if [[ "$1" == "--blacklight" ]]; then
   exit 0
 fi
 
+  # # Purpose: Display the ARM CPU and GPU  temperature of Raspberry Pi 2/3 
+  # # -------------------------------------------------------
+  # cpu=$(</sys/class/thermal/thermal_zone0/temp)
+  # gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
+  # echo "CPU: $((cpu/1000))'C GPU: $gpu"
+  # echo "Ready, What you want to do? ..."
 
-if [[ $(tty) != /dev/tty1 ]]; then
-  # Purpose: Display the ARM CPU and GPU  temperature of Raspberry Pi 2/3 
-  # -------------------------------------------------------
-  cpu=$(</sys/class/thermal/thermal_zone0/temp)
-  gpu=$(/usr/bin/vcgencmd measure_temp | grep -o -E '[[:digit:]].*')
-  echo "CPU: $((cpu/1000))'C GPU: $gpu"
-  echo "Ready, What you want to do? ..."
-elif [ -f "/home/pi/lab/bin/raspi-lab" ]; then
-  if [ -f "/usr/bin/git" ]; then
-    if [[ "$1" != "-w" ]]; then
-      check_updated
+if [[ $(tty) == /dev/tty1 ]]; then
+  if [ -f "/home/pi/lab/bin/raspi-lab" ]; then
+    if [ -f "/usr/bin/git" ]; then
+      if [[ "$1" != "-w" ]]; then
+        check_updated
+      fi
     fi
-  fi
 
-  echo "``raspi-lab`` compiling..."
-  go get . > /dev/null
-  go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
-  /home/pi/lab/bin/raspi-lab --tty $(tty)
+    echo "``raspi-lab`` compiling..."
+    go get . > /dev/null
+    go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
+    /home/pi/lab/bin/raspi-lab --tty $(tty)
+  fi
 fi
