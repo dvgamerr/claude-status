@@ -30,6 +30,11 @@ if [[ "$1" == "--blacklight" ]]; then
   exit 0
 fi
 
+if [[ "$1" == "--run" ]]; then
+  build_raspi_lab
+  /home/pi/lab/bin/raspi-lab --tty $(tty)
+fi
+
 # Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.
 if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
   if [ -f "/usr/bin/git" ]; then
