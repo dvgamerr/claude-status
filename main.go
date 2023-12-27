@@ -111,7 +111,7 @@ func main() {
 		AddItem(tview.NewBox().
 			SetBorder(true).
 			SetBorderColor(tcell.ColorGray).
-			SetTitle("OKX.com").
+			SetTitle("Dashboard").
 			SetTitleAlign(tview.AlignLeft).
 			SetDrawFunc(drawOverviewHeader), 0, 1, false).
 		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderText), 10, 0, false).
@@ -128,9 +128,9 @@ func main() {
 	go setTickerInterval(3*time.Second, fetchStatsOS)()
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
 
-	okxIntervel := 1000 * time.Millisecond
+	okxIntervel := 3 * time.Second
 	if os.Getenv("ENV") == "development" {
-		okxIntervel = 5000 * time.Millisecond
+		okxIntervel = 10 * time.Second
 	}
 
 	go setTickerInterval(okxIntervel, fetchOKXData)()
