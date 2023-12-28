@@ -59,9 +59,8 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	// 	printfProfit("%.2f%%", okxPnlPercent),
 	// 	bold(fmt.Sprintf("%dDay", day)),
 	// )
-	todayPnL := 1294.48
 
-	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - todayPnL)
+	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - okxTodayPnL)
 	balanceName := "OKX Est:"
 	balanceText := aNum.FormatMoney(okxTotal)
 	fulfillText := aNum.FormatMoney(okxFulfill)
@@ -74,7 +73,7 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+5+len(balanceName)+len(fulfillText)+1, y+1, width, tview.AlignLeft, okxPnLColor)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorBlue)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/todayPnL-100)), x+13, y+2, width, tview.AlignLeft, okxTodayPnLColor)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/okxTodayPnL-100)), x+13, y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
 	// btkFulfill := 90000
 	// btkPnLText, btkPnLColor := showUSD(1000)

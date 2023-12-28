@@ -15,7 +15,8 @@ import (
 )
 
 type Args struct {
-	TTY string `arg:"--tty" help:"tty source"`
+	TTY   string `arg:"--tty" help:"tty source"`
+	Fetch bool   `atg:"-f,--fetch" help:"fetch api from okx test"`
 }
 
 var cli Args
@@ -46,9 +47,10 @@ func fetchStatsOS() {
 }
 
 var (
-	okxFulfill    float64
-	okxTotal      float64
-	okxPnlPercent float64
+	okxFulfill   float64
+	okxTotal     float64
+	okxTodayPnL  float64
+	okxOnceToday bool
 )
 
 func fetchOKXData() {
@@ -79,8 +81,15 @@ func fetchOKXData() {
 	if okxTotal, err = toFloat64(account.Data[0]["totalEq"]); err != nil {
 		fmt.Println(err)
 	}
-
-	okxPnlPercent = (okxTotal * 100 / okxFulfill) - 100
+	hours, minutes, _ := time.Now().Clock()
+	if hours == 0 && minutes == 0 || okxTodayPnL == 0 {
+		if !okxOnceToday {
+			okxTodayPnL = okxTotal
+			okxOnceToday = true
+		}
+	} else {
+		okxOnceToday = false
+	}
 	// _, _, day := time.Now().Date()
 	// fmt.Printf("%s %s USD | %s (%s) %s",
 	// 	bold("OKX Total PnL:"),
@@ -99,7 +108,18 @@ func primTextCenter(text string) tview.Primitive {
 }
 
 func main() {
+
 	arg.MustParse(&cli)
+	if cli.Fetch {
+		fmt.Println("")
+		var asset okx.ResponseAPI
+		if err := okx.Fetch("GET", "/api/v5/asset/convert/history", nil, &asset); err != nil {
+			fmt.Println(err)
+		}
+		fmt.Printf("%#v\n", asset)
+		os.Exit(0)
+	}
+
 	log.Println("Preplare...")
 	fetchStatsOS()
 	fetchOKXData()
@@ -139,10 +159,4 @@ func main() {
 		panic(err)
 	}
 
-	// fmt.Println("")
-	// var asset okx.ResponseAPI
-	// if err := okx.Fetch("GET", fmt.Sprintf("/api/v5/asset/convert/history?after=%s&before=%s", toUnix("01-12-2023"), toUnix("")), nil, &asset); err != nil {
-	// 	fmt.Println(err)
-	// }
-	// fmt.Printf("%#v\n", asset)
 }
