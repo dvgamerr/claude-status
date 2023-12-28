@@ -164,18 +164,20 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 	}
 
 	okxTotal = 0
-	var (
-		bal float64
-	)
-	if bal, err = toFloat64(asset["bal"]); err != nil {
-		sugar.Errorln(err)
+	var bal float64
+	if asset["bal"] != nil {
+		if bal, err = toFloat64(asset["bal"]); err != nil {
+			sugar.Errorln(err)
+		}
+		okxTotal += bal
 	}
-	okxTotal += bal
 
-	if bal, err = toFloat64(account["totalEq"]); err != nil {
-		sugar.Errorln(err)
+	if account["totalEq"] != nil {
+		if bal, err = toFloat64(account["totalEq"]); err != nil {
+			sugar.Errorln(err)
+		}
+		okxTotal += bal
 	}
-	okxTotal += bal
 
 	for _, finn := range saving {
 		if finn["ccy"] != "USDT" {

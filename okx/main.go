@@ -12,6 +12,9 @@ func GETAssetBalances() (map[string]interface{}, error) {
 	if res.Code != "0" {
 		return nil, errors.New(res.Msg)
 	}
+	if len(res.Data) == 0 {
+		return map[string]interface{}{}, nil
+	}
 
 	return res.Data[0], nil
 }
@@ -24,6 +27,9 @@ func GETAccountBalances() (map[string]interface{}, error) {
 	}
 	if res.Code != "0" {
 		return nil, errors.New(res.Msg)
+	}
+	if len(res.Data) == 0 {
+		return map[string]interface{}{}, nil
 	}
 
 	return res.Data[0], nil
