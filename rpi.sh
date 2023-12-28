@@ -37,10 +37,7 @@ fi
 
 # Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.
 if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
-  if [ -f "/usr/bin/git" ]; then
-    check_updated
-  fi
-
+  check_updated
   build_raspi_lab
   /home/pi/lab/bin/raspi-lab --tty $(tty)
 fi
