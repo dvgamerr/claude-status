@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/rivo/tview"
+	"go.uber.org/zap"
 )
 
 type Args struct {
@@ -21,12 +23,70 @@ type Args struct {
 	DB    bool   `atg:"--db" help:"save history to database"`
 }
 
-var cli Args
+var (
+	cli    Args
+	logger *zap.Logger
+	sugar  *zap.SugaredLogger
+)
+
+func NewLogger(cli *Args) *zap.Logger {
+	// executablePath, err := os.Executable()
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return
+	// }
+
+	// currentDir, err := os.Getwd()
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return
+	// }
+	// // Get the base name of the executable
+	// executableBase := filepath.Base(strings.ReplaceAll(executablePath, filepath.Ext(executablePath), ".log"))
+
+	// cfg := zap.NewProductionConfig()
+	// cfg.OutputPaths = []string{filepath.Join(currentDir, executableBase)}
+	// cfg.ErrorOutputPaths = []string{filepath.Join(currentDir, executableBase)}
+	atom := zap.NewAtomicLevel()
+	atom.SetLevel(zap.DebugLevel)
+
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Level = atom
+	cfg.OutputPaths = []string{"stdout"}
+	log, _ := cfg.Build()
+
+	return log
+}
 
 func init() {
+	arg.MustParse(&cli)
+
+	logger = NewLogger(&cli)
+	sugar = logger.Sugar()
+
+	executablePath, err := os.Executable()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	// Get the base name of the executable
+	executableBase := filepath.Base(strings.ReplaceAll(executablePath, filepath.Ext(executablePath), ".log"))
+
+	sugar.Infoln(filepath.Join(currentDir, executableBase))
+
 	// Load environment variables from .env
+	if _, err := os.Stat(".env"); err != nil {
+		logger.Fatal("error .env not found: " + err.Error())
+	}
+
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("Error loading .env file")
+		logger.Fatal(err.Error())
 	}
 
 	// Check that all required environment variables are set
@@ -65,13 +125,13 @@ func fetchOKXFulfill(wg *sync.WaitGroup) {
 	var asset okx.ResponseAPI
 	// Rate Limit: 6 Requests per second
 	if err := okx.Fetch("GET", "/api/v5/asset/bills?type=117", nil, &asset); err != nil {
-		fmt.Println(err)
+		sugar.Fatalw(err.Error())
 	}
 	okxFulfill = 0
 	for _, e := range asset.Data {
 		bal, err := toFloat64(e["bal"])
 		if err != nil {
-			fmt.Println(e["bal"], ":", err)
+			sugar.Errorln(e["bal"], ":", err)
 		}
 		okxFulfill += bal
 	}
@@ -81,19 +141,47 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
 	}
-	var account okx.ResponseAPI
-	// Rate Limit: 10 requests per 2 seconds
-	if err := okx.Fetch("GET", "/api/v5/account/balance", nil, &account); err != nil {
-		fmt.Println(err)
-	}
-	if account.Code != "0" {
-		fmt.Println(account.Msg)
+
+	asset, err := okx.GETAssetBalances()
+	if err != nil {
+		sugar.Errorln(err)
 	}
 
-	var err error
-	if okxTotal, err = toFloat64(account.Data[0]["totalEq"]); err != nil {
-		fmt.Println(err)
+	account, err := okx.GETAccountBalances()
+	if err != nil {
+		sugar.Errorln(err)
 	}
+
+	saving, err := okx.GETFinanceSavingsBalance()
+	if err != nil {
+		sugar.Errorln(err)
+	}
+
+	okxTotal = 0
+	var (
+		bal float64
+	)
+	if bal, err = toFloat64(asset["bal"]); err != nil {
+		sugar.Errorln(err)
+	}
+	okxTotal += bal
+
+	if bal, err = toFloat64(account["totalEq"]); err != nil {
+		sugar.Errorln(err)
+	}
+	okxTotal += bal
+
+	for _, finn := range saving {
+		if finn["ccy"] != "USDT" {
+			continue
+		}
+
+		if bal, err = toFloat64(finn["loanAmt"]); err != nil {
+			sugar.Errorln(err)
+		}
+		okxTotal += bal
+	}
+
 	hours, minutes, _ := time.Now().Clock()
 	if hours == 0 && minutes == 0 || okxTodayPnL == 0 {
 		if !okxOnceToday {
@@ -103,37 +191,25 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 	} else {
 		okxOnceToday = false
 	}
-	// _, _, day := time.Now().Date()
-	// fmt.Printf("%s %s USD | %s (%s) %s",
-	// 	bold("OKX Total PnL:"),
-	// 	info(fmt.Sprintf("$%.2f", okxTotal)),
-	// 	printfProfit("$%.2f", okxTotal-okxFulfill),
-	// 	printfProfit("%.2f%%", percent),
-	// 	bold(fmt.Sprintf("%dDay", day)),
-	// )
-
-}
-
-func primTextCenter(text string) tview.Primitive {
-	return tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetText(text)
 }
 
 func main() {
-
-	arg.MustParse(&cli)
 	if cli.Fetch {
-		fmt.Println("")
-		var asset okx.ResponseAPI
-		if err := okx.Fetch("GET", "/api/v5/asset/convert/history", nil, &asset); err != nil {
-			fmt.Println(err)
+		// Rate Limit: 6 requests per second
+		var res okx.ResponseAPI
+		if err := okx.Fetch("GET", "/api/v5/finance/savings/balance", nil, &res); err != nil {
+			sugar.Fatalw(err.Error())
 		}
-		fmt.Printf("%#v\n", asset)
+		data, err := PrettyStruct(res)
+		if err != nil {
+			sugar.Errorln(err.Error())
+		}
+		sugar.Debugf("%v\n", data)
 		os.Exit(0)
 	}
 
-	log.Println("Preplare...")
+	defer sugar.Sync()
+	sugar.Infoln("Preplare...")
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)
@@ -143,7 +219,7 @@ func main() {
 	fetchOKXBalance(&wg)
 	wg.Wait()
 
-	log.Println("Render...")
+	sugar.Infoln("Render...")
 	app = tview.NewApplication()
 
 	flex := tview.NewFlex().

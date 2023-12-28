@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
+	"github.com/rivo/tview"
 )
 
 // checkEnvVars checks that all specified environment variables are set and not empty.
@@ -22,7 +24,7 @@ func checkEnvVars(envs ...string) {
 }
 
 func showUSD(n float64) (string, tcell.Color) {
-	ac := accounting.Accounting{Symbol: "$", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	ac := accounting.Accounting{Symbol: "₮", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
 	if n >= 0.0 {
 		return ac.FormatMoney(n), tcell.ColorGreen
 	} else {
@@ -67,4 +69,17 @@ func setTickerInterval(t time.Duration, run func()) func() {
 			run()
 		}
 	}
+}
+
+func primTextCenter(text string) tview.Primitive {
+	return tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetText(text)
+}
+func PrettyStruct(data interface{}) (string, error) {
+	val, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(val), nil
 }

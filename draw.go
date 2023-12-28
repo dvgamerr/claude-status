@@ -45,20 +45,10 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	return 0, 0, 0, 0
 }
 
-var aNum accounting.Accounting = accounting.Accounting{Symbol: "$", Precision: 2, Thousand: ",", Format: "%s%v"}
+var aNum accounting.Accounting = accounting.Accounting{Symbol: "₮", Precision: 2, Thousand: ",", Format: "%s%v"}
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-
-	// okxPnlPercent := (okxTotal * 100 / okxFulfill) - 100
-	// _, _, day := time.Now().Date()
-	// fmt.Printf("%s %s USD | %s (%s) %s",
-	// 	bold("OKX Total PnL:"),
-	// 	info(fmt.Sprintf("$%.2f", okxTotal)),
-	// 	printfProfit("$%.2f", okxTotal-okxFulfill),
-	// 	printfProfit("%.2f%%", okxPnlPercent),
-	// 	bold(fmt.Sprintf("%dDay", day)),
-	// )
 
 	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - okxTodayPnL)
 	balanceName := "OKX Est:"
@@ -70,10 +60,10 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 
 	tview.Print(screen, balanceName, x+4, y+1, width, tview.AlignLeft, tcell.ColorBlue)
 	tview.Print(screen, balanceText, x+5+len(balanceName), y+1, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+5+len(balanceName)+len(fulfillText)+1, y+1, width, tview.AlignLeft, okxPnLColor)
+	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+5+len(balanceName)+len(fulfillText)-1, y+1, width, tview.AlignLeft, okxPnLColor)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorBlue)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/okxTodayPnL-100)), x+13, y+2, width, tview.AlignLeft, okxTodayPnLColor)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/okxTodayPnL-100)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
 	// btkFulfill := 90000
 	// btkPnLText, btkPnLColor := showUSD(1000)
