@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -17,6 +18,7 @@ import (
 type Args struct {
 	TTY   string `arg:"--tty" help:"tty source"`
 	Fetch bool   `atg:"-f,--fetch" help:"fetch api from okx test"`
+	DB    bool   `atg:"--db" help:"save history to database"`
 }
 
 var cli Args
@@ -40,7 +42,10 @@ var (
 	cpuVolt string
 )
 
-func fetchStatsOS() {
+func fetchStatsOS(wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
 	cpuTemp = rpi.CPUTemp()
 	cpuVolt = rpi.CPUCoreVolt()
 	gpuTemp = rpi.GPUTemp()
@@ -53,9 +58,11 @@ var (
 	okxOnceToday bool
 )
 
-func fetchOKXData() {
+func fetchOKXFulfill(wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
 	var asset okx.ResponseAPI
-	var err error
 	// Rate Limit: 6 Requests per second
 	if err := okx.Fetch("GET", "/api/v5/asset/bills?type=117", nil, &asset); err != nil {
 		fmt.Println(err)
@@ -68,7 +75,12 @@ func fetchOKXData() {
 		}
 		okxFulfill += bal
 	}
+}
 
+func fetchOKXBalance(wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
 	var account okx.ResponseAPI
 	// Rate Limit: 10 requests per 2 seconds
 	if err := okx.Fetch("GET", "/api/v5/account/balance", nil, &account); err != nil {
@@ -78,6 +90,7 @@ func fetchOKXData() {
 		fmt.Println(account.Msg)
 	}
 
+	var err error
 	if okxTotal, err = toFloat64(account.Data[0]["totalEq"]); err != nil {
 		fmt.Println(err)
 	}
@@ -121,8 +134,14 @@ func main() {
 	}
 
 	log.Println("Preplare...")
-	fetchStatsOS()
-	fetchOKXData()
+
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+
+	fetchOKXFulfill(&wg)
+	fetchStatsOS(&wg)
+	fetchOKXBalance(&wg)
+	wg.Wait()
 
 	log.Println("Render...")
 	app = tview.NewApplication()
@@ -145,7 +164,7 @@ func main() {
 	grid.AddItem(primTextCenter("Trader"), 1, 0, 1, 1, 0, 100, false).
 		AddItem(primTextCenter("Orders"), 1, 1, 1, 1, 0, 100, false)
 
-	go setTickerInterval(3*time.Second, fetchStatsOS)()
+	go setTickerInterval(3*time.Second, func() { fetchStatsOS(nil) })()
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
 
 	okxIntervel := 3 * time.Second
@@ -153,7 +172,7 @@ func main() {
 		okxIntervel = 10 * time.Second
 	}
 
-	go setTickerInterval(okxIntervel, fetchOKXData)()
+	go setTickerInterval(okxIntervel, func() { fetchOKXBalance(nil) })()
 
 	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
 		panic(err)

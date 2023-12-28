@@ -39,5 +39,5 @@ fi
 if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
   check_updated
   build_raspi_lab
-  /home/pi/lab/bin/raspi-lab --tty $(tty)
+  /home/pi/lab/bin/raspi-lab --tty $(tty) --db
 fi
