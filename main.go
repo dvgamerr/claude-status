@@ -13,6 +13,7 @@ import (
 	"github.com/dvgamerr/aide-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
+	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
 	"go.uber.org/zap"
 )
@@ -63,6 +64,11 @@ func init() {
 
 	logger = NewLogger(&cli)
 	sugar = logger.Sugar()
+
+	if cli.TTY == "" {
+		symbolMoney = "₮"
+	}
+	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
 
 	executablePath, err := os.Executable()
 	if err != nil {
@@ -176,7 +182,7 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 			continue
 		}
 
-		if bal, err = toFloat64(finn["loanAmt"]); err != nil {
+		if bal, err = toFloat64(finn["amt"]); err != nil {
 			sugar.Errorln(err)
 		}
 		okxTotal += bal
@@ -195,12 +201,12 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 
 func main() {
 	if cli.Fetch {
-		// Rate Limit: 6 requests per second
-		var res okx.ResponseAPI
-		if err := okx.Fetch("GET", "/api/v5/finance/savings/balance", nil, &res); err != nil {
-			sugar.Fatalw(err.Error())
+		saving, err := okx.GETFinanceSavingsBalance()
+		if err != nil {
+			sugar.Errorln(err)
 		}
-		data, err := PrettyStruct(res)
+
+		data, err := PrettyStruct(saving)
 		if err != nil {
 			sugar.Errorln(err.Error())
 		}

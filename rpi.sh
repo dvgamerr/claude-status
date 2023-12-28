@@ -14,6 +14,15 @@ build_raspi_lab () {
   go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
 }
 
+if [[ "$1" == "--up" ]]; then
+  check_updated
+fi
+
+if [[ "$1" == "--run" ]]; then
+  build_raspi_lab
+  /home/pi/lab/bin/raspi-lab --tty $(tty)
+fi
+
 # Adjusts Raspberry Pi backlight intensity using vcgencmd based on command-line arguments.
 if [[ "$1" == "--blacklight" ]]; then
   if [[ "$2" == "off" ]]; then
@@ -28,11 +37,6 @@ if [[ "$1" == "--blacklight" ]]; then
     done;
   fi
   exit 0
-fi
-
-if [[ "$1" == "--run" ]]; then
-  build_raspi_lab
-  /home/pi/lab/bin/raspi-lab --tty $(tty)
 fi
 
 # Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.

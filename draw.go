@@ -45,11 +45,10 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	return 0, 0, 0, 0
 }
 
-var aNum accounting.Accounting = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
+var aNum accounting.Accounting
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-
 	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - okxTodayPnL)
 	balanceName := "OKX Est:"
 	balanceText := aNum.FormatMoney(okxTotal)
@@ -60,7 +59,7 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 
 	tview.Print(screen, balanceName, x+4, y+1, width, tview.AlignLeft, tcell.ColorBlue)
 	tview.Print(screen, balanceText, x+5+len(balanceName), y+1, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+5+len(balanceName)+len(fulfillText)-1, y+1, width, tview.AlignLeft, okxPnLColor)
+	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+6+len(balanceName)+len(fulfillText), y+1, width, tview.AlignLeft, okxPnLColor)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorBlue)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/okxTodayPnL-100)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)

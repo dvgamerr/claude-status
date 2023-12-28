@@ -23,7 +23,7 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
-const symbolMoney string = "$" // "₮"
+var symbolMoney string = "$" // "₮"
 
 func showUSD(n float64) (string, tcell.Color) {
 	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
