@@ -45,7 +45,7 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	return 0, 0, 0, 0
 }
 
-var aNum accounting.Accounting = accounting.Accounting{Symbol: "₮", Precision: 2, Thousand: ",", Format: "%s%v"}
+var aNum accounting.Accounting = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {

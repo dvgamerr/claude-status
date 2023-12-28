@@ -23,8 +23,10 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
+const symbolMoney string = "$" // "₮"
+
 func showUSD(n float64) (string, tcell.Color) {
-	ac := accounting.Accounting{Symbol: "₮", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
 	if n >= 0.0 {
 		return ac.FormatMoney(n), tcell.ColorGreen
 	} else {
