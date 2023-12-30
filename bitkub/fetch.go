@@ -24,7 +24,7 @@ func generateSignature(payload string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func fetch(method string, path string, body interface{}) error {
+func Fetch(method string, path string, body interface{}) error {
 	var payload []byte = nil
 
 	serverTime, err := getServerTime()

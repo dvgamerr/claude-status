@@ -47,3 +47,15 @@ func GETFinanceSavingsBalance() ([]map[string]interface{}, error) {
 
 	return res.Data, nil
 }
+func GETCopytradingCurrentLeadTraders() ([]map[string]interface{}, error) {
+	// Rate limit: 5 requests per 2 seconds
+	var res ResponseAPI
+	if err := Fetch("GET", "/api/v5/copytrading/current-lead-traders", nil, &res); err != nil {
+		return []map[string]interface{}{}, err
+	}
+	if res.Code != "0" {
+		return []map[string]interface{}{}, errors.New(res.Msg)
+	}
+
+	return res.Data, nil
+}

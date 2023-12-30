@@ -118,10 +118,10 @@ func fetchStatsOS(wg *sync.WaitGroup) {
 }
 
 var (
-	okxFulfill   float64
-	okxTotal     float64
-	okxTodayPnL  float64
-	okxOnceToday bool
+	okxFulfill  float64
+	okxTotal    float64
+	okxTodayPnL float64
+	// okxOnceToday bool
 )
 
 func fetchOKXFulfill(wg *sync.WaitGroup) {
@@ -190,29 +190,52 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 		okxTotal += bal
 	}
 
-	hours, minutes, _ := time.Now().Clock()
-	if hours == 0 && minutes == 0 || okxTodayPnL == 0 {
-		if !okxOnceToday {
-			okxTodayPnL = okxTotal
-			okxOnceToday = true
-		}
-	} else {
-		okxOnceToday = false
+	traders, err := okx.GETCopytradingCurrentLeadTraders()
+	if err != nil {
+		sugar.Errorln(err)
 	}
+
+	okxTodayPnL = 0
+	for _, td := range traders {
+		pnl, err := toFloat64(td["todayPnl"])
+		if err != nil {
+			sugar.Errorln(err)
+		}
+		okxTodayPnL += pnl
+	}
+
+	// hours, minutes, _ := time.Now().Clock()
+	// if hours == 0 && minutes == 0 || okxTodayPnL == 0 {
+	// 	if !okxOnceToday {
+	// 		okxTodayPnL = okxTotal
+	// 		okxOnceToday = true
+	// 	}
+	// } else {
+	// 	okxOnceToday = false
+	// }
 }
 
 func main() {
 	if cli.Fetch {
-		saving, err := okx.GETFinanceSavingsBalance()
-		if err != nil {
-			sugar.Errorln(err)
-		}
+		cur := time.Now()
+		year, month, day := cur.Date()
 
-		data, err := PrettyStruct(saving)
+		var err error
+		var res okx.ResponseAPI
+		var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
+		if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
+			sugar.Fatalw(err.Error())
+		}
+		var data string
+		if len(res.Data) > 0 {
+			data, err = PrettyStruct(res.Data[0])
+		} else {
+			data, err = PrettyStruct(res)
+		}
 		if err != nil {
 			sugar.Errorln(err.Error())
 		}
-		sugar.Debugf("%v\n", data)
+		sugar.Debugf("%s Total: %d\n%v\n", endpoint, len(res.Data), data)
 		os.Exit(0)
 	}
 

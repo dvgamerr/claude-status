@@ -49,7 +49,7 @@ var aNum accounting.Accounting
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTotal - okxTodayPnL)
+	okxTodayPnLText, okxTodayPnLColor := showUSD(okxTodayPnL)
 	balanceName := "OKX Est:"
 	balanceText := aNum.FormatMoney(okxTotal)
 	fulfillText := aNum.FormatMoney(okxFulfill)
@@ -62,7 +62,7 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+6+len(balanceName)+len(fulfillText), y+1, width, tview.AlignLeft, okxPnLColor)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorBlue)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxTotal*100/okxTodayPnL-100)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(0)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
 	// btkFulfill := 90000
 	// btkPnLText, btkPnLColor := showUSD(1000)
