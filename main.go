@@ -281,6 +281,7 @@ func main() {
 
 	go setTickerInterval(okxIntervel, func() { fetchOKXBalance(nil) })()
 
+	go httpController()
 	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
 		panic(err)
 	}

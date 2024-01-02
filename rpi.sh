@@ -39,9 +39,32 @@ if [[ "$1" == "--blacklight" ]]; then
   exit 0
 fi
 
-# Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.
-if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
-  check_updated
-  build_raspi_lab
-  /home/pi/lab/bin/raspi-lab --tty $(tty) --db
-fi
+# Function to handle CTRL+C and set exit flag
+ctrl_c() {
+  echo "CTRL+C detected. Exiting..."
+  eof=true
+}
+
+# Set up trap to call ctrl_c function on CTRL+C
+trap ctrl_c INT
+
+# Flag to control loop exit
+eof=false
+
+while :
+do
+  # Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.
+  if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
+    check_updated
+    build_raspi_lab
+    /home/pi/lab/bin/raspi-lab --tty $(tty) --db
+    sleep 3
+    echo "Press [CTRL+C] to stop.."
+    # Check if the exit flag is set
+    if [ "$exit_flag" = true ]; then
+      break  # Exit the loop
+    fi
+  else;
+    break
+  fi
+done
