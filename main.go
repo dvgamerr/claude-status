@@ -19,53 +19,56 @@ import (
 )
 
 type Args struct {
-	TTY   string `arg:"--tty" help:"tty source"`
+	Tty   string `arg:"--tty" help:"tty source"`
 	Fetch bool   `atg:"-f,--fetch" help:"fetch api from okx test"`
 	DB    bool   `atg:"--db" help:"save history to database"`
 }
 
 var (
-	cli    Args
+	lab    Args
 	logger *zap.Logger
 	sugar  *zap.SugaredLogger
 )
 
+func getLoggingFilepath() (string, error) {
+	exeFile, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	dirFile, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// Get the base name of the executable
+	return filepath.Join(dirFile, filepath.Base(strings.ReplaceAll(exeFile, filepath.Ext(exeFile), ".log"))), nil
+}
+
 func NewLogger(cli *Args) *zap.Logger {
-	// executablePath, err := os.Executable()
-	// if err != nil {
-	// 	fmt.Println("Error:", err)
-	// 	return
-	// }
+	var cfg zap.Config
+	if lab.Tty != "" {
+		logging, _ := getLoggingFilepath()
 
-	// currentDir, err := os.Getwd()
-	// if err != nil {
-	// 	fmt.Println("Error:", err)
-	// 	return
-	// }
-	// // Get the base name of the executable
-	// executableBase := filepath.Base(strings.ReplaceAll(executablePath, filepath.Ext(executablePath), ".log"))
-
-	// cfg := zap.NewProductionConfig()
-	// cfg.OutputPaths = []string{filepath.Join(currentDir, executableBase)}
-	// cfg.ErrorOutputPaths = []string{filepath.Join(currentDir, executableBase)}
-	atom := zap.NewAtomicLevel()
-	atom.SetLevel(zap.DebugLevel)
-
-	cfg := zap.NewDevelopmentConfig()
-	cfg.Level = atom
-	cfg.OutputPaths = []string{"stdout"}
+		cfg = zap.NewProductionConfig()
+		cfg.OutputPaths = []string{logging}
+		cfg.ErrorOutputPaths = []string{logging}
+	} else {
+		cfg = zap.NewDevelopmentConfig()
+		cfg.Level = zap.NewAtomicLevel()
+		cfg.Level.SetLevel(zap.DebugLevel)
+		cfg.OutputPaths = []string{"stdout"}
+	}
 	log, _ := cfg.Build()
-
 	return log
 }
 
 func init() {
-	arg.MustParse(&cli)
+	arg.MustParse(&lab)
 
-	logger = NewLogger(&cli)
+	logger = NewLogger(&lab)
 	sugar = logger.Sugar()
 
-	if cli.TTY == "" {
+	if lab.Tty == "" {
 		symbolMoney = "₮"
 	}
 	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
@@ -216,7 +219,7 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 }
 
 func main() {
-	if cli.Fetch {
+	if lab.Fetch {
 		cur := time.Now()
 		year, month, day := cur.Date()
 

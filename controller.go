@@ -1,21 +1,39 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"time"
 
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 )
+
+var apiPort string
 
 func httpController() {
 	app := fiber.New()
 
-	app.Get("/_health", func(c *fiber.Ctx) {
-		c.SendString("☕")
+	app.Get("/_health", func(c *fiber.Ctx) error {
+		return c.SendString("☕")
 	})
 
-	app.Put("/exit", func(c *fiber.Ctx) {
-		os.Exit(0)
+	app.Put("/_exit", func(c *fiber.Ctx) error {
+		go delayedExit()
+		return c.SendString("Signal Exiting...")
 	})
 
-	app.Listen(":3000")
+	apiPort = os.Getenv("PORT")
+	if apiPort == "" {
+		apiPort = "21280"
+	}
+
+	sugar.Infof("Listen backend port: %s\n", apiPort)
+	app.Listen(fmt.Sprintf(":%s", apiPort))
+}
+
+func delayedExit() {
+	sugar.Infoln("Signal Exiting...")
+	sugar.Sync()
+	time.Sleep(200 * time.Millisecond)
+	os.Exit(0)
 }
