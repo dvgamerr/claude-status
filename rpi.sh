@@ -59,8 +59,8 @@ do
     build_raspi_lab
     /home/pi/lab/bin/raspi-lab --tty $(tty) --db
     clear
-    sleep 3
     echo "Press [CTRL+C] to stop.."
+    sleep 3
     # Check if the exit flag is set
     if [ "$eof" = true ]; then
       break  # Exit the loop
