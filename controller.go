@@ -35,5 +35,6 @@ func delayedExit() {
 	sugar.Infoln("Signal Exiting...")
 	sugar.Sync()
 	time.Sleep(200 * time.Millisecond)
+	fmt.Print("\033[H\033[2J")
 	os.Exit(0)
 }

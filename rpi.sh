@@ -1,5 +1,6 @@
 #!/usr/bin/zsh
 
+url=http://localhost:21280
 # Check and update the 'aide-pi' repository
 check_updated () {
   cd /home/pi/lab > /dev/null
@@ -16,6 +17,10 @@ build_raspi_lab () {
 
 if [[ "$1" == "--up" ]]; then
   check_updated
+fi
+
+if [[ "$1" == "--reload" ]]; then
+  curl -X PUT $url/_exit
 fi
 
 if [[ "$1" == "--run" ]]; then
@@ -59,7 +64,7 @@ do
     build_raspi_lab
     /home/pi/lab/bin/raspi-lab --tty $(tty) --db
     clear
-    echo "Press [CTRL+C] to stop.."
+    echo "Press [CTRL+C] to stop in 3 second.."
     sleep 3
     # Check if the exit flag is set
     if [ "$eof" = true ]; then
