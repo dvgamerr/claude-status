@@ -58,6 +58,7 @@ do
     check_updated
     build_raspi_lab
     /home/pi/lab/bin/raspi-lab --tty $(tty) --db
+    clear
     sleep 3
     echo "Press [CTRL+C] to stop.."
     # Check if the exit flag is set
