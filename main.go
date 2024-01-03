@@ -31,17 +31,17 @@ var (
 )
 
 func getLoggingFilepath() (string, error) {
-	exeFile, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
+	// exeFile, err := os.Executable()
+	// if err != nil {
+	// 	return "", err
+	// }
 	dirFile, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 
 	// Get the base name of the executable
-	return filepath.Join(dirFile, filepath.Base(strings.ReplaceAll(exeFile, filepath.Ext(exeFile), ".log"))), nil
+	return filepath.Join(dirFile, "raspi-lab.log"), nil
 }
 
 func NewLogger(cli *Args) *zap.Logger {
