@@ -61,7 +61,7 @@ do
     sleep 3
     echo "Press [CTRL+C] to stop.."
     # Check if the exit flag is set
-    if [ "$exit_flag" = true ]; then
+    if [ "$eof" = true ]; then
       break  # Exit the loop
     fi
   else;
