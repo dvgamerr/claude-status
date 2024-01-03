@@ -14,12 +14,12 @@ func httpController() {
 	app := fiber.New()
 
 	app.Get("/_health", func(c *fiber.Ctx) error {
-		return c.SendString("☕")
+		return c.SendString("☕\n")
 	})
 
 	app.Put("/_exit", func(c *fiber.Ctx) error {
 		go delayedExit()
-		return c.SendString("Signal Exiting...")
+		return c.SendString("Signal Exiting...\n")
 	})
 
 	apiPort = os.Getenv("PORT")
