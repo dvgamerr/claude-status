@@ -1,18 +1,19 @@
 #!/usr/bin/zsh
 
 url=http://localhost:21280
+rpi=raspi-lab
 # Check and update the 'aide-pi' repository
 check_updated () {
   cd /home/pi/lab > /dev/null
   echo Checking \`aide-pi\` latest version...
-  /usr/bin/git pull origin --quiet
+  /usr/bin/git pull origin
 }
 
-# build the 'raspi-lab' executable
+# build the '$rpi' executable
 build_raspi_lab () {
-  echo "``raspi-lab`` compiling..."
-  go get . > /dev/null
-  go build -o /home/pi/lab/bin/raspi-lab . > /dev/null
+  echo "``$rpi`` compiling..."
+  go get ./raspi-lab/ > /dev/null
+  go build -o /home/pi/lab/bin/$rpi ./raspi-lab/ > /dev/null
 }
 
 if [[ "$1" == "--up" ]]; then
@@ -25,7 +26,7 @@ fi
 
 if [[ "$1" == "--run" ]]; then
   build_raspi_lab
-  /home/pi/lab/bin/raspi-lab --tty $(tty)
+  /home/pi/lab/bin/$rpi --tty $(tty)
 fi
 
 # Adjusts Raspberry Pi backlight intensity using vcgencmd based on command-line arguments.
@@ -58,11 +59,11 @@ eof=false
 
 while :
 do
-  # Conditional script to run 'raspi-lab' on the /dev/tty1 terminal.
-  if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/raspi-lab" ]]; then
+  # Conditional script to run '$rpi' on the /dev/tty1 terminal.
+  if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/$rpi" ]]; then
     check_updated
     build_raspi_lab
-    /home/pi/lab/bin/raspi-lab --tty $(tty) --db
+    /home/pi/lab/bin/$rpi --tty $(tty) --db
     clear
     echo "Press [CTRL+C] to stop in 3 second.."
     sleep 3

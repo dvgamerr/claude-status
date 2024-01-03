@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dvgamerr/aide-lab/rpi"
+	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"

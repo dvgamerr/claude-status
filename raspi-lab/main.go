@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/alexflint/go-arg"
-	"github.com/dvgamerr/aide-lab/okx"
-	"github.com/dvgamerr/aide-lab/rpi"
+	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
+	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/leekchan/accounting"
