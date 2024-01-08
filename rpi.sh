@@ -16,8 +16,12 @@ build_raspi_lab () {
   go build -o /home/pi/lab/bin/$rpi ./raspi-lab/ > /dev/null
 }
 
-if [[ "$1" == "--up" ]]; then
+if [[ "$1" == "--update" ]]; then
   check_updated
+fi
+
+if [[ "$1" == "--update" ]]; then
+  build_raspi_lab
 fi
 
 if [[ "$1" == "--reload" ]]; then

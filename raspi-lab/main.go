@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,17 +30,17 @@ var (
 )
 
 func getLoggingFilepath() (string, error) {
-	// exeFile, err := os.Executable()
-	// if err != nil {
-	// 	return "", err
-	// }
+	exeFile, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
 	dirFile, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 
 	// Get the base name of the executable
-	return filepath.Join(dirFile, "raspi-lab.log"), nil
+	return filepath.Join(dirFile, filepath.Base(exeFile)+".log"), nil
 }
 
 func NewLogger(cli *Args) *zap.Logger {
@@ -72,22 +71,6 @@ func init() {
 		symbolMoney = "₮"
 	}
 	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
-
-	executablePath, err := os.Executable()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
-	currentDir, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	// Get the base name of the executable
-	executableBase := filepath.Base(strings.ReplaceAll(executablePath, filepath.Ext(executablePath), ".log"))
-
-	sugar.Infoln(filepath.Join(currentDir, executableBase))
 
 	// Load environment variables from .env
 	if _, err := os.Stat(".env"); err != nil {
@@ -127,6 +110,32 @@ var (
 	// okxOnceToday bool
 )
 
+func checkResponseOKX() {
+	cur := time.Now()
+	year, month, day := cur.Date()
+
+	var err error
+	var res okx.ResponseAPI
+	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
+	// var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
+	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
+		sugar.Fatalw(err.Error())
+	}
+	var data string
+	if len(res.Data) > 0 {
+		for _, e := range res.Data {
+			fmt.Printf("%s[%s] - %s - %s\n", e["instType"], e["instId"], e["uTime"], e["realizedPnl"])
+		}
+		data, err = PrettyStruct(res.Data[0])
+	} else {
+		data, err = PrettyStruct(res)
+	}
+	if err != nil {
+		sugar.Errorln(err.Error())
+	}
+	sugar.Debugf("%s Total: %d\n%v\n", endpoint, len(res.Data), data)
+}
+
 func fetchOKXFulfill(wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
@@ -153,17 +162,17 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 
 	asset, err := okx.GETAssetBalances()
 	if err != nil {
-		sugar.Errorln(err)
+		sugar.Fatalln(err)
 	}
 
 	account, err := okx.GETAccountBalances()
 	if err != nil {
-		sugar.Errorln(err)
+		sugar.Fatalln(err)
 	}
 
 	saving, err := okx.GETFinanceSavingsBalance()
 	if err != nil {
-		sugar.Errorln(err)
+		sugar.Fatalln(err)
 	}
 
 	okxTotal = 0
@@ -220,25 +229,7 @@ func fetchOKXBalance(wg *sync.WaitGroup) {
 
 func main() {
 	if lab.Fetch {
-		cur := time.Now()
-		year, month, day := cur.Date()
-
-		var err error
-		var res okx.ResponseAPI
-		var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-		if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
-			sugar.Fatalw(err.Error())
-		}
-		var data string
-		if len(res.Data) > 0 {
-			data, err = PrettyStruct(res.Data[0])
-		} else {
-			data, err = PrettyStruct(res)
-		}
-		if err != nil {
-			sugar.Errorln(err.Error())
-		}
-		sugar.Debugf("%s Total: %d\n%v\n", endpoint, len(res.Data), data)
+		checkResponseOKX()
 		os.Exit(0)
 	}
 
