@@ -2,6 +2,10 @@ deployment:
   enabled: true
   kind: Deployment
   replicas: 2
+  annotations: {}
+  podAnnotations: {}
+  additionalContainers: []
+  initContainers: []
 
 # Traefik experimental features
 experimental:
@@ -58,31 +62,32 @@ metrics:
   prometheus:
     entryPoint: metrics
 
-  influxdb:
-     ## Address instructs exporter to send metrics to influxdb at this address.
-     address: database.influxdb:8089
-     ## InfluxDB's address protocol (udp or http). Default="udp"
-     protocol: udp
-     ## InfluxDB database used when protocol is http. Default=""
-     # database: ""
-     ## InfluxDB retention policy used when protocol is http. Default=""
-     # retentionPolicy: ""
-     ## InfluxDB username (only with http). Default=""
-     # username: ""
-     ## InfluxDB password (only with http). Default=""
-     # password: ""
-     ## The interval used by the exporter to push metrics to influxdb. Default=10s
-     # pushInterval: 30s
-     ## Additional labels (influxdb tags) on all metrics.
-     # additionalLabels:
-     #   env: production
-     #   foo: bar
-     ## Enable metrics on entry points. Default=true
-     # addEntryPointsLabels: false
-     ## Enable metrics on routers. Default=false
-     # addRoutersLabels: true
-     ## Enable metrics on services. Default=true
-     # addServicesLabels: false
+  influxDB2:
+    ## Address instructs exporter to send metrics to influxdb at this address.
+    address: http://database.db-influx:8086
+    ## InfluxDB's address protocol (udp or http). Default="udp"
+    token: t_9bGGMfXXyq3f7S_oCVtrOBX--Y0KOEhqhZvMfWy8fbkDC4DwiSIT4bISjG6dcALaOvgGFpMC1StUotI_iAvQ==
+    org: Aide
+    bucket: traefik
+    ## InfluxDB database used when protocol is http. Default=""
+    ## InfluxDB retention policy used when protocol is http. Default=""
+    # retentionPolicy: ""
+    ## InfluxDB username (only with http). Default=""
+    # username: ""
+    ## InfluxDB password (only with http). Default=""
+    # password: ""
+    ## The interval used by the exporter to push metrics to influxdb. Default=10s
+    # pushInterval: 30s
+    ## Additional labels (influxdb tags) on all metrics.
+    # additionalLabels:
+    #   env: production
+    #   foo: bar
+    ## Enable metrics on entry points. Default=true
+    # addEntryPointsLabels: false
+    ## Enable metrics on routers. Default=false
+    # addRoutersLabels: true
+    ## Enable metrics on services. Default=true
+    # addServicesLabels: false
 
 
 # -- Global command arguments to be passed to all traefik's pods
@@ -95,6 +100,8 @@ globalArguments:
 # -- Additional arguments to be passed at Traefik's binary
 # All available options available on https://docs.traefik.io/reference/static-configuration/cli/
 ## Use curly braces to pass values: `helm install --set="additionalArguments={--providers.kubernetesingress.ingressclass=traefik-internal,--log.level=DEBUG}"`
-additionalArguments: []
+additionalArguments:
+  - '--serversTransport.insecureSkipVerify=true'
+
 #  - "--providers.kubernetesingress.ingressclass=traefik-internal"
 #  - "--log.level=DEBUG"
