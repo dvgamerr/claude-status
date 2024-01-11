@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -57,23 +58,47 @@ var (
 	rpiOs  rpi.StatsOS
 )
 
-func checkResponseOKX() {
-	// cur := time.Now()
-	// year, month, day := cur.Date()
+func getUnixDate(y int, m int, d int) int64 {
+	cur := time.Now()
+	year, month, day := cur.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli()
+}
 
+func parseUnixDate(utime any) string {
+	i, err := strconv.ParseInt(utime.(string), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return time.Unix(i/1000, 0).Format(time.RFC3339)
+}
+
+func checkResponseOKX() {
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	// var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
+	// var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", getUnixDate(0, 0, 0))
 
+	var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
 	// Get Setting Copy Trading
-	var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
+	// var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
 	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
 		sugar.Fatalw(err.Error())
 	}
 	var data string
 	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[0])
+		// var showData interface{}
+		// for i, e := range res.Data {
+		// 	if showData == nil {
+		// 		showData = res.Data[i:3]
+		// 	}
+
+		// 	pnl, _ := toFloat64(e["pnl"])
+		// 	fee, _ := toFloat64(e["fee"])
+
+		// 	fmt.Printf("%s [%s] category: %s - %s | %.2f\n", parseUnixDate(e["uTime"]), e["instId"], e["category"], e["side"], pnl+fee)
+		// }
+		data, err = PrettyStruct(res.Data)
 	} else {
 		data, err = PrettyStruct(res)
 	}
@@ -104,6 +129,7 @@ func main() {
 
 	go setTickerInterval(3*time.Second, rpiOs.GetOSStats)()
 	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
+	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
 
 	sugar.Infoln("Dashboard Renderer...")
 	app = tview.NewApplication()
@@ -123,7 +149,7 @@ func main() {
 		AddItem(flex, 0, 0, 1, 2, 0, 0, false)
 
 	// Layout for screens wider than 100 cells.
-	grid.AddItem(primTextCenter("Trader"), 1, 0, 1, 1, 0, 100, false).
+	grid.AddItem(tview.NewBox().SetDrawFunc(drawTraderList), 1, 0, 1, 1, 0, 100, false).
 		AddItem(primTextCenter("Orders"), 1, 1, 1, 1, 0, 100, false)
 
 	go httpController()

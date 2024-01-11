@@ -34,18 +34,18 @@ func getLoggingFilepath() (string, error) {
 
 func NewLogger(cli *Args) *zap.Logger {
 	var cfg zap.Config
-	// if lab.Tty != "" {
-	logging, _ := getLoggingFilepath()
+	if !lab.Fetch {
+		logging, _ := getLoggingFilepath()
 
-	cfg = zap.NewProductionConfig()
-	cfg.OutputPaths = []string{logging}
-	cfg.ErrorOutputPaths = []string{logging}
-	// } else {
-	// 	cfg = zap.NewDevelopmentConfig()
-	// 	cfg.Level = zap.NewAtomicLevel()
-	// 	cfg.Level.SetLevel(zap.DebugLevel)
-	// 	cfg.OutputPaths = []string{"stdout"}
-	// }
+		cfg = zap.NewProductionConfig()
+		cfg.OutputPaths = []string{logging}
+		cfg.ErrorOutputPaths = []string{logging}
+	} else {
+		cfg = zap.NewDevelopmentConfig()
+		cfg.Level = zap.NewAtomicLevel()
+		cfg.Level.SetLevel(zap.DebugLevel)
+		cfg.OutputPaths = []string{"stdout"}
+	}
 	log, _ := cfg.Build()
 	return log
 }
@@ -61,9 +61,16 @@ func checkEnvVars(envs ...string) {
 }
 
 var symbolMoney string = "$" // "₮"
+func showMoney(n float64) string {
+	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ","}
+	return ac.FormatMoney(n)
+}
 
-func showUSD(n float64) (string, tcell.Color) {
+func showUSD(n float64, showSymbol bool) (string, tcell.Color) {
 	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	if !showSymbol {
+		ac = accounting.Accounting{Symbol: "", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	}
 	if n >= 0.0 {
 		return ac.FormatMoney(n), tcell.ColorGreen
 	} else {

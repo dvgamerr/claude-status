@@ -9,11 +9,12 @@ import (
 var sugar *zap.SugaredLogger
 
 type Account struct {
-	wg       *sync.WaitGroup
-	Fulfill  float64
-	Total    float64
-	TodayPnL float64
-	Traders  []map[string]interface{}
+	wg           *sync.WaitGroup
+	Fulfill      float64
+	Total        float64
+	TodayPnL     float64
+	TodayPercent float64
+	Traders      []map[string]interface{}
 }
 
 func (a *Account) WaitDone() {
@@ -43,6 +44,20 @@ func (a *Account) GetTreaders() {
 	if err != nil {
 		sugar.Fatalln(err)
 	}
+
+	a.TodayPnL = 0
+	todayMargin := 0.0
+	for _, td := range a.Traders {
+		pnl, _ := toFloat64(td["todayPnl"])
+		margin, _ := toFloat64(td["margin"])
+
+		if err != nil {
+			sugar.Errorln(err)
+		}
+		a.TodayPnL += pnl
+		todayMargin += margin
+	}
+	a.TodayPercent = a.TodayPnL * 100 / todayMargin
 }
 
 func (a *Account) GetFulfill() {
@@ -119,30 +134,4 @@ func (a *Account) GetBalances() {
 		}
 		a.Total += bal
 	}
-
-	// 	// traders, err := okx.GETCopytradingCurrentLeadTraders()
-	// 	// if err != nil {
-	// 	// 	sugar.Errorln(err)
-	// 	// } else {
-	// 	// 	okxTraders = traders
-	// 	// }
-
-	// 	// okxTodayPnL = 0
-	// 	// for _, td := range traders {
-	// 	// 	pnl, err := toFloat64(td["todayPnl"])
-	// 	// 	if err != nil {
-	// 	// 		sugar.Errorln(err)
-	// 	// 	}
-	// 	// 	okxTodayPnL += pnl
-	// 	// }
-
-	// // hours, minutes, _ := time.Now().Clock()
-	// // if hours == 0 && minutes == 0 || okxTodayPnL == 0 {
-	// // 	if !okxOnceToday {
-	// // 		okxTodayPnL = okxTotal
-	// // 		okxOnceToday = true
-	// // 	}
-	// // } else {
-	// // 	okxOnceToday = false
-	// // }
 }
