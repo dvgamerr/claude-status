@@ -5,13 +5,50 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
+	"go.uber.org/zap"
 )
+
+func getLoggingFilepath() (string, error) {
+	exeFile, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	dirFile, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	// Get the base name of the executable
+	if lab.Tty != "" {
+		return filepath.Join(dirFile, filepath.Base(exeFile)+".log"), nil
+	} else {
+		return exeFile + ".log", nil
+	}
+}
+
+func NewLogger(cli *Args) *zap.Logger {
+	var cfg zap.Config
+	// if lab.Tty != "" {
+	logging, _ := getLoggingFilepath()
+
+	cfg = zap.NewProductionConfig()
+	cfg.OutputPaths = []string{logging}
+	cfg.ErrorOutputPaths = []string{logging}
+	// } else {
+	// 	cfg = zap.NewDevelopmentConfig()
+	// 	cfg.Level = zap.NewAtomicLevel()
+	// 	cfg.Level.SetLevel(zap.DebugLevel)
+	// 	cfg.OutputPaths = []string{"stdout"}
+	// }
+	log, _ := cfg.Build()
+	return log
+}
 
 // checkEnvVars checks that all specified environment variables are set and not empty.
 func checkEnvVars(envs ...string) {
@@ -28,7 +65,7 @@ var symbolMoney string = "$" // "₮"
 func showUSD(n float64) (string, tcell.Color) {
 	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
 	if n >= 0.0 {
-		return ac.FormatMoney(n), tcell.ColorIndianRed
+		return ac.FormatMoney(n), tcell.ColorGreen
 	} else {
 		return ac.FormatMoney(n), tcell.ColorOrangeRed
 	}

@@ -11,6 +11,7 @@ check_updated () {
 
 # build the '$rpi' executable
 build_raspi_lab () {
+  cd /home/pi/lab > /dev/null
   echo "``$rpi`` compiling..."
   go get ./raspi-lab/ > /dev/null
   go build -o /home/pi/lab/bin/$rpi ./raspi-lab/ > /dev/null

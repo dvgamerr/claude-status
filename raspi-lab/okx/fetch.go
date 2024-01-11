@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -69,4 +71,18 @@ type ResponseAPI struct {
 	Code string                   `json:"code"`
 	Data []map[string]interface{} `json:"data"`
 	Msg  string                   `json:"msg"`
+}
+
+// Parse string to float64
+func toFloat64(s interface{}) (float64, error) {
+	if s == nil {
+		return 0.0, nil
+	}
+
+	f, err := strconv.ParseFloat(s.(string), 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return math.Ceil(f*10000) / 10000, nil
 }

@@ -27,7 +27,7 @@ func httpController() {
 		apiPort = "21280"
 	}
 
-	sugar.Infof("Listen backend port: %s\n", apiPort)
+	sugar.Infof("Listen backend port: %s", apiPort)
 	app.Listen(fmt.Sprintf(":%s", apiPort))
 }
 
