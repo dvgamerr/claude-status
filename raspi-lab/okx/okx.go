@@ -46,6 +46,7 @@ func (a *Account) GetTreaders() {
 	}
 
 	a.TodayPnL = 0
+	todayPnl := 0.0
 	todayMargin := 0.0
 	for _, td := range a.Traders {
 		pnl, _ := toFloat64(td["todayPnl"])
@@ -55,9 +56,14 @@ func (a *Account) GetTreaders() {
 			sugar.Errorln(err)
 		}
 		a.TodayPnL += pnl
-		todayMargin += margin
+		if margin > 0 {
+			todayPnl += pnl
+			todayMargin += margin
+		}
 	}
-	a.TodayPercent = a.TodayPnL * 100 / todayMargin
+	if todayMargin > 0 {
+		a.TodayPercent = todayPnl * 100 / todayMargin
+	}
 }
 
 func (a *Account) GetFulfill() {
