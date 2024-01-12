@@ -1,4 +1,4 @@
-#!/usr/bin/zsh
+#!/usr/bin/bash
 
 url=http://localhost:21280
 rpi=raspi-lab
@@ -70,14 +70,11 @@ do
     build_raspi_lab
     /home/pi/lab/bin/$rpi --tty $(tty) --db
     clear
-    echo "Press [CTRL+C] to stop in 10 second.."
+    echo "Press [CTRL+C] to stop in 3 second.."
+    sleep 1
+    sleep 1
+    sleep 1
 
-    for (( i = 0; i < 256; i++ )); do
-      printf '\e[38;5;%dma\e[0m' "$i"
-    done
-    printf '\n'
-
-    sleep 10
     # Check if the exit flag is set
     if [ "$eof" = true ]; then
       break  # Exit the loop
