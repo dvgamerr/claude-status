@@ -79,7 +79,7 @@ do
     if [ "$eof" = true ]; then
       break  # Exit the loop
     fi
-  else;
+  else
     break
   fi
 done
