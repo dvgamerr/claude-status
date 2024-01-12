@@ -77,9 +77,9 @@ func checkResponseOKX() {
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	// var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", getUnixDate(0, 0, 0))
+	var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", getUnixDate(0, 0, 0))
 
-	var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
+	// var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
 	// Get Setting Copy Trading
 	// var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
 	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
@@ -87,18 +87,18 @@ func checkResponseOKX() {
 	}
 	var data string
 	if len(res.Data) > 0 {
-		// var showData interface{}
-		// for i, e := range res.Data {
-		// 	if showData == nil {
-		// 		showData = res.Data[i:3]
-		// 	}
+		var showData interface{}
+		for i, e := range res.Data {
+			if showData == nil {
+				showData = res.Data[i]
+			}
 
-		// 	pnl, _ := toFloat64(e["pnl"])
-		// 	fee, _ := toFloat64(e["fee"])
+			pnl, _ := toFloat64(e["pnl"])
+			fee, _ := toFloat64(e["fee"])
 
-		// 	fmt.Printf("%s [%s] category: %s - %s | %.2f\n", parseUnixDate(e["uTime"]), e["instId"], e["category"], e["side"], pnl+fee)
-		// }
-		data, err = PrettyStruct(res.Data)
+			fmt.Printf("%s [%s] category: %s - %s | %.2f\n", parseUnixDate(e["uTime"]), e["instId"], e["category"], e["side"], pnl+fee)
+		}
+		data, err = PrettyStruct(showData)
 	} else {
 		data, err = PrettyStruct(res)
 	}

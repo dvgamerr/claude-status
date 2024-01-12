@@ -89,7 +89,11 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 //	  "uniqueCode": "764530FE18217877",
 //	  "upl": "0"
 //	}
-//
+const ColorBlack = 0
+const ColorRed = 1
+const ColorWhiteGray = 7
+const ColorDrakGray = 8
+
 // Define a draw function to draw a cross in the center of each cell.
 func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	line := 2
@@ -102,13 +106,20 @@ func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (i
 		todayPnlText, todayPnlColor := showUSD(todayPnl, false)
 		pnlLen := 7 - len(todayPnlText)
 		// copyLen := 7 - len(showMoney(copyTotalPnl))
+		if margin == 0 {
+			tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, ColorDrakGray)
+			tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, ColorDrakGray)
+			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
+			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
+			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
+		} else {
+			tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+			tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, pnLColor)
+			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
+			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
+			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
+		}
 
-		tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-		tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, pnLColor)
-		tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
-		tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
-
-		tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
 	}
 	return 0, 0, 0, 0
 }

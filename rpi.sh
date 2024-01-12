@@ -19,10 +19,8 @@ build_raspi_lab () {
 
 if [[ "$1" == "--update" ]]; then
   check_updated
-fi
-
-if [[ "$1" == "--update" ]]; then
   build_raspi_lab
+  exit 0
 fi
 
 if [[ "$1" == "--reload" ]]; then
