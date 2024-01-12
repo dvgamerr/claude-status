@@ -70,7 +70,7 @@ do
     build_raspi_lab
     /home/pi/lab/bin/$rpi --tty $(tty) --db
     clear
-    echo "Press [CTRL+C] to stop in 3 second.."
+    echo "Press [CTRL+C] to stop in 10 second.."
 
     for (( i = 0; i < 256; i++ )); do
       printf '\e[38;5;%dma\e[0m' "$i"
