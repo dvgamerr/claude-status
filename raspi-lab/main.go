@@ -9,7 +9,6 @@ import (
 	"github.com/alexflint/go-arg"
 	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
-	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
@@ -135,12 +134,7 @@ func main() {
 	app = tview.NewApplication()
 
 	flex := tview.NewFlex().
-		AddItem(tview.NewBox().
-			SetBorder(true).
-			SetBorderColor(tcell.ColorGray).
-			SetTitle("Dashboard").
-			SetTitleAlign(tview.AlignLeft).
-			SetDrawFunc(drawOverviewHeader), 0, 1, false).
+		AddItem(tview.NewBox().SetDrawFunc(drawOverviewHeader), 0, 1, false).
 		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderText), 10, 0, false).
 		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderValue), 22, 0, false)
 	grid := tview.NewGrid().
@@ -149,7 +143,8 @@ func main() {
 		AddItem(flex, 0, 0, 1, 2, 0, 0, false)
 
 	// Layout for screens wider than 100 cells.
-	grid.AddItem(tview.NewBox().SetDrawFunc(drawTraderList), 1, 0, 1, 1, 0, 100, false).
+	grid.
+		AddItem(tview.NewBox().SetDrawFunc(drawTraderList), 1, 0, 1, 1, 0, 100, false).
 		AddItem(primTextCenter("Orders"), 1, 1, 1, 1, 0, 100, false)
 
 	go httpController()

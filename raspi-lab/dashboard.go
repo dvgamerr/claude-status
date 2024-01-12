@@ -52,43 +52,41 @@ var aNum accounting.Accounting
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	okxTodayPnLText, okxTodayPnLColor := showUSD(okxAcc.TodayPnL, true)
-	balanceName := "OKX Est:"
+	balanceName := "OKX Est"
 	balanceText := aNum.FormatMoney(okxAcc.Total)
 	fulfillText := aNum.FormatMoney(okxAcc.Fulfill)
 	okxPnLText, okxPnLColor := showUSD(okxAcc.Total-okxAcc.Fulfill, true)
+	posBalanceText := 11 - len(balanceText)
 
 	tview.Print(screen, fmt.Sprintf("(Capital: %s)", fulfillText), x-2, y+1, width, tview.AlignRight, tcell.ColorWhite)
 
-	tview.Print(screen, balanceName, x+3, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+5+len(balanceName), y+1, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, fmt.Sprintf("(%s)", okxPnLText), x+6+len(balanceName)+len(fulfillText), y+1, width, tview.AlignLeft, okxPnLColor)
+	tview.Print(screen, balanceName, x+5, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, balanceText, x+6+len(balanceName)+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorWhite)
+
+	totalPnLPos := x + 5 + len(balanceName) + len(fulfillText)
+	tview.Print(screen, "[", totalPnLPos+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, okxPnLText, totalPnLPos+posBalanceText+2, y+1, width, tview.AlignLeft, okxPnLColor)
+	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+1, y+1, width, tview.AlignLeft, tcell.ColorGray)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
-	// btkFulfill := 90000
-	// btkPnLText, btkPnLColor := showUSD(1000)
-	// tview.Print(screen, "BTK PnL:", x+vw, y+1, vw, tview.AlignLeft, tcell.ColorGreen)
-	// tview.Print(screen, aNum.FormatMoney(btkFulfill), x+vw, y+1, vw, tview.AlignLeft, tcell.ColorWhite)
-	// tview.Print(screen, fmt.Sprintf("(%s)", btkPnLText), x+vw, y+1, vw, tview.AlignLeft, btkPnLColor)
+	balanceName = "BTK Est"
+	btkFulfill := 300.0
+	btkBalance := 302.0
+	btkPnLText, btkPnLColor := showUSD(btkBalance-btkFulfill, true)
+	balanceText = aNum.FormatMoney(btkBalance)
+	posBalanceText = 11 - len(balanceText)
+	tview.Print(screen, balanceName, x+5, y+3, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, balanceText, x+6+len(balanceName)+posBalanceText, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+
+	totalPnLPos = x + 5 + len(balanceName) + len(btkPnLText)
+	tview.Print(screen, "[", totalPnLPos+posBalanceText+1, y+3, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, btkPnLText, totalPnLPos+posBalanceText+3, y+3, width, tview.AlignLeft, btkPnLColor)
+	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+2, y+3, width, tview.AlignLeft, tcell.ColorGray)
 
 	return 0, 0, 0, 0
 }
-
-//	{
-//	  "beginCopyTime": "1704935878159",
-//	  "ccy": "USDT",
-//	  "copyTotalAmt": "600",
-//	  "copyTotalPnl": "0",
-//	  "leadMode": "public",
-//	  "margin": "0",
-//	  "nickName": "Cultivated-DYDX-Lock",
-//	  "portLink": "https://static.okx.com/cdn/okex/users/headimages/20230805/b5da2f821a10472e949f8a7fd7af35f2",
-//	  "profitSharingRatio": "0.1",
-//	  "todayPnl": "0",
-//	  "uniqueCode": "764530FE18217877",
-//	  "upl": "0"
-//	}
 
 // ColorMaroon = 1
 // ColorGreen = 2
@@ -109,7 +107,7 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 // Define a draw function to draw a cross in the center of each cell.
 func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	line := 2
-	tview.Print(screen, "MY TRADERS", x, y, width, tview.AlignLeft, tcell.ColorWhiteSmoke)
+	tview.Print(screen, " -------- COPY TRADERS -------- ", x, y, width, tview.AlignLeft, tcell.ColorAqua)
 	for i, e := range okxAcc.Traders {
 		pnl, _ := toFloat64(e["copyTotalPnl"])
 		todayPnl, _ := toFloat64(e["todayPnl"])
@@ -118,8 +116,8 @@ func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (i
 		todayPnlText, todayPnlColor := showUSD(todayPnl, false)
 		pnlLen := 7 - len(todayPnlText)
 		// copyLen := 7 - len(showMoney(copyTotalPnl))
-		tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorOlive)
-		tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, tcell.ColorWhite)
+		tview.Print(screen, e["nickName"].(string), x+1, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorOlive)
+		tview.Print(screen, pnLText, x-1, y+(i*line)+1, width, tview.AlignRight, tcell.ColorWhite)
 		if margin == 0 {
 			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGray)
 			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)

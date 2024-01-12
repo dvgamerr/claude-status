@@ -1,4 +1,4 @@
-package bitkub
+package btk
 
 var ErrorCode = map[int]string{
 	0:  "No error",

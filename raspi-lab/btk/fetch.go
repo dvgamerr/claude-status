@@ -1,4 +1,4 @@
-package bitkub
+package btk
 
 import (
 	"bytes"
