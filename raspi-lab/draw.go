@@ -30,7 +30,7 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, fmt.Sprintf("(%dx%d)", w, h), x+9, y, width, tview.AlignLeft, tcell.ColorGrey)
 	tview.Print(screen, uptime, x, y+1, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, rpiOs.CPUTemp, x, y+2, width, tview.AlignLeft, tcell.ColorWhite)
-	tview.Print(screen, "GPU:", x+9, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, "GPU:", x+9, y+2, width, tview.AlignLeft, tcell.ColorNavy)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 	return 0, 0, 0, 0
@@ -38,12 +38,12 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorDarkSlateGray)
-	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorDarkSlateGray)
-	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorDarkSlateGray)
-	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorDarkSlateGray)
-	tview.Print(screen, "K8S:", x-1, y+4, width, tview.AlignRight, tcell.ColorDarkSlateGray)
-	tview.Print(screen, "DNS:", x-1, y+5, width, tview.AlignRight, tcell.ColorDarkSlateGray)
+	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "K8S:", x-1, y+4, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "DNS:", x-1, y+5, width, tview.AlignRight, tcell.ColorNavy)
 	return 0, 0, 0, 0
 }
 
@@ -89,10 +89,22 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 //	  "uniqueCode": "764530FE18217877",
 //	  "upl": "0"
 //	}
-const ColorBlack = 0
-const ColorRed = 1
-const ColorWhiteGray = 7
-const ColorDrakGray = 8
+
+// ColorMaroon = 1
+// ColorGreen = 2
+// ColorOlive
+// ColorNavy
+// ColorPurple
+// ColorTeal
+// ColorSilver
+// ColorGray
+// ColorRed
+// ColorLime
+// ColorYellow
+// ColorBlue
+// ColorFuchsia
+// ColorAqua
+// ColorWhite
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
@@ -102,22 +114,20 @@ func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (i
 		pnl, _ := toFloat64(e["copyTotalPnl"])
 		todayPnl, _ := toFloat64(e["todayPnl"])
 		margin, _ := toFloat64(e["margin"])
-		pnLText, pnLColor := showUSD(pnl, true)
+		pnLText, _ := showUSD(pnl, true)
 		todayPnlText, todayPnlColor := showUSD(todayPnl, false)
 		pnlLen := 7 - len(todayPnlText)
 		// copyLen := 7 - len(showMoney(copyTotalPnl))
+		tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorOlive)
+		tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, tcell.ColorWhite)
 		if margin == 0 {
-			tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, ColorDrakGray)
-			tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, ColorDrakGray)
-			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
-			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
-			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, ColorDrakGray)
-		} else {
-			tview.Print(screen, e["nickName"].(string), x, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-			tview.Print(screen, pnLText, x, y+(i*line)+1, width, tview.AlignRight, pnLColor)
-			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
+			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGray)
 			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
-			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGrey)
+			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGray)
+		} else {
+			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorFuchsia)
+			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
+			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorFuchsia)
 		}
 
 	}
