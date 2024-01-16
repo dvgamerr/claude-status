@@ -11,7 +11,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
-	"github.com/rivo/tview"
 	"go.uber.org/zap"
 )
 
@@ -109,12 +108,6 @@ func setTickerInterval(t time.Duration, run func()) func() {
 			run()
 		}
 	}
-}
-
-func primTextCenter(text string) tview.Primitive {
-	return tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetText(text)
 }
 
 func PrettyStruct(data interface{}) (string, error) {

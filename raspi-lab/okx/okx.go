@@ -41,6 +41,22 @@ func (a *Account) Initializer(s *zap.SugaredLogger) {
 }
 
 const UnitCrossType = 10
+const YYYYMMDD = "2006-01-02"
+const HHmm = "15:04"
+
+func CalcRealizedPnL(e map[string]interface{}) (float64, float64) {
+	lever, _ := toFloat64(e["lever"])
+	closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+	closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+
+	pnl, _ := toFloat64(e["realizedPnl"])
+
+	closed := closeTotalPos / closeAvgPx
+	if e["mgnMode"] == "cross" {
+		closed = closeAvgPx * closeTotalPos
+	}
+	return pnl, closed / lever
+}
 
 func (a *Account) GetHistoryPositions() {
 	defer a.WaitDone()
@@ -59,19 +75,21 @@ func (a *Account) GetHistoryPositions() {
 		if startOfDay.Sub(ParseUnixDate(e["uTime"])).Hours() > 0.0 {
 			continue
 		}
-
-		lever, _ := toFloat64(e["lever"])
-		closeAvgPx, _ := toFloat64(e["closeAvgPx"])
-		closeTotalPos, _ := toFloat64(e["closeTotalPos"])
-
-		pnl, _ := toFloat64(e["realizedPnl"])
-
-		closed := closeTotalPos / closeAvgPx
-		if e["mgnMode"] == "cross" {
-			closed = closeAvgPx * closeTotalPos
-		}
-		totalClosed += closed / lever
+		pnl, closed := CalcRealizedPnL(e)
 		a.TodayPnL += pnl
+		totalClosed += closed
+		// lever, _ := toFloat64(e["lever"])
+		// closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+		// closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+
+		// pnl, _ := toFloat64(e["realizedPnl"])
+
+		// closed := closeTotalPos / closeAvgPx
+		// if e["mgnMode"] == "cross" {
+		// 	closed = closeAvgPx * closeTotalPos
+		// }
+		// totalClosed += closed / lever
+		// a.TodayPnL += pnl
 	}
 	a.TodayPercent += a.TodayPnL * 100 / totalClosed
 }

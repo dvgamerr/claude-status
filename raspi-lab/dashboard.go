@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
@@ -167,10 +168,39 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, headerText, x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
 	totalRow := 23
+	totalHistory := len(okxAcc.Historys)
 
+	lineDate := ""
 	for i := 0; i < totalRow; i++ {
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		if i > totalHistory {
+			continue
+		}
 
+		e := okxAcc.Historys[totalHistory-i-1]
+		dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
+		if dateText != lineDate {
+			if i != totalRow-1 {
+				lineDate = dateText
+				tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
+			}
+			continue
+		}
+
+		// pnl, closed := okx.CalcRealizedPnL(e)
+		// a.TodayPnL += pnl
+		// totalClosed += closed
+
+		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
+		uly := e["uly"].(string)
+		ccy := uly[:len(uly)-5]
+
+		tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+		tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
+		// fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
 	}
 
 	return 0, 0, 0, 0

@@ -56,14 +56,7 @@ var (
 	rpiOs  rpi.StatsOS
 )
 
-func getUnixDate(y int, m int, d int) time.Time {
-	cur := time.Now()
-	year, month, day := cur.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, cur.Location())
-}
-
 func checkResponseOKX() {
-	const YYYYMMDD = "2006-01-02"
 
 	var err error
 	var res okx.ResponseAPI
@@ -109,7 +102,7 @@ func checkResponseOKX() {
 			pnlTotal += pnl
 			closedTotal += closed / lever
 
-			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
+			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl, percent, closed)
 			fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
 		}
 		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
