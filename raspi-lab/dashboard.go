@@ -77,13 +77,13 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	btkPnLText, btkPnLColor := showUSD(btkBalance-btkFulfill, true)
 	balanceText = aNum.FormatMoney(btkBalance)
 	posBalanceText = 11 - len(balanceText)
-	tview.Print(screen, balanceName, x+5, y+3, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, balanceName, x+5, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+4, width, tview.AlignLeft, tcell.ColorWhite)
 
 	totalPnLPos = x + 5 + len(balanceName) + len(btkPnLText)
-	tview.Print(screen, "[", totalPnLPos+posBalanceText+1, y+3, width, tview.AlignLeft, tcell.ColorGray)
-	tview.Print(screen, btkPnLText, totalPnLPos+posBalanceText+3, y+3, width, tview.AlignLeft, btkPnLColor)
-	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+4, y+3, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, "[", totalPnLPos+posBalanceText+1, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, btkPnLText, totalPnLPos+posBalanceText+3, y+4, width, tview.AlignLeft, btkPnLColor)
+	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+4, y+4, width, tview.AlignLeft, tcell.ColorGray)
 
 	return 0, 0, 0, 0
 }
@@ -104,11 +104,20 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 // ColorAqua
 // ColorWhite
 
+func getBorderTop(w int) (txt string) {
+	for i := 0; i < w; i++ {
+		txt += "─"
+	}
+	return
+}
+
 // Define a draw function to draw a cross in the center of each cell.
-func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	lineHeight := 2
-	header := "───────── COPY TRADERS ──────── "
-	tview.Print(screen, header, x, y, width, tview.AlignLeft, tcell.ColorAqua)
+
+	headerText := " COPY TRADERS "
+	tview.Print(screen, getBorderTop(width), x, y, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, " COPY TRADERS ", x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
 
 	maxLenPnL := 0
 	for _, trader := range okxAcc.Traders {
@@ -146,5 +155,23 @@ func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (i
 		// Print margin information
 		tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+3+6+8, y+(i*lineHeight)+2, width, tview.AlignLeft, highlightColor)
 	}
+	return 0, 0, 0, 0
+}
+
+// Define a draw function to draw a cross in the center of each cell.
+func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	headerText := " ORDER POSITION "
+
+	borderTop := getBorderTop(width)
+	borderTop = "┬" + borderTop[3:]
+	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, headerText, x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
+	totalRow := 23
+
+	for i := 0; i < totalRow; i++ {
+		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+
+	}
+
 	return 0, 0, 0, 0
 }

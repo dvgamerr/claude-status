@@ -1,7 +1,9 @@
 package okx
 
 import (
+	"strconv"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -15,6 +17,7 @@ type Account struct {
 	TodayPnL     float64
 	TodayPercent float64
 	Traders      []map[string]interface{}
+	Historys     []map[string]interface{}
 }
 
 func (a *Account) WaitDone() {
@@ -28,13 +31,49 @@ func (a *Account) Initializer(s *zap.SugaredLogger) {
 	a.wg = &sync.WaitGroup{}
 	// Fix
 	a.Fulfill = 2872.57
-	// go a.GetFulfill()
+	go a.GetHistoryPositions()
 	go a.GetBalances()
 	go a.GetTreaders()
-	a.wg.Add(2)
+	a.wg.Add(3)
 
 	a.wg.Wait()
 	a.wg = nil
+}
+
+const UnitCrossType = 10
+
+func (a *Account) GetHistoryPositions() {
+	defer a.WaitDone()
+
+	var err error
+	a.Historys, err = GETAccountPositionsHistory()
+	if err != nil {
+		sugar.Fatalln(err)
+	}
+
+	a.TodayPnL = 0
+	a.TodayPercent = 0
+	totalClosed := 0.0
+	startOfDay := GetStartOfDate(0, 0, 0, 0)
+	for _, e := range a.Historys {
+		if startOfDay.Sub(ParseUnixDate(e["uTime"])).Hours() > 0.0 {
+			continue
+		}
+
+		lever, _ := toFloat64(e["lever"])
+		closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+		closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+
+		pnl, _ := toFloat64(e["realizedPnl"])
+
+		closed := closeTotalPos / closeAvgPx
+		if e["mgnMode"] == "cross" {
+			closed = closeAvgPx * closeTotalPos
+		}
+		totalClosed += closed / lever
+		a.TodayPnL += pnl
+	}
+	a.TodayPercent += a.TodayPnL * 100 / totalClosed
 }
 
 func (a *Account) GetTreaders() {
@@ -46,25 +85,25 @@ func (a *Account) GetTreaders() {
 		sugar.Fatalln(err)
 	}
 
-	a.TodayPnL = 0
-	todayPnl := 0.0
-	todayMargin := 0.0
-	for _, td := range a.Traders {
-		pnl, _ := toFloat64(td["todayPnl"])
-		margin, _ := toFloat64(td["margin"])
+	// a.TodayPnL = 0
+	// todayPnl := 0.0
+	// todayMargin := 0.0
+	// for _, td := range a.Traders {
+	// 	pnl, _ := toFloat64(td["todayPnl"])
+	// 	margin, _ := toFloat64(td["margin"])
 
-		if err != nil {
-			sugar.Errorln(err)
-		}
-		a.TodayPnL += pnl
-		if margin > 0 {
-			todayPnl += pnl
-			todayMargin += margin
-		}
-	}
-	if todayMargin > 0 {
-		a.TodayPercent = todayPnl * 100 / todayMargin
-	}
+	// 	if err != nil {
+	// 		sugar.Errorln(err)
+	// 	}
+	// 	a.TodayPnL += pnl
+	// 	if margin > 0 {
+	// 		todayPnl += pnl
+	// 		todayMargin += margin
+	// 	}
+	// }
+	// if todayMargin > 0 {
+	// 	a.TodayPercent = todayPnl * 100 / todayMargin
+	// }
 }
 
 func (a *Account) GetFulfill() {
@@ -141,4 +180,19 @@ func (a *Account) GetBalances() {
 		}
 		a.Total += bal
 	}
+}
+
+func ParseUnixDate(utime any) time.Time {
+	i, err := strconv.ParseInt(utime.(string), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return time.Unix(i/1000, 0)
+}
+
+func GetStartOfDate(y int, m int, d int, a int) time.Time {
+	cur := time.Now()
+	year, month, day := cur.Add(time.Duration(a) * 24 * time.Hour).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, cur.Location())
 }

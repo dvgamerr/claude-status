@@ -84,3 +84,16 @@ func GETCopytradingCurrentLeadTraders() ([]map[string]interface{}, error) {
 
 	return res.Data, nil
 }
+func GETAccountPositionsHistory() ([]map[string]interface{}, error) {
+	// Rate Limit: 1 request per 10 seconds
+	sugar.Infof("GET /api/v5/account/positions-history?before=%d", GetStartOfDate(0, 0, 0, -7).UnixMilli())
+	var res ResponseAPI
+	if err := Fetch("GET", fmt.Sprintf("/api/v5/account/positions-history?before=%d", GetStartOfDate(0, 0, 0, -7).UnixMilli()), nil, &res); err != nil {
+		return []map[string]interface{}{}, err
+	}
+	if res.Code != "0" {
+		return []map[string]interface{}{}, errors.New(res.Msg)
+	}
+
+	return res.Data, nil
+}

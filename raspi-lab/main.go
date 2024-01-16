@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -57,51 +56,19 @@ var (
 	rpiOs  rpi.StatsOS
 )
 
-func getUnixDate(y int, m int, d int) int64 {
+func getUnixDate(y int, m int, d int) time.Time {
 	cur := time.Now()
 	year, month, day := cur.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli()
+	return time.Date(year, month, day, 0, 0, 0, 0, cur.Location())
 }
-
-func parseUnixDate(utime any) string {
-	i, err := strconv.ParseInt(utime.(string), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	return time.Unix(i/1000, 0).Format(time.RFC3339)
-}
-
-// {
-//   "cTime": "1705376011966",
-//   "ccy": "USDT",
-//   "closeAvgPx": "19.3921176470588235",
-//   "closeTotalPos": "17",
-//   "direction": "short",
-//   "fee": "-0.329806",
-//   "fundingFee": "0",
-//   "instId": "TIA-USDT-SWAP",
-//   "instType": "SWAP",
-//   "lever": "3.0",
-//   "liqPenalty": "0",
-//   "mgnMode": "isolated",
-//   "openAvgPx": "19.4085882352941176",
-//   "openMaxPos": "17",
-//   "pnl": "0.2800000000000014",
-//   "pnlRatio": "-0.0004528559218781",
-//   "posId": "667330593805803531",
-//   "realizedPnl": "-0.0498059999999986",
-//   "triggerPx": "",
-//   "type": "2",
-//   "uTime": "1705376143323",
-//   "uly": "TIA-USDT"
-// }
 
 func checkResponseOKX() {
+	const YYYYMMDD = "2006-01-02"
+
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?%sbefore=%d", "", getUnixDate(0, 0, 0))
+	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, 0).UnixMilli())
 
 	// var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
 	// Get Setting Copy Trading
@@ -111,33 +78,43 @@ func checkResponseOKX() {
 	}
 	var data string
 	pnlTotal := 0.0
+	closedTotal := 0.0
 	if len(res.Data) > 0 {
-		var showData interface{}
-		for i, e := range res.Data {
-			if showData == nil {
-				showData = res.Data[i+1]
-			}
-			lever, _ := toFloat64(e["lever"])
-			openAvgPx, _ := toFloat64(e["openAvgPx"])
-			openMaxPos, _ := toFloat64(e["openMaxPos"])
-			costs := 0.0
-			if e["mgnMode"] == "isolated" {
-				costs = openAvgPx * openMaxPos / lever
-			}
-
-			pnl, _ := toFloat64(e["realizedPnl"])
-			pnlTotal += pnl
-			fmt.Printf("%s [%s] direction: %s - %s | Held: %.2f -> %.2f\n", parseUnixDate(e["uTime"]), e["uly"], e["direction"], e["mgnMode"], costs, pnl)
-		}
-		sugar.Debugf("PnL: %.2f", pnlTotal)
-		data, err = PrettyStruct(nil)
+		data, err = PrettyStruct(res.Data[0])
 	} else {
 		data, err = PrettyStruct(res)
 	}
 	if err != nil {
 		sugar.Errorln(err.Error())
 	}
-	sugar.Debugf("Total: %d\n%s", len(res.Data), data)
+	sugar.Debugf("Structure:\n%s", data)
+
+	if len(res.Data) > 0 {
+		var showData interface{}
+		for i, e := range res.Data {
+			if showData == nil {
+				showData = res.Data[i]
+			}
+			lever, _ := toFloat64(e["lever"])
+			closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+			closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+			pnl, _ := toFloat64(e["realizedPnl"])
+
+			closed := closeTotalPos / closeAvgPx
+			if e["mgnMode"] == "cross" {
+				closed = closeAvgPx * closeTotalPos
+			}
+			percent := pnl * 100 / (closed / lever)
+
+			pnlTotal += pnl
+			closedTotal += closed / lever
+
+			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
+			fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
+		}
+		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
+	}
+
 }
 
 func main() {
@@ -159,9 +136,12 @@ func main() {
 	sugar.Infoln("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
 
-	go setTickerInterval(3*time.Second, rpiOs.GetOSStats)()
+	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
+
 	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
 	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
+
+	go setTickerInterval(11000*time.Millisecond, okxAcc.GetHistoryPositions)()
 
 	sugar.Infoln("Dashboard Renderer...")
 	app = tview.NewApplication()
@@ -177,8 +157,8 @@ func main() {
 
 	// Layout for screens wider than 100 cells.
 	grid.
-		AddItem(tview.NewBox().SetDrawFunc(drawTraderList), 1, 0, 1, 1, 0, 100, false).
-		AddItem(primTextCenter("Orders"), 1, 1, 1, 1, 0, 100, false)
+		AddItem(tview.NewBox().SetDrawFunc(drawCopyTrader), 1, 0, 1, 1, 0, 100, false).
+		AddItem(tview.NewBox().SetDrawFunc(drawOrderPositionHistory), 1, 1, 1, 1, 0, 100, false)
 
 	go httpController()
 	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
