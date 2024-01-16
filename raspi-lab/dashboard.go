@@ -61,12 +61,12 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	tview.Print(screen, fmt.Sprintf("(Capital: %s)", fulfillText), x-2, y+1, width, tview.AlignRight, tcell.ColorWhite)
 
 	tview.Print(screen, balanceName, x+5, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+6+len(balanceName)+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorWhite)
 
 	totalPnLPos := x + 5 + len(balanceName) + len(fulfillText)
 	tview.Print(screen, "[", totalPnLPos+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, okxPnLText, totalPnLPos+posBalanceText+2, y+1, width, tview.AlignLeft, okxPnLColor)
-	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+1, y+1, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
@@ -78,12 +78,12 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	balanceText = aNum.FormatMoney(btkBalance)
 	posBalanceText = 11 - len(balanceText)
 	tview.Print(screen, balanceName, x+5, y+3, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+6+len(balanceName)+posBalanceText, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
 	totalPnLPos = x + 5 + len(balanceName) + len(btkPnLText)
 	tview.Print(screen, "[", totalPnLPos+posBalanceText+1, y+3, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, btkPnLText, totalPnLPos+posBalanceText+3, y+3, width, tview.AlignLeft, btkPnLColor)
-	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+2, y+3, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+4, y+3, width, tview.AlignLeft, tcell.ColorGray)
 
 	return 0, 0, 0, 0
 }
@@ -106,30 +106,45 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawTraderList(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	line := 2
-	tview.Print(screen, " -------- COPY TRADERS -------- ", x, y, width, tview.AlignLeft, tcell.ColorAqua)
-	for i, e := range okxAcc.Traders {
-		pnl, _ := toFloat64(e["copyTotalPnl"])
-		todayPnl, _ := toFloat64(e["todayPnl"])
-		margin, _ := toFloat64(e["margin"])
+	lineHeight := 2
+	header := "───────── COPY TRADERS ──────── "
+	tview.Print(screen, header, x, y, width, tview.AlignLeft, tcell.ColorAqua)
+
+	maxLenPnL := 0
+	for _, trader := range okxAcc.Traders {
+		pnl, _ := toFloat64(trader["copyTotalPnl"])
+		pnLText, _ := showUSD(pnl, true)
+		if len(pnLText) > maxLenPnL {
+			maxLenPnL = len(pnLText)
+		}
+	}
+
+	for i, trader := range okxAcc.Traders {
+		pnl, _ := toFloat64(trader["copyTotalPnl"])
+		todayPnl, _ := toFloat64(trader["todayPnl"])
+		margin, _ := toFloat64(trader["margin"])
+
 		pnLText, pnLColor := showUSD(pnl, true)
 		todayPnlText, todayPnlColor := showUSD(todayPnl, false)
-		pnlLen := 7 - len(todayPnlText)
-		// copyLen := 7 - len(showMoney(copyTotalPnl))
+		todayPnLLen := 7 - len(todayPnlText)
+
+		highlightColor := tcell.ColorOlive
 		if margin == 0 {
-			tview.Print(screen, e["nickName"].(string), x+1, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorGray)
-			tview.Print(screen, pnLText, x-1, y+(i*line)+1, width, tview.AlignRight, tcell.ColorWhite)
-			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGray)
-			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
-			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorGray)
-		} else {
-			tview.Print(screen, e["nickName"].(string), x+1, y+(i*line)+1, width, tview.AlignLeft, tcell.ColorOlive)
-			tview.Print(screen, pnLText, x-1, y+(i*line)+1, width, tview.AlignRight, pnLColor)
-			tview.Print(screen, "Today:", x+2, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorFuchsia)
-			tview.Print(screen, todayPnlText, x+2+6+pnlLen, y+(i*line)+2, width, tview.AlignLeft, todayPnlColor)
-			tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+2+6+8, y+(i*line)+2, width, tview.AlignLeft, tcell.ColorFuchsia)
+			highlightColor = tcell.ColorGray
 		}
 
+		// Print PnL information
+		tview.Print(screen, pnLText, x, y+(i*lineHeight)+1, width, tview.AlignLeft, pnLColor)
+
+		// Print trader nickname
+		tview.Print(screen, trader["nickName"].(string), x+maxLenPnL+1, y+(i*lineHeight)+1, width, tview.AlignLeft, highlightColor)
+
+		// Print today's PnL information
+		tview.Print(screen, "Today:", x+3, y+(i*lineHeight)+2, width, tview.AlignLeft, highlightColor)
+		tview.Print(screen, todayPnlText, x+3+6+todayPnLLen, y+(i*lineHeight)+2, width, tview.AlignLeft, todayPnlColor)
+
+		// Print margin information
+		tview.Print(screen, fmt.Sprintf("Inv. %s", showMoney(margin)), x+3+6+8, y+(i*lineHeight)+2, width, tview.AlignLeft, highlightColor)
 	}
 	return 0, 0, 0, 0
 }

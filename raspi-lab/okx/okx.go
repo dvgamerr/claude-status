@@ -26,11 +26,12 @@ func (a *Account) WaitDone() {
 func (a *Account) Initializer(s *zap.SugaredLogger) {
 	sugar = s
 	a.wg = &sync.WaitGroup{}
-	a.wg.Add(3)
-
-	go a.GetFulfill()
+	// Fix
+	a.Fulfill = 2872.57
+	// go a.GetFulfill()
 	go a.GetBalances()
 	go a.GetTreaders()
+	a.wg.Add(2)
 
 	a.wg.Wait()
 	a.wg = nil

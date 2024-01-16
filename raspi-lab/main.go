@@ -33,9 +33,9 @@ func init() {
 	logger = NewLogger(&lab)
 	sugar = logger.Sugar()
 
-	if lab.Tty == "" {
-		symbolMoney = "₮"
-	}
+	// if lab.Tty == "" {
+	// 	symbolMoney = "₮"
+	// }
 	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
 
 	// Load environment variables from .env
@@ -72,11 +72,36 @@ func parseUnixDate(utime any) string {
 	return time.Unix(i/1000, 0).Format(time.RFC3339)
 }
 
+// {
+//   "cTime": "1705376011966",
+//   "ccy": "USDT",
+//   "closeAvgPx": "19.3921176470588235",
+//   "closeTotalPos": "17",
+//   "direction": "short",
+//   "fee": "-0.329806",
+//   "fundingFee": "0",
+//   "instId": "TIA-USDT-SWAP",
+//   "instType": "SWAP",
+//   "lever": "3.0",
+//   "liqPenalty": "0",
+//   "mgnMode": "isolated",
+//   "openAvgPx": "19.4085882352941176",
+//   "openMaxPos": "17",
+//   "pnl": "0.2800000000000014",
+//   "pnlRatio": "-0.0004528559218781",
+//   "posId": "667330593805803531",
+//   "realizedPnl": "-0.0498059999999986",
+//   "triggerPx": "",
+//   "type": "2",
+//   "uTime": "1705376143323",
+//   "uly": "TIA-USDT"
+// }
+
 func checkResponseOKX() {
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	var endpoint = fmt.Sprintf("/api/v5/trade/orders-history?instType=%s&begin=%d", "SWAP", getUnixDate(0, 0, 0))
+	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?%sbefore=%d", "", getUnixDate(0, 0, 0))
 
 	// var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
 	// Get Setting Copy Trading
@@ -85,26 +110,34 @@ func checkResponseOKX() {
 		sugar.Fatalw(err.Error())
 	}
 	var data string
+	pnlTotal := 0.0
 	if len(res.Data) > 0 {
 		var showData interface{}
 		for i, e := range res.Data {
 			if showData == nil {
-				showData = res.Data[i]
+				showData = res.Data[i+1]
+			}
+			lever, _ := toFloat64(e["lever"])
+			openAvgPx, _ := toFloat64(e["openAvgPx"])
+			openMaxPos, _ := toFloat64(e["openMaxPos"])
+			costs := 0.0
+			if e["mgnMode"] == "isolated" {
+				costs = openAvgPx * openMaxPos / lever
 			}
 
-			pnl, _ := toFloat64(e["pnl"])
-			fee, _ := toFloat64(e["fee"])
-
-			fmt.Printf("%s [%s] category: %s - %s | %.2f\n", parseUnixDate(e["uTime"]), e["instId"], e["category"], e["side"], pnl+fee)
+			pnl, _ := toFloat64(e["realizedPnl"])
+			pnlTotal += pnl
+			fmt.Printf("%s [%s] direction: %s - %s | Held: %.2f -> %.2f\n", parseUnixDate(e["uTime"]), e["uly"], e["direction"], e["mgnMode"], costs, pnl)
 		}
-		data, err = PrettyStruct(showData)
+		sugar.Debugf("PnL: %.2f", pnlTotal)
+		data, err = PrettyStruct(nil)
 	} else {
 		data, err = PrettyStruct(res)
 	}
 	if err != nil {
 		sugar.Errorln(err.Error())
 	}
-	sugar.Debugf("%s Total: %d\n%v\n", endpoint, len(res.Data), data)
+	sugar.Debugf("Total: %d\n%s", len(res.Data), data)
 }
 
 func main() {

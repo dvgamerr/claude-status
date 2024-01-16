@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var symbolMoney = "$" // "₮"
+
 func getLoggingFilepath() (string, error) {
 	exeFile, err := os.Executable()
 	if err != nil {
@@ -25,24 +27,22 @@ func getLoggingFilepath() (string, error) {
 		return "", err
 	}
 	// Get the base name of the executable
-	if lab.Tty != "" {
-		return filepath.Join(dirFile, filepath.Base(exeFile)+".log"), nil
-	} else {
-		return exeFile + ".log", nil
+	logging := filepath.Join(dirFile, filepath.Base(exeFile)+".log")
+	if lab.Tty == "" {
+		logging = exeFile + ".log"
 	}
+	return logging, nil
 }
 
 func NewLogger(cli *Args) *zap.Logger {
-	var cfg zap.Config
+	cfg := zap.Config{}
 	if !lab.Fetch {
 		logging, _ := getLoggingFilepath()
-
 		cfg = zap.NewProductionConfig()
 		cfg.OutputPaths = []string{logging}
 		cfg.ErrorOutputPaths = []string{logging}
 	} else {
 		cfg = zap.NewDevelopmentConfig()
-		cfg.Level = zap.NewAtomicLevel()
 		cfg.Level.SetLevel(zap.DebugLevel)
 		cfg.OutputPaths = []string{"stdout"}
 	}
@@ -60,63 +60,52 @@ func checkEnvVars(envs ...string) {
 	}
 }
 
-var symbolMoney string = "$" // "₮"
 func showMoney(n float64) string {
 	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ","}
 	return ac.FormatMoney(n)
 }
 
 func showUSD(n float64, showSymbol bool) (string, tcell.Color) {
-	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
-	if !showSymbol {
-		ac = accounting.Accounting{Symbol: "", Precision: 2, Thousand: ",", Format: "+%s%v", FormatNegative: "-%s%v"}
+	ac := accounting.Accounting{
+		Symbol:         map[bool]string{true: symbolMoney, false: ""}[showSymbol],
+		Precision:      2,
+		Thousand:       ",",
+		Format:         "+%s%v",
+		FormatNegative: "-%s%v",
 	}
 
 	txt := ac.FormatMoney(n)
-	if n == 0.0 {
-		return txt, tcell.ColorGray
-	} else if n > 0.0 {
-		return txt, tcell.ColorGreen
-	} else {
-		return txt, tcell.ColorMaroon
+	color := tcell.ColorGray
+	switch {
+	case n > 0.0:
+		color = tcell.ColorGreen
+	case n < 0.0:
+		color = tcell.ColorMaroon
 	}
+
+	return txt, color
 }
 
 func showPercent(n float64) string {
 	if n >= 0.0 {
 		return "+" + fmt.Sprintf("%.2f%%", n)
-	} else {
-		return fmt.Sprintf("%.2f%%", n)
 	}
+	return fmt.Sprintf("%.2f%%", n)
 }
 
-// func toUnix(date string) string {
-// 	ct := time.Now()
-// 	if date != "" {
-// 		ct, _ = time.Parse("02-01-2006", date)
-// 	}
-
-// 	// Convert to Unix timestamp in milliseconds
-// 	return fmt.Sprintf("%d", ct.UnixNano()/int64(time.Millisecond))
-// }
-
-// Parse string to float64
 func toFloat64(s interface{}) (float64, error) {
-	f, err := strconv.ParseFloat(s.(string), 64)
+	f, err := strconv.ParseFloat(fmt.Sprint(s), 64)
 	if err != nil {
 		return 0, err
 	}
-
 	return math.Ceil(f*10000) / 10000, nil
 }
 
 func setTickerInterval(t time.Duration, run func()) func() {
 	return func() {
 		tick := time.NewTicker(t)
-		for {
-			if _, ok := <-tick.C; !ok {
-				break
-			}
+		defer tick.Stop()
+		for range tick.C {
 			run()
 		}
 	}
@@ -127,10 +116,8 @@ func primTextCenter(text string) tview.Primitive {
 		SetTextAlign(tview.AlignCenter).
 		SetText(text)
 }
+
 func PrettyStruct(data interface{}) (string, error) {
 	val, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(val), nil
+	return string(val), err
 }
