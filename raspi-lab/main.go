@@ -73,7 +73,7 @@ func checkResponseOKX() {
 	pnlTotal := 0.0
 	closedTotal := 0.0
 	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[2])
+		data, err = PrettyStruct(res.Data[len(res.Data)-8])
 	} else {
 		data, err = PrettyStruct(res)
 	}
@@ -84,21 +84,28 @@ func checkResponseOKX() {
 
 	if len(res.Data) > 0 {
 		var showData interface{}
-		for i, e := range res.Data {
+		for i := len(res.Data) - 1; i >= 0; i-- {
+			e := res.Data[i]
 			if showData == nil {
 				showData = res.Data[i]
 			}
-			pnl, closed := okx.CalcRealizedPnL(e)
+			pnl := okx.CalcRealizedPnL(e)
 
-			pnlTotal += pnl
-			closedTotal += closed
+			pnlTotal += pnl.PnL
+			closedTotal += pnl.Closed
 
+			mgnMode := e["mgnMode"].(string)
+			orderType := e["type"].(string)
 			closeAvgPx, _ := toFloat64(e["closeAvgPx"])
 			closeTotalPos, _ := toFloat64(e["closeTotalPos"])
-			percent := pnl * 100 / closed
+			openAvgPx, _ := toFloat64(e["openAvgPx"])
+			openMaxPos, _ := toFloat64(e["openMaxPos"])
+			percent := pnl.PnL * 100 / pnl.Closed
 
-			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl, percent, closed)
-			fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
+			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f ", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl, percent, pnl.Closed)
+			fmt.Printf(" mgnMode: %s orderType: %s \n", mgnMode, orderType)
+			fmt.Printf("           closeAvgPx: %.2f closeTotalPos: %.2f\n", closeAvgPx, closeTotalPos)
+			fmt.Printf("            openAvgPx: %.2f    openMaxPos: %.2f\n", openAvgPx, openMaxPos)
 		}
 		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
 	}

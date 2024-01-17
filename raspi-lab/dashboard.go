@@ -188,22 +188,34 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 			continue
 		}
 
-		pnl, closed := okx.CalcRealizedPnL(e)
+		pnl := okx.CalcRealizedPnL(e)
 
 		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
 		mgnMode := e["mgnMode"].(string)
 		uly := e["uly"].(string)
 		ccy := uly[:len(uly)-5]
 
-		closedText := aNum.FormatMoney(closed)
-		pnlText, pnlColor := getAmountUsdtColor(pnl, true)
+		percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
+
+		closedText := aNum.FormatMoney(pnl.Closed)
+		percentText := showPercent(pnl.PnLPercent)
+
+		closeTag := ")"
+		if pnl.PnLPercent-percent > 0.01 {
+			closeTag = "|" + showPercent(percent) + ")"
+		}
+		pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
 
 		tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
 		tview.Print(screen, mgnMode, x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		tview.Print(screen, closedText, x+5+len(timeText)+4+10+(9-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, "Realized PnL:", x+5+len(timeText)+4+10+9+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, pnlText, x+5+len(timeText)+4+10+9+16+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
+		tview.Print(screen, "PnL:", x+5+len(timeText)+4+10+9+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, pnlText, x+5+len(timeText)+4+10+9+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
+		tview.Print(screen, "(", x+5+len(timeText)+4+10+9+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, percentText, x+5+len(timeText)+4+10+9+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
+		tview.Print(screen, closeTag, x+5+len(timeText)+4+10+9+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+
 		// tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		// tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)

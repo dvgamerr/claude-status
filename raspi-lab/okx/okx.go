@@ -44,18 +44,55 @@ const UnitCrossType = 10
 const YYYYMMDD = "2006-01-02"
 const HHmm = "15:04"
 
-func CalcRealizedPnL(e map[string]interface{}) (float64, float64) {
+type RealizedPnL struct {
+	PnL        float64
+	Closed     float64
+	Lever      float64
+	PnLPercent float64
+}
+
+func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	lever, _ := toFloat64(e["lever"])
 	closeAvgPx, _ := toFloat64(e["closeAvgPx"])
 	closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+	// openAvgPx, _ := toFloat64(e["openAvgPx"])
+	// openMaxPos, _ := toFloat64(e["openMaxPos"])
+	mgnMode := e["mgnMode"].(string)
+	orderType := e["type"].(string)
 
-	pnl, _ := toFloat64(e["realizedPnl"])
+	realizedPnl, _ := toFloat64(e["realizedPnl"])
+	pnl, _ := toFloat64(e["pnl"])
+	pnlRatio, _ := toFloat64(e["pnlRatio"])
 
-	closed := closeTotalPos / closeAvgPx
-	if e["mgnMode"] == "cross" {
-		closed = closeTotalPos * closeAvgPx / lever
+	closed := closeTotalPos * closeAvgPx
+	if orderType == "3" {
+
+	} else if orderType == "2" {
+		pnl *= -1
 	}
-	return pnl, closed
+	if mgnMode == "cross" && orderType == "1" {
+		closed = closeTotalPos * closeAvgPx
+	}
+
+	// if mgnMode == "isolated" && orderType == "2" {
+	// 	pnl *= -1
+	// }
+
+	// if mgnMode == "cross" {
+	// 	// closed = closeTotalPos * closeAvgPx
+	// 	// if orderType == "1" {
+	// 	// 	closed = closeTotalPos * closeAvgPx
+	// 	// }
+	// }
+
+	//   "closeAvgPx": "2.66",
+	// "closeTotalPos": "38",
+	return &RealizedPnL{
+		PnL:        realizedPnl,
+		Closed:     closed + pnl,
+		Lever:      lever,
+		PnLPercent: pnlRatio * 100,
+	}
 }
 
 func (a *Account) GetHistoryPositions() {
@@ -75,9 +112,9 @@ func (a *Account) GetHistoryPositions() {
 		if startOfDay.Sub(ParseUnixDate(e["uTime"])).Hours() > 0.0 {
 			continue
 		}
-		pnl, closed := CalcRealizedPnL(e)
-		a.TodayPnL += pnl
-		totalClosed += closed
+		pnl := CalcRealizedPnL(e)
+		a.TodayPnL += pnl.PnL
+		totalClosed += pnl.Closed
 		// lever, _ := toFloat64(e["lever"])
 		// closeAvgPx, _ := toFloat64(e["closeAvgPx"])
 		// closeTotalPos, _ := toFloat64(e["closeTotalPos"])
@@ -123,7 +160,6 @@ func (a *Account) GetTreaders() {
 	// 	a.TodayPercent = todayPnl * 100 / todayMargin
 	// }
 }
-
 func (a *Account) GetFulfill() {
 	defer a.WaitDone()
 
