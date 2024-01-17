@@ -64,7 +64,7 @@ func showMoney(n float64) string {
 	return ac.FormatMoney(n)
 }
 
-func showUSD(n float64, showSymbol bool) (string, tcell.Color) {
+func getAmountUsdtColor(n float64, showSymbol bool) (string, tcell.Color) {
 	ac := accounting.Accounting{
 		Symbol:         map[bool]string{true: symbolMoney, false: ""}[showSymbol],
 		Precision:      2,

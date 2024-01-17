@@ -52,11 +52,11 @@ var aNum accounting.Accounting
 
 // Define a draw function to draw a cross in the center of each cell.
 func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-	okxTodayPnLText, okxTodayPnLColor := showUSD(okxAcc.TodayPnL, true)
+	okxTodayPnLText, okxTodayPnLColor := getAmountUsdtColor(okxAcc.TodayPnL, true)
 	balanceName := "OKX Est"
 	balanceText := aNum.FormatMoney(okxAcc.Total)
 	fulfillText := aNum.FormatMoney(okxAcc.Fulfill)
-	okxPnLText, okxPnLColor := showUSD(okxAcc.Total-okxAcc.Fulfill, true)
+	okxPnLText, okxPnLColor := getAmountUsdtColor(okxAcc.Total-okxAcc.Fulfill, true)
 	posBalanceText := 11 - len(balanceText)
 
 	tview.Print(screen, fmt.Sprintf("(Capital: %s)", fulfillText), x-2, y+1, width, tview.AlignRight, tcell.ColorWhite)
@@ -70,12 +70,12 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
 
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+13+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+15+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
 	balanceName = "BTK Est"
 	btkFulfill := 300.0
 	btkBalance := 302.0
-	btkPnLText, btkPnLColor := showUSD(btkBalance-btkFulfill, true)
+	btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
 	balanceText = aNum.FormatMoney(btkBalance)
 	posBalanceText = 11 - len(balanceText)
 	tview.Print(screen, balanceName, x+5, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
@@ -123,7 +123,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 	maxLenPnL := 0
 	for _, trader := range okxAcc.Traders {
 		pnl, _ := toFloat64(trader["copyTotalPnl"])
-		pnLText, _ := showUSD(pnl, true)
+		pnLText, _ := getAmountUsdtColor(pnl, true)
 		if len(pnLText) > maxLenPnL {
 			maxLenPnL = len(pnLText)
 		}
@@ -134,8 +134,8 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 		todayPnl, _ := toFloat64(trader["todayPnl"])
 		margin, _ := toFloat64(trader["margin"])
 
-		pnLText, pnLColor := showUSD(pnl, true)
-		todayPnlText, todayPnlColor := showUSD(todayPnl, false)
+		pnLText, pnLColor := getAmountUsdtColor(pnl, true)
+		todayPnlText, todayPnlColor := getAmountUsdtColor(todayPnl, false)
 		todayPnLLen := 7 - len(todayPnlText)
 
 		highlightColor := tcell.ColorOlive
@@ -171,34 +171,41 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	totalHistory := len(okxAcc.Historys)
 
 	lineDate := ""
+	l := 0
 	for i := 0; i < totalRow; i++ {
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		if i > totalHistory {
 			continue
 		}
-
-		e := okxAcc.Historys[totalHistory-i-1]
+		e := okxAcc.Historys[totalHistory-(i-l)-1]
 		dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
 		if dateText != lineDate {
 			if i != totalRow-1 {
 				lineDate = dateText
 				tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
+				l++
 			}
 			continue
 		}
 
-		// pnl, closed := okx.CalcRealizedPnL(e)
-		// a.TodayPnL += pnl
-		// totalClosed += closed
+		pnl, closed := okx.CalcRealizedPnL(e)
 
 		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
+		mgnMode := e["mgnMode"].(string)
 		uly := e["uly"].(string)
 		ccy := uly[:len(uly)-5]
 
+		closedText := aNum.FormatMoney(closed)
+		pnlText, pnlColor := getAmountUsdtColor(pnl, true)
+
 		tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, mgnMode, x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, closedText, x+5+len(timeText)+4+10+(9-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+		tview.Print(screen, "Realized PnL:", x+5+len(timeText)+4+10+9+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, pnlText, x+5+len(timeText)+4+10+9+16+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
+		// tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		// tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 		// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
 		// fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
 	}

@@ -53,9 +53,9 @@ func CalcRealizedPnL(e map[string]interface{}) (float64, float64) {
 
 	closed := closeTotalPos / closeAvgPx
 	if e["mgnMode"] == "cross" {
-		closed = closeAvgPx * closeTotalPos
+		closed = closeTotalPos * closeAvgPx / lever
 	}
-	return pnl, closed / lever
+	return pnl, closed
 }
 
 func (a *Account) GetHistoryPositions() {

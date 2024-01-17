@@ -73,7 +73,7 @@ func checkResponseOKX() {
 	pnlTotal := 0.0
 	closedTotal := 0.0
 	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[0])
+		data, err = PrettyStruct(res.Data[2])
 	} else {
 		data, err = PrettyStruct(res)
 	}
@@ -88,19 +88,14 @@ func checkResponseOKX() {
 			if showData == nil {
 				showData = res.Data[i]
 			}
-			lever, _ := toFloat64(e["lever"])
-			closeAvgPx, _ := toFloat64(e["closeAvgPx"])
-			closeTotalPos, _ := toFloat64(e["closeTotalPos"])
-			pnl, _ := toFloat64(e["realizedPnl"])
-
-			closed := closeTotalPos / closeAvgPx
-			if e["mgnMode"] == "cross" {
-				closed = closeAvgPx * closeTotalPos
-			}
-			percent := pnl * 100 / (closed / lever)
+			pnl, closed := okx.CalcRealizedPnL(e)
 
 			pnlTotal += pnl
-			closedTotal += closed / lever
+			closedTotal += closed
+
+			closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+			closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+			percent := pnl * 100 / closed
 
 			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl, percent, closed)
 			fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
