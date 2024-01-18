@@ -138,7 +138,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 		todayPnlText, todayPnlColor := getAmountUsdtColor(todayPnl, false)
 		todayPnLLen := 7 - len(todayPnlText)
 
-		highlightColor := tcell.ColorFuchsia
+		highlightColor := tcell.ColorOlive
 		if margin == 0 {
 			highlightColor = tcell.ColorGrey
 		}
