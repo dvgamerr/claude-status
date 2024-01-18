@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
@@ -167,94 +168,72 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, headerText, x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
 
-	totalRow := 23
-	for i := 0; i < totalRow; i++ {
+	for i := 0; i < height; i++ {
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 	}
-	sX := x + 2
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorMaroon.Hex()), sX, y+1, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorMaroon.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorGreen.Hex()), sX, y+2, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorGreen.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorOlive.Hex()), sX, y+3, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorOlive.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorNavy.Hex()), sX, y+4, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorNavy.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorPurple.Hex()), sX, y+5, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorPurple.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorTeal.Hex()), sX, y+6, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorTeal.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorSilver.Hex()), sX, y+7, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorSilver.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorGray.Hex()), sX, y+8, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorGray.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorRed.Hex()), sX, y+9, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorRed.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorLime.Hex()), sX, y+10, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorLime.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorYellow.Hex()), sX, y+11, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorYellow.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorBlue.Hex()), sX, y+12, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorBlue.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorFuchsia.Hex()), sX, y+13, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorFuchsia.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorAqua.Hex()), sX, y+14, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorAqua.Hex()))
-	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorWhite.Hex()), sX, y+15, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorWhite.Hex()))
 
-	// totalHistory := len(okxAcc.Historys)
-	// lineDate := ""
+	totalHistory := len(okxAcc.Historys)
+	lineDate := ""
 
-	// l := 0
+	l := 0
 
-	// l = 0
-	// for i := 0; i < totalRow; i++ {
-	// 	if i > totalHistory {
-	// 		continue
-	// 	}
-	// 	e := okxAcc.Historys[totalHistory-(i-l)-1]
-	// 	dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
-	// 	if dateText != lineDate {
-	// 		if i != totalRow-1 {
-	// 			lineDate = dateText
-	// 			tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
-	// 			l++
-	// 		}
-	// 		continue
-	// 	}
+	l = 0
+	for i := 0; i < height; i++ {
+		if i > totalHistory {
+			continue
+		}
+		e := okxAcc.Historys[totalHistory-(i-l)-1]
+		dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
+		if dateText != lineDate {
+			if i != height-1 {
+				lineDate = dateText
+				tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
+				l++
+			}
+			continue
+		}
 
-	// 	pnl := okx.CalcRealizedPnL(e)
+		pnl := okx.CalcRealizedPnL(e)
 
-	// 	timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
-	// 	mgnMode := e["mgnMode"].(string)
-	// 	uly := e["uly"].(string)
-	// 	ccy := uly[:len(uly)-5]
+		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
+		mgnMode := e["mgnMode"].(string)
+		uly := e["uly"].(string)
+		ccy := uly[:len(uly)-5]
 
-	// 	percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
+		percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
 
-	// 	closedText := aNum.FormatMoney(pnl.Closed)
-	// 	percentText := showPercent(pnl.PnLPercent)
+		closedText := aNum.FormatMoney(pnl.Closed)
+		percentText := showPercent(pnl.PnLPercent)
 
-	// 	closeTag := ")"
-	// 	if pnl.PnLPercent-percent > 0.01 {
-	// 		orderType := e["type"].(string)
-	// 		closeTag = "|" + orderType + "|" + showPercent(percent) + ")"
-	// 	}
-	// 	pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
+		closeTag := ")"
+		if pnl.PnLPercent-percent > 0.01 {
+			orderType := e["type"].(string)
+			closeTag = "|" + orderType + "|" + showPercent(percent) + ")"
+		}
+		pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
 
-	// 	const (
-	// 		colTime   = 4
-	// 		colCcy    = 4
-	// 		colType   = 5
-	// 		colClosed = 8
-	// 		colPnL    = 7
-	// 		colPnLPer = 8
-	// 		colFee    = 6
-	// 	)
+		const (
+			colTime   = 4
+			colCcy    = 4
+			colType   = 5
+			colClosed = 8
+			colPnL    = 7
+			colPnLPer = 8
+			colFee    = 6
+		)
 
-	// sX := x + 3
+		sX := x + 3
 
-	// tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-	// tview.Print(screen, mgnMode, x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, closedText, x+5+len(timeText)+4+10+(6-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-	// tview.Print(screen, "PnL:", x+5+len(timeText)+4+10+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, pnlText, x+5+len(timeText)+4+10+6+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
-	// tview.Print(screen, "(", x+5+len(timeText)+4+10+6+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, percentText, x+5+len(timeText)+4+10+6+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
-	// tview.Print(screen, closeTag, x+5+len(timeText)+4+10+6+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-
-	// tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-	// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
-	// fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
-	// }
+		tview.Print(screen, timeText, sX, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, ccy, sX+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+		tview.Print(screen, mgnMode, sX+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, closedText, sX+len(timeText)+4+10+(6-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+		tview.Print(screen, "PnL:", sX+len(timeText)+4+10+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, pnlText, sX+len(timeText)+4+10+6+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
+		tview.Print(screen, "(", sX+len(timeText)+4+10+6+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, percentText, sX+len(timeText)+4+10+6+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
+		tview.Print(screen, closeTag, sX+len(timeText)+4+10+6+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	}
 
 	return 0, 0, 0, 0
 }
