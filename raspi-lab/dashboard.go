@@ -117,7 +117,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 	lineHeight := 2
 
 	headerText := " COPY TRADERS "
-	tview.Print(screen, getBorderTop(width), x, y, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, getBorderTop(width), x, y, width, tview.AlignLeft, tcell.ColorBlack)
 	tview.Print(screen, " COPY TRADERS ", x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
 
 	maxLenPnL := 0
@@ -140,7 +140,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 
 		highlightColor := tcell.ColorOlive
 		if margin == 0 {
-			highlightColor = tcell.ColorGray
+			highlightColor = tcell.ColorBlack
 		}
 
 		// Print PnL information
@@ -165,11 +165,11 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 
 	borderTop := getBorderTop(width)
 	borderTop = "┬" + borderTop[3:]
-	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorBlack)
 	tview.Print(screen, headerText, x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
 
 	for i := 0; i < height; i++ {
-		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 	}
 
 	totalHistory := len(okxAcc.Historys)
@@ -224,15 +224,15 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 
 		sX := x + 3
 
-		tview.Print(screen, timeText, sX, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, timeText, sX, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 		tview.Print(screen, ccy, sX+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, mgnMode, sX+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, mgnMode, sX+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 		tview.Print(screen, closedText, sX+len(timeText)+4+10+(6-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, "PnL:", sX+len(timeText)+4+10+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, "PnL:", sX+len(timeText)+4+10+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 		tview.Print(screen, pnlText, sX+len(timeText)+4+10+6+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
-		tview.Print(screen, "(", sX+len(timeText)+4+10+6+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, "(", sX+len(timeText)+4+10+6+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 		tview.Print(screen, percentText, sX+len(timeText)+4+10+6+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
-		tview.Print(screen, closeTag, sX+len(timeText)+4+10+6+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+		tview.Print(screen, closeTag, sX+len(timeText)+4+10+6+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorBlack)
 	}
 
 	return 0, 0, 0, 0
