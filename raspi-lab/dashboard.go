@@ -171,14 +171,23 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	for i := 0; i < totalRow; i++ {
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
 	}
-	sX := x + 3
+	sX := x + 2
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorMaroon.Hex()), sX, y+1, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorMaroon.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorGreen.Hex()), sX, y+2, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorGreen.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorOlive.Hex()), sX, y+3, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorOlive.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorNavy.Hex()), sX, y+4, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorNavy.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorPurple.Hex()), sX, y+5, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorPurple.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorTeal.Hex()), sX, y+6, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorTeal.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorSilver.Hex()), sX, y+7, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorSilver.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorGray.Hex()), sX, y+8, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorGray.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorRed.Hex()), sX, y+9, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorRed.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorLime.Hex()), sX, y+10, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorLime.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorYellow.Hex()), sX, y+11, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorYellow.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorBlue.Hex()), sX, y+12, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorBlue.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorFuchsia.Hex()), sX, y+13, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorFuchsia.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorAqua.Hex()), sX, y+14, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorAqua.Hex()))
+	tview.Print(screen, fmt.Sprintf("%d", tcell.ColorWhite.Hex()), sX, y+15, width, tview.AlignLeft, tcell.NewHexColor(tcell.ColorWhite.Hex()))
 
-	sC := 1000
-	for i := 0; i < totalRow; i++ {
-		for l := sC; l < 63*sC; l++ {
-			tview.Print(screen, "X", sX+l+1, y+i, width, tview.AlignLeft, tcell.NewHexColor(int32(i*l)))
-		}
-	}
 	// totalHistory := len(okxAcc.Historys)
 	// lineDate := ""
 
