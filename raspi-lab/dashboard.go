@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
@@ -134,7 +133,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 		todayPnl, _ := toFloat64(trader["todayPnl"])
 		margin, _ := toFloat64(trader["margin"])
 
-		pnLText, pnLColor := getAmountUsdtColor(pnl, true)
+		pnLText, _ := getAmountUsdtColor(pnl, true)
 		todayPnlText, todayPnlColor := getAmountUsdtColor(todayPnl, false)
 		todayPnLLen := 7 - len(todayPnlText)
 
@@ -144,7 +143,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 		}
 
 		// Print PnL information
-		tview.Print(screen, pnLText, x, y+(i*lineHeight)+1, width, tview.AlignLeft, pnLColor)
+		tview.Print(screen, pnLText, x, y+(i*lineHeight)+1, width, tview.AlignLeft, highlightColor)
 
 		// Print trader nickname
 		tview.Print(screen, trader["nickName"].(string), x+maxLenPnL+1, y+(i*lineHeight)+1, width, tview.AlignLeft, highlightColor)
@@ -167,60 +166,85 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	borderTop = "┬" + borderTop[3:]
 	tview.Print(screen, borderTop, x, y, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, headerText, x+(width/2)-(len(headerText)/2), y, width, tview.AlignLeft, tcell.ColorAqua)
-	totalRow := 23
-	totalHistory := len(okxAcc.Historys)
 
-	lineDate := ""
-	l := 0
+	totalRow := 23
 	for i := 0; i < totalRow; i++ {
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		if i > totalHistory {
-			continue
-		}
-		e := okxAcc.Historys[totalHistory-(i-l)-1]
-		dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
-		if dateText != lineDate {
-			if i != totalRow-1 {
-				lineDate = dateText
-				tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
-				l++
-			}
-			continue
-		}
-
-		pnl := okx.CalcRealizedPnL(e)
-
-		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
-		mgnMode := e["mgnMode"].(string)
-		uly := e["uly"].(string)
-		ccy := uly[:len(uly)-5]
-
-		percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
-
-		closedText := aNum.FormatMoney(pnl.Closed)
-		percentText := showPercent(pnl.PnLPercent)
-
-		closeTag := ")"
-		if pnl.PnLPercent-percent > 0.01 {
-			closeTag = "|" + showPercent(percent) + ")"
-		}
-		pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
-
-		tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, mgnMode, x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, closedText, x+5+len(timeText)+4+10+(9-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
-		tview.Print(screen, "PnL:", x+5+len(timeText)+4+10+9+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, pnlText, x+5+len(timeText)+4+10+9+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
-		tview.Print(screen, "(", x+5+len(timeText)+4+10+9+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		tview.Print(screen, percentText, x+5+len(timeText)+4+10+9+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
-		tview.Print(screen, closeTag, x+5+len(timeText)+4+10+9+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-
-		// tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		// tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
-		// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
-		// fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
 	}
+	sX := x + 3
+
+	for i := 0; i < totalRow; i++ {
+		for l := 0; l < 60; l++ {
+			tview.Print(screen, "X ", sX+l+1, y+i, width, tview.AlignLeft, tcell.NewHexColor(int32(i*l)))
+		}
+	}
+	// totalHistory := len(okxAcc.Historys)
+	// lineDate := ""
+
+	// l := 0
+
+	// l = 0
+	// for i := 0; i < totalRow; i++ {
+	// 	if i > totalHistory {
+	// 		continue
+	// 	}
+	// 	e := okxAcc.Historys[totalHistory-(i-l)-1]
+	// 	dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
+	// 	if dateText != lineDate {
+	// 		if i != totalRow-1 {
+	// 			lineDate = dateText
+	// 			tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
+	// 			l++
+	// 		}
+	// 		continue
+	// 	}
+
+	// 	pnl := okx.CalcRealizedPnL(e)
+
+	// 	timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
+	// 	mgnMode := e["mgnMode"].(string)
+	// 	uly := e["uly"].(string)
+	// 	ccy := uly[:len(uly)-5]
+
+	// 	percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
+
+	// 	closedText := aNum.FormatMoney(pnl.Closed)
+	// 	percentText := showPercent(pnl.PnLPercent)
+
+	// 	closeTag := ")"
+	// 	if pnl.PnLPercent-percent > 0.01 {
+	// 		orderType := e["type"].(string)
+	// 		closeTag = "|" + orderType + "|" + showPercent(percent) + ")"
+	// 	}
+	// 	pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
+
+	// 	const (
+	// 		colTime   = 4
+	// 		colCcy    = 4
+	// 		colType   = 5
+	// 		colClosed = 8
+	// 		colPnL    = 7
+	// 		colPnLPer = 8
+	// 		colFee    = 6
+	// 	)
+
+	// sX := x + 3
+
+	// tview.Print(screen, timeText, x+3, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, ccy, x+4+len(timeText)+(9-len(uly)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+	// tview.Print(screen, mgnMode, x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, closedText, x+5+len(timeText)+4+10+(6-len(closedText)), y+i+1, width, tview.AlignLeft, tcell.ColorWhite)
+	// tview.Print(screen, "PnL:", x+5+len(timeText)+4+10+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, pnlText, x+5+len(timeText)+4+10+6+7+(6-len(pnlText)), y+i+1, width, tview.AlignLeft, pnlColor)
+	// tview.Print(screen, "(", x+5+len(timeText)+4+10+6+7+6+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, percentText, x+5+len(timeText)+4+10+6+7+6+2, y+i+1, width, tview.AlignLeft, pnlColor)
+	// tview.Print(screen, closeTag, x+5+len(timeText)+4+10+6+7+6+1+len(percentText)+1, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+
+	// tview.Print(screen, "Held  Realized PnL +4.53 USDT (4.34%)", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, "Realized PnL  ()", x+5+len(timeText)+4, y+i+1, width, tview.AlignLeft, tcell.ColorGray)
+	// fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f\n", okx.ParseUnixDate(e["uTime"]).Format(YYYYMMDD), e["uly"], pnl, percent, closed)
+	// fmt.Printf("           Lever: %s CloseTotalPos: %.2f CloseAvgPx: %.2f\n", e["lever"], closeTotalPos, closeAvgPx)
+	// }
 
 	return 0, 0, 0, 0
 }

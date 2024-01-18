@@ -67,11 +67,7 @@ do
     check_updated
     build_raspi_lab
     /home/pi/lab/bin/$rpi --tty $(tty) --db
-    clear
-    echo "Press [CTRL+C] to stop in 3 second.."
-    sleep 1
-    sleep 1
-    sleep 1
+    reset
 
     # Check if the exit flag is set
     if [ "$eof" = true ]; then

@@ -53,26 +53,24 @@ type RealizedPnL struct {
 
 func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	lever, _ := toFloat64(e["lever"])
-	closeAvgPx, _ := toFloat64(e["closeAvgPx"])
-	closeTotalPos, _ := toFloat64(e["closeTotalPos"])
+	// closeAvgPx, _ := toFloat64(e["closeAvgPx"])
+	// closeTotalPos, _ := toFloat64(e["closeTotalPos"])
 	// openAvgPx, _ := toFloat64(e["openAvgPx"])
 	// openMaxPos, _ := toFloat64(e["openMaxPos"])
-	mgnMode := e["mgnMode"].(string)
+	// mgnMode := e["mgnMode"].(string)
 	orderType := e["type"].(string)
 
 	realizedPnl, _ := toFloat64(e["realizedPnl"])
 	pnl, _ := toFloat64(e["pnl"])
 	pnlRatio, _ := toFloat64(e["pnlRatio"])
 
-	closed := closeTotalPos * closeAvgPx
+	// closed := closeTotalPos * closeAvgPx
 	if orderType == "3" {
-
-	} else if orderType == "2" {
 		pnl *= -1
 	}
-	if mgnMode == "cross" && orderType == "1" {
-		closed = closeTotalPos * closeAvgPx
-	}
+	// if mgnMode == "cross" && orderType == "1" {
+	// 	closed = closeTotalPos * closeAvgPx
+	// }
 
 	// if mgnMode == "isolated" && orderType == "2" {
 	// 	pnl *= -1
@@ -89,7 +87,7 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	// "closeTotalPos": "38",
 	return &RealizedPnL{
 		PnL:        realizedPnl,
-		Closed:     closed + pnl,
+		Closed:     (pnl / (pnlRatio * 100)) * 100,
 		Lever:      lever,
 		PnLPercent: pnlRatio * 100,
 	}
@@ -139,26 +137,6 @@ func (a *Account) GetTreaders() {
 	if err != nil {
 		sugar.Fatalln(err)
 	}
-
-	// a.TodayPnL = 0
-	// todayPnl := 0.0
-	// todayMargin := 0.0
-	// for _, td := range a.Traders {
-	// 	pnl, _ := toFloat64(td["todayPnl"])
-	// 	margin, _ := toFloat64(td["margin"])
-
-	// 	if err != nil {
-	// 		sugar.Errorln(err)
-	// 	}
-	// 	a.TodayPnL += pnl
-	// 	if margin > 0 {
-	// 		todayPnl += pnl
-	// 		todayMargin += margin
-	// 	}
-	// }
-	// if todayMargin > 0 {
-	// 	a.TodayPercent = todayPnl * 100 / todayMargin
-	// }
 }
 func (a *Account) GetFulfill() {
 	defer a.WaitDone()
