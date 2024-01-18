@@ -24,7 +24,7 @@ if [[ "$1" == "--update" ]]; then
 fi
 
 if [[ "$1" == "--reload" ]]; then
-  curl -X PUT $url/_exit -o /dev/null
+  curl -X PUT $url/_exit
 fi
 
 if [[ "$1" == "--run" ]]; then

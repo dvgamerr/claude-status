@@ -49,6 +49,7 @@ type RealizedPnL struct {
 	Closed     float64
 	Lever      float64
 	PnLPercent float64
+	Fee        float64
 }
 
 func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
@@ -58,16 +59,24 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	// openAvgPx, _ := toFloat64(e["openAvgPx"])
 	// openMaxPos, _ := toFloat64(e["openMaxPos"])
 	// mgnMode := e["mgnMode"].(string)
-	orderType := e["type"].(string)
+	// orderType := e["type"].(string)
 
 	realizedPnl, _ := toFloat64(e["realizedPnl"])
 	pnl, _ := toFloat64(e["pnl"])
 	pnlRatio, _ := toFloat64(e["pnlRatio"])
 
+	fee, _ := toFloat64(e["fee"])
+	fundingFee, _ := toFloat64(e["fundingFee"])
+
 	// closed := closeTotalPos * closeAvgPx
-	if orderType == "3" {
-		pnl *= -1
-	}
+	// if orderType == "3" {
+
+	// } else if orderType == "2" {
+	// 	pnl *= -1
+	// }
+	// if mgnMode == "cross" && orderType == "1" {
+	// 	closed = closeTotalPos * closeAvgPx
+	// }
 	// if mgnMode == "cross" && orderType == "1" {
 	// 	closed = closeTotalPos * closeAvgPx
 	// }
@@ -85,11 +94,18 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 
 	//   "closeAvgPx": "2.66",
 	// "closeTotalPos": "38",
+
+	closed := pnl / (pnlRatio * 100) * 100
+	// if closed < 0 {
+	// 	calcPnL *= -1
+	// }
+
 	return &RealizedPnL{
 		PnL:        realizedPnl,
-		Closed:     (pnl / (pnlRatio * 100)) * 100,
+		Closed:     closed,
 		Lever:      lever,
 		PnLPercent: pnlRatio * 100,
+		Fee:        fee + fundingFee,
 	}
 }
 

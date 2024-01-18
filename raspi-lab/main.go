@@ -61,7 +61,7 @@ func checkResponseOKX() {
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, 0).UnixMilli())
+	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -1).UnixMilli())
 
 	// var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
 	// Get Setting Copy Trading
@@ -73,7 +73,7 @@ func checkResponseOKX() {
 	pnlTotal := 0.0
 	closedTotal := 0.0
 	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[len(res.Data)-8])
+		data, err = PrettyStruct(res.Data[len(res.Data)-5])
 	} else {
 		data, err = PrettyStruct(res)
 	}
