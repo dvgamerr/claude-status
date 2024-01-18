@@ -173,9 +173,10 @@ func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, heig
 	}
 	sX := x + 3
 
+	sC := 1000
 	for i := 0; i < totalRow; i++ {
-		for l := 0; l < 60; l++ {
-			tview.Print(screen, "X ", sX+l+1, y+i, width, tview.AlignLeft, tcell.NewHexColor(int32(i*l)))
+		for l := sC; l < 63*sC; l++ {
+			tview.Print(screen, "X", sX+l+1, y+i, width, tview.AlignLeft, tcell.NewHexColor(int32(i*l)))
 		}
 	}
 	// totalHistory := len(okxAcc.Historys)
