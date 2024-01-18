@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var symbolMoney = "$" // "₮"
+var symbolMoney = "₮" // "₮"
 
 func getLoggingFilepath() (string, error) {
 	exeFile, err := os.Executable()
