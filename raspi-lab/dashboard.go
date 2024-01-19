@@ -34,6 +34,11 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, "GPU:", x+9, y+2, width, tview.AlignLeft, tcell.ColorNavy)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
+
+	tview.Print(screen, "HTTPs", x, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "DNS", x+6, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "[≡]", x+12, y+4, width, tview.AlignLeft, tcell.ColorGreen)
+
 	return 0, 0, 0, 0
 }
 
@@ -43,8 +48,10 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
-	tview.Print(screen, "K8S:", x-1, y+4, width, tview.AlignRight, tcell.ColorNavy)
-	tview.Print(screen, "DNS:", x-1, y+5, width, tview.AlignRight, tcell.ColorNavy)
+
+	tview.Print(screen, "[≡]", x-8, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	tview.Print(screen, "[≡]", x-5, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	tview.Print(screen, "[≡]", x-2, y+4, width, tview.AlignRight, tcell.ColorGreen)
 	return 0, 0, 0, 0
 }
 

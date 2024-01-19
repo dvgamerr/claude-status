@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/alexflint/go-arg"
 	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
+	"github.com/dvgamerr/aide-lab/raspi-lab/sys"
 	"github.com/joho/godotenv"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
@@ -14,9 +16,9 @@ import (
 )
 
 type Args struct {
-	Tty   string `arg:"--tty" help:"tty source"`
-	Fetch bool   `atg:"-f,--fetch" help:"fetch api from okx test"`
-	DB    bool   `atg:"--db" help:"save history to database"`
+	Tty     string `arg:"--tty" help:"tty source"`
+	Develop bool   `arg:"--dev" help:"develop coding test"`
+	DB      bool   `arg:"--db" help:"save history to database"`
 }
 
 var (
@@ -56,13 +58,12 @@ var (
 )
 
 func checkResponseOKX() {
-
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -1).UnixMilli())
+	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -2).UnixMilli())
 
-	var endpoint = "/api/v5/account/positions"
+	// var endpoint = "/api/v5/account/positions"
 	// Get Setting Copy Trading
 	// var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
 	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
@@ -79,38 +80,61 @@ func checkResponseOKX() {
 	}
 	sugar.Debugf("res: %d Structure:\n%s", len(res.Data), data)
 
-	// if len(res.Data) > 0 {
-	// 	var showData interface{}
-	// pnlTotal := 0.0
-	// closedTotal := 0.0
-	// 	for i := len(res.Data) - 1; i >= 0; i-- {
-	// 		e := res.Data[i]
-	// 		if showData == nil {
-	// 			showData = res.Data[i]
-	// 		}
-	// 		pnl := okx.CalcRealizedPnL(e)
+	if len(res.Data) > 0 {
+		var showData interface{}
+		pnlTotal := 0.0
+		closedTotal := 0.0
+		for i := len(res.Data) - 1; i >= 0; i-- {
+			e := res.Data[i]
+			if showData == nil {
+				showData = res.Data[i]
+			}
+			pnl := okx.CalcRealizedPnL(e)
 
-	// 		pnlTotal += pnl.PnL
-	// 		closedTotal += pnl.Closed
+			pnlTotal += pnl.PnL
+			closedTotal += pnl.Closed
 
-	// 		mgnMode := e["mgnMode"].(string)
-	// 		orderType := e["type"].(string)
-	// 		// closeAvgPx, _ := okx.ParseFloat64(e["closeAvgPx"])
-	// 		// closeTotalPos, _ := okx.ParseFloat64(e["closeTotalPos"])
-	// 		// openAvgPx, _ := okx.ParseFloat64(e["openAvgPx"])
-	// 		// openMaxPos, _ := okx.ParseFloat64(e["openMaxPos"])
+			mgnMode := e["mgnMode"].(string)
+			orderType := e["type"].(string)
+			// closeAvgPx, _ := okx.ParseFloat64(e["closeAvgPx"])
+			// closeTotalPos, _ := okx.ParseFloat64(e["closeTotalPos"])
+			// openAvgPx, _ := okx.ParseFloat64(e["openAvgPx"])
+			// openMaxPos, _ := okx.ParseFloat64(e["openMaxPos"])
 
-	// 		fmt.Printf("%s [%s]\tPnL: %.2f (%.2f%%)\tClosed: %.2f\tFee: %.2f", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl.PnL, pnl.PnLPercent, pnl.Closed, pnl.Fee)
-	// 		fmt.Printf("\tmgnMode: %s - %s \n", orderType, mgnMode)
-	// 	}
-	// 	sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
-	// }
+			fmt.Printf("%s [%s]\tPnL: %.2f (%.2f%%)\tClosed: %.2f\tFee: %.2f", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl.PnL, pnl.PnLPercent, pnl.Closed, pnl.Fee)
+			fmt.Printf("\tmgnMode: %s - %s \n", orderType, mgnMode)
+		}
+		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
+	}
 
 }
 
 func main() {
-	if lab.Fetch {
-		checkResponseOKX()
+	if lab.Develop {
+		// checkResponseOKX()
+		if err := sys.PingTCP("103.206.205.154", 443); err != nil {
+			fmt.Printf("HTTPS error: %+v\n", err)
+		} else {
+			fmt.Println("HTTPS is Online")
+		}
+
+		if err := sys.PingIP("10.203.1.201"); err != nil {
+			fmt.Printf("aide-201 error: %+v\n", err)
+		} else {
+			fmt.Println("aide-201 is Online")
+		}
+		if err := sys.PingIP("10.203.1.202"); err != nil {
+			fmt.Printf("aide-202 error: %+v\n", err)
+		} else {
+			fmt.Println("aide-202 is Online")
+		}
+
+		if err := sys.PingTCP("10.203.1.202", 53); err != nil {
+			fmt.Printf("DNS error: %+v\n", err)
+		} else {
+			fmt.Println("DNS is Online")
+		}
+
 		os.Exit(0)
 	}
 

@@ -84,5 +84,5 @@ func ParseFloat64(s interface{}) (float64, error) {
 		return 0, err
 	}
 
-	return math.Ceil(f*10000) / 10000, nil
+	return math.Floor(f*100) / 100, nil
 }
