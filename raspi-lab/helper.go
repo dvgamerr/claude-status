@@ -3,10 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -90,14 +88,6 @@ func showPercent(n float64) string {
 		return "+" + fmt.Sprintf("%.2f%%", n)
 	}
 	return fmt.Sprintf("%.2f%%", n)
-}
-
-func toFloat64(s interface{}) (float64, error) {
-	f, err := strconv.ParseFloat(fmt.Sprint(s), 64)
-	if err != nil {
-		return 0, err
-	}
-	return math.Ceil(f*10000) / 10000, nil
 }
 
 func setTickerInterval(t time.Duration, run func()) func() {

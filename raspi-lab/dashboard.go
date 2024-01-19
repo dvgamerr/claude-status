@@ -59,12 +59,10 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	okxPnLText, okxPnLColor := getAmountUsdtColor(okxAcc.Total-okxAcc.Fulfill, true)
 	posBalanceText := 11 - len(balanceText)
 
-	tview.Print(screen, fmt.Sprintf("(Capital: %s)", fulfillText), x-2, y+1, width, tview.AlignRight, tcell.ColorWhite)
-
 	tview.Print(screen, balanceName, x+5, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
 	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorWhite)
 
-	totalPnLPos := x + 5 + len(balanceName) + len(fulfillText)
+	totalPnLPos := x + 3 + len(balanceName) + len(fulfillText)
 	tview.Print(screen, "[", totalPnLPos+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorGray)
 	tview.Print(screen, okxPnLText, totalPnLPos+posBalanceText+2, y+1, width, tview.AlignLeft, okxPnLColor)
 	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
@@ -122,7 +120,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 
 	maxLenPnL := 0
 	for _, trader := range okxAcc.Traders {
-		pnl, _ := toFloat64(trader["copyTotalPnl"])
+		pnl, _ := okx.ParseFloat64(trader["copyTotalPnl"])
 		pnLText, _ := getAmountUsdtColor(pnl, true)
 		if len(pnLText) > maxLenPnL {
 			maxLenPnL = len(pnLText)
@@ -130,9 +128,9 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 	}
 
 	for i, trader := range okxAcc.Traders {
-		pnl, _ := toFloat64(trader["copyTotalPnl"])
-		todayPnl, _ := toFloat64(trader["todayPnl"])
-		margin, _ := toFloat64(trader["margin"])
+		pnl, _ := okx.ParseFloat64(trader["copyTotalPnl"])
+		todayPnl, _ := okx.ParseFloat64(trader["todayPnl"])
+		margin, _ := okx.ParseFloat64(trader["margin"])
 
 		pnLText, _ := getAmountUsdtColor(pnl, true)
 		todayPnlText, todayPnlColor := getAmountUsdtColor(todayPnl, false)

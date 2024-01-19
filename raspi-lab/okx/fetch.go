@@ -74,7 +74,7 @@ type ResponseAPI struct {
 }
 
 // Parse string to float64
-func toFloat64(s interface{}) (float64, error) {
+func ParseFloat64(s interface{}) (float64, error) {
 	if s == nil {
 		return 0.0, nil
 	}

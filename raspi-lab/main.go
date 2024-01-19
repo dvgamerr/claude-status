@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -61,54 +60,51 @@ func checkResponseOKX() {
 	var err error
 	var res okx.ResponseAPI
 	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -1).UnixMilli())
+	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -1).UnixMilli())
 
-	// var endpoint = fmt.Sprintf("/api/v5/copytrading/current-lead-traders%s", "")
+	var endpoint = "/api/v5/account/positions"
 	// Get Setting Copy Trading
 	// var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
 	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
 		sugar.Fatalw(err.Error())
 	}
 	var data string
-	pnlTotal := 0.0
-	closedTotal := 0.0
 	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[len(res.Data)-5])
+		data, err = PrettyStruct(res.Data[len(res.Data)-1])
 	} else {
 		data, err = PrettyStruct(res)
 	}
 	if err != nil {
 		sugar.Errorln(err.Error())
 	}
-	sugar.Debugf("Structure:\n%s", data)
+	sugar.Debugf("res: %d Structure:\n%s", len(res.Data), data)
 
-	if len(res.Data) > 0 {
-		var showData interface{}
-		for i := len(res.Data) - 1; i >= 0; i-- {
-			e := res.Data[i]
-			if showData == nil {
-				showData = res.Data[i]
-			}
-			pnl := okx.CalcRealizedPnL(e)
+	// if len(res.Data) > 0 {
+	// 	var showData interface{}
+	// pnlTotal := 0.0
+	// closedTotal := 0.0
+	// 	for i := len(res.Data) - 1; i >= 0; i-- {
+	// 		e := res.Data[i]
+	// 		if showData == nil {
+	// 			showData = res.Data[i]
+	// 		}
+	// 		pnl := okx.CalcRealizedPnL(e)
 
-			pnlTotal += pnl.PnL
-			closedTotal += pnl.Closed
+	// 		pnlTotal += pnl.PnL
+	// 		closedTotal += pnl.Closed
 
-			mgnMode := e["mgnMode"].(string)
-			orderType := e["type"].(string)
-			closeAvgPx, _ := toFloat64(e["closeAvgPx"])
-			closeTotalPos, _ := toFloat64(e["closeTotalPos"])
-			openAvgPx, _ := toFloat64(e["openAvgPx"])
-			openMaxPos, _ := toFloat64(e["openMaxPos"])
-			percent := pnl.PnL * 100 / pnl.Closed
+	// 		mgnMode := e["mgnMode"].(string)
+	// 		orderType := e["type"].(string)
+	// 		// closeAvgPx, _ := okx.ParseFloat64(e["closeAvgPx"])
+	// 		// closeTotalPos, _ := okx.ParseFloat64(e["closeTotalPos"])
+	// 		// openAvgPx, _ := okx.ParseFloat64(e["openAvgPx"])
+	// 		// openMaxPos, _ := okx.ParseFloat64(e["openMaxPos"])
 
-			fmt.Printf("%s [%s] PnL: %.2f (%.2f%%) Closed: %.2f ", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl, percent, pnl.Closed)
-			fmt.Printf(" mgnMode: %s orderType: %s \n", mgnMode, orderType)
-			fmt.Printf("           closeAvgPx: %.2f closeTotalPos: %.2f\n", closeAvgPx, closeTotalPos)
-			fmt.Printf("            openAvgPx: %.2f    openMaxPos: %.2f\n", openAvgPx, openMaxPos)
-		}
-		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
-	}
+	// 		fmt.Printf("%s [%s]\tPnL: %.2f (%.2f%%)\tClosed: %.2f\tFee: %.2f", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl.PnL, pnl.PnLPercent, pnl.Closed, pnl.Fee)
+	// 		fmt.Printf("\tmgnMode: %s - %s \n", orderType, mgnMode)
+	// 	}
+	// 	sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
+	// }
 
 }
 
