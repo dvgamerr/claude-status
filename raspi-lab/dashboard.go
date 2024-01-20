@@ -35,9 +35,9 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
-	tview.Print(screen, "HTTPs", x, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
-	tview.Print(screen, "DNS", x+6, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
-	tview.Print(screen, "[≡]", x+12, y+4, width, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "<< Node", x, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "HTTPs", x+6, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "DNS", x+12, y+4, width, tview.AlignLeft, tcell.ColorGreen)
 
 	return 0, 0, 0, 0
 }
@@ -49,9 +49,9 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
 
-	tview.Print(screen, "[≡]", x-8, y+4, width, tview.AlignRight, tcell.ColorGreen)
-	tview.Print(screen, "[≡]", x-5, y+4, width, tview.AlignRight, tcell.ColorGreen)
-	tview.Print(screen, "[≡]", x-2, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	tview.Print(screen, "[þ]", x-8, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	tview.Print(screen, "[þ]", x-5, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	tview.Print(screen, "[þ]", x-2, y+4, width, tview.AlignRight, tcell.ColorGreen)
 	return 0, 0, 0, 0
 }
 
@@ -78,8 +78,8 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+15+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
 	balanceName = "BTK Est"
-	btkFulfill := 300.0
-	btkBalance := 302.0
+	btkFulfill := btkAcc.Fulfill
+	btkBalance := 10000.0 / 35
 	btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
 	balanceText = aNum.FormatMoney(btkBalance)
 	posBalanceText = 11 - len(balanceText)
@@ -127,7 +127,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 
 	maxLenPnL := 0
 	for _, trader := range okxAcc.Traders {
-		pnl, _ := okx.ParseFloat64(trader["copyTotalPnl"])
+		pnl, _ := okx.ParseMoney(trader["copyTotalPnl"])
 		pnLText, _ := getAmountUsdtColor(pnl, true)
 		if len(pnLText) > maxLenPnL {
 			maxLenPnL = len(pnLText)
@@ -135,9 +135,9 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 	}
 
 	for i, trader := range okxAcc.Traders {
-		pnl, _ := okx.ParseFloat64(trader["copyTotalPnl"])
-		todayPnl, _ := okx.ParseFloat64(trader["todayPnl"])
-		margin, _ := okx.ParseFloat64(trader["margin"])
+		pnl, _ := okx.ParseMoney(trader["copyTotalPnl"])
+		todayPnl, _ := okx.ParseMoney(trader["todayPnl"])
+		margin, _ := okx.ParseMoney(trader["margin"])
 
 		pnLText, _ := getAmountUsdtColor(pnl, true)
 		todayPnlText, todayPnlColor := getAmountUsdtColor(todayPnl, false)

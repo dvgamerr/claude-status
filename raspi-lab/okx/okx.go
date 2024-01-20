@@ -53,7 +53,7 @@ type RealizedPnL struct {
 }
 
 func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
-	lever, _ := ParseFloat64(e["lever"])
+	lever, _ := ParseMoney(e["lever"])
 	// closeAvgPx, _ := toFloat64(e["closeAvgPx"])
 	// closeTotalPos, _ := toFloat64(e["closeTotalPos"])
 	// openAvgPx, _ := toFloat64(e["openAvgPx"])
@@ -61,12 +61,12 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	// mgnMode := e["mgnMode"].(string)
 	// orderType := e["type"].(string)
 
-	realizedPnl, _ := ParseFloat64(e["realizedPnl"])
-	pnl, _ := ParseFloat64(e["pnl"])
-	pnlRatio, _ := ParseFloat64(e["pnlRatio"])
+	realizedPnl, _ := ParseMoney(e["realizedPnl"])
+	pnl, _ := ParseMoney(e["pnl"])
+	pnlRatio, _ := ParsePercent(e["pnlRatio"])
 
-	fee, _ := ParseFloat64(e["fee"])
-	fundingFee, _ := ParseFloat64(e["fundingFee"])
+	fee, _ := ParseMoney(e["fee"])
+	fundingFee, _ := ParseMoney(e["fundingFee"])
 
 	closed := pnl / (pnlRatio * 100) * 100
 	// if closed < 0 {
@@ -136,7 +136,7 @@ func (a *Account) GetFulfill() {
 	}
 	a.Fulfill = 0
 	for _, e := range asset {
-		bal, err := ParseFloat64(e["bal"])
+		bal, err := ParseMoney(e["bal"])
 		if err != nil {
 			sugar.Errorln(e["bal"], ":", err)
 		}
@@ -181,12 +181,12 @@ func (a *Account) GetBalances() {
 
 	a.Total = 0
 	var bal float64
-	if bal, err = ParseFloat64(asset["bal"]); err != nil {
+	if bal, err = ParseMoney(asset["bal"]); err != nil {
 		sugar.Errorln(err)
 	}
 	a.Total += bal
 
-	if bal, err = ParseFloat64(account["totalEq"]); err != nil {
+	if bal, err = ParseMoney(account["totalEq"]); err != nil {
 		sugar.Errorln(err)
 	}
 	a.Total += bal
@@ -196,7 +196,7 @@ func (a *Account) GetBalances() {
 			continue
 		}
 
-		if bal, err = ParseFloat64(finn["amt"]); err != nil {
+		if bal, err = ParseMoney(finn["amt"]); err != nil {
 			sugar.Errorln(err)
 		}
 		a.Total += bal

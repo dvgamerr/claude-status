@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alexflint/go-arg"
+	"github.com/dvgamerr/aide-lab/raspi-lab/btk"
 	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/dvgamerr/aide-lab/raspi-lab/sys"
@@ -48,13 +49,15 @@ func init() {
 	}
 
 	// Check that all required environment variables are set
-	checkEnvVars("OKX_APIKEY", "OKX_SECRETKEY", "OKX_PASSPHRASE")
+	checkEnvVars("OKX_APIKEY", "OKX_SECRETKEY", "OKX_PASSPHRASE", "BTK_APIKEY", "BTK_SECRETKEY")
 }
 
 var (
 	app    *tview.Application
 	okxAcc okx.Account
+	btkAcc btk.Account
 	rpiOs  rpi.StatsOS
+	stats  sys.StatsOnline
 )
 
 func checkResponseOKX() {
@@ -111,30 +114,11 @@ func checkResponseOKX() {
 
 func main() {
 	if lab.Develop {
+		var res btk.ResponseAPI
+		btk.Fetch("POST", "/api/v3/market/wallet", nil, &res)
+
+		fmt.Printf("%+v\n", res)
 		// checkResponseOKX()
-		if err := sys.PingTCP("103.206.205.154", 443); err != nil {
-			fmt.Printf("HTTPS error: %+v\n", err)
-		} else {
-			fmt.Println("HTTPS is Online")
-		}
-
-		if err := sys.PingIP("10.203.1.201"); err != nil {
-			fmt.Printf("aide-201 error: %+v\n", err)
-		} else {
-			fmt.Println("aide-201 is Online")
-		}
-		if err := sys.PingIP("10.203.1.202"); err != nil {
-			fmt.Printf("aide-202 error: %+v\n", err)
-		} else {
-			fmt.Println("aide-202 is Online")
-		}
-
-		if err := sys.PingTCP("10.203.1.202", 53); err != nil {
-			fmt.Printf("DNS error: %+v\n", err)
-		} else {
-			fmt.Println("DNS is Online")
-		}
-
 		os.Exit(0)
 	}
 
@@ -145,14 +129,20 @@ func main() {
 
 	sugar.Infoln("OKX preplare initializing...")
 	defer sugar.Sync()
+	btkAcc = btk.Account{
+		Fulfill: (83700.0 - 29128.26) / 35,
+		Total:   10000.0 / 35,
+	}
+
 	okxAcc.Initializer(sugar)
 	rpiOs.Initializer(sugar)
+	stats.Initializer(sugar)
 
 	sugar.Infoln("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
 
+	go setTickerInterval(500*time.Millisecond, stats.CheckAll)()
 	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
-
 	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
 	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 const BASE_URL = "https://api.bitkub.com/api"
@@ -18,13 +19,28 @@ var (
 	secretKey string
 )
 
+type ResponseAPI struct {
+	Error  string                 `json:"error"`
+	Result map[string]interface{} `json:"result"`
+}
+type ResponseAPIArray struct {
+	Error  string                   `json:"error"`
+	Result []map[string]interface{} `json:"result"`
+}
+
 func generateSignature(payload string) string {
 	h := hmac.New(sha256.New, []byte(secretKey))
 	h.Write([]byte(payload))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func Fetch(method string, path string, body interface{}) error {
+func Fetch(method string, path string, reqBody interface{}, resPayload interface{}) error {
+
+	if apiKey == "" || secretKey == "" {
+		apiKey = os.Getenv("BTK_APIKEY")
+		secretKey = os.Getenv("BTK_SECRETKEY")
+	}
+
 	var payload []byte = nil
 
 	serverTime, err := getServerTime()
@@ -32,8 +48,8 @@ func Fetch(method string, path string, body interface{}) error {
 		return fmt.Errorf("server time: %+v", err)
 	}
 
-	if body != nil {
-		payload, err = json.Marshal(body)
+	if reqBody != nil {
+		payload, err = json.Marshal(reqBody)
 		if err != nil {
 			return fmt.Errorf("marshaling json: %+v", err)
 		}
@@ -63,11 +79,8 @@ func Fetch(method string, path string, body interface{}) error {
 	}
 	defer resp.Body.Close()
 
-	// Read and print the response
-	var wallet BitkubBalance
-	err = json.NewDecoder(resp.Body).Decode(&wallet)
-	if err != nil {
-		return fmt.Errorf("decoding response: %+v", err)
+	if err = json.NewDecoder(resp.Body).Decode(&resPayload); err != nil {
+		return fmt.Errorf("error decoding response: %+v", err)
 	}
 
 	return nil

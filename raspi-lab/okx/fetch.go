@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func Fetch(method string, path string, reqPayload interface{}, resPayload interface{}) error {
+func Fetch(method string, path string, reqBody interface{}, resPayload interface{}) error {
 	var client *http.Client = http.DefaultClient
 	var payload []byte = nil
 
@@ -24,9 +24,9 @@ func Fetch(method string, path string, reqPayload interface{}, resPayload interf
 	// Create the HMAC SHA256 signature
 	signature := generateSignature(timestamp+method+path, os.Getenv("OKX_SECRETKEY"))
 
-	if reqPayload != nil {
+	if reqBody != nil {
 		var err error
-		if payload, err = json.Marshal(reqPayload); err != nil {
+		if payload, err = json.Marshal(reqBody); err != nil {
 			return fmt.Errorf("marshaling json: %+v", err)
 		}
 	}
@@ -74,7 +74,17 @@ type ResponseAPI struct {
 }
 
 // Parse string to float64
-func ParseFloat64(s interface{}) (float64, error) {
+func ParseMoney(s interface{}) (float64, error) {
+	return toFloat64(s, 2)
+}
+
+// Parse string to float64
+func ParsePercent(s interface{}) (float64, error) {
+	return toFloat64(s, 4)
+}
+
+// Parse string to float64
+func toFloat64(s interface{}, unit float64) (float64, error) {
 	if s == nil {
 		return 0.0, nil
 	}
@@ -84,5 +94,6 @@ func ParseFloat64(s interface{}) (float64, error) {
 		return 0, err
 	}
 
-	return math.Floor(f*100) / 100, nil
+	u := math.Pow(10, unit)
+	return math.Floor(f*u) / u, nil
 }
