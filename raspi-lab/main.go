@@ -141,7 +141,7 @@ func main() {
 	sugar.Infoln("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
 
-	go setTickerInterval(500*time.Millisecond, stats.CheckAll)()
+	go setTickerInterval(1*time.Second, stats.CheckAll)()
 	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
 	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
 	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()

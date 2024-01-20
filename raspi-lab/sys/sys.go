@@ -22,8 +22,8 @@ func (ip *IPAddr) IsOpened() bool {
 	return ip.Err == nil
 }
 
-func (s *StatsOnline) Initializer(zz *zap.SugaredLogger) {
-	sugar = zz
+func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
+	sugar = zp
 
 	s.IPK8S = &IPAddr{Addr: "103.206.205.154", Port: 443}
 	s.IPDNS = &IPAddr{Addr: "10.203.1.202", Port: 53}

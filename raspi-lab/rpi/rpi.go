@@ -13,7 +13,7 @@ type StatsOS struct {
 
 // var sugar *zap.SugaredLogger
 
-func (s *StatsOS) Initializer(l *zap.SugaredLogger) {
+func (s *StatsOS) Initializer(zp *zap.SugaredLogger) {
 	// sugar = l
 	s.GetOSStats()
 }

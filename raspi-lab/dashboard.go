@@ -35,9 +35,19 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
-	tview.Print(screen, "<< Node", x, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
-	tview.Print(screen, "HTTPs", x+6, y+4, 5, tview.AlignLeft, tcell.ColorGreen)
-	tview.Print(screen, "DNS", x+12, y+4, width, tview.AlignLeft, tcell.ColorGreen)
+	k8sLabel := "HTTPS"
+	k8sColor := tcell.ColorGreen
+	if !stats.IPK8S.IsOpened() {
+		k8sColor = tcell.ColorRed
+	}
+	tview.Print(screen, k8sLabel, x, y+4, len(k8sLabel), tview.AlignLeft, k8sColor)
+
+	dnsLabel := "DNS"
+	dnsColor := tcell.ColorGreen
+	if !stats.IPDNS.IsOpened() {
+		dnsColor = tcell.ColorRed
+	}
+	tview.Print(screen, dnsLabel, x+4+len(k8sLabel), y+4, len(dnsLabel), tview.AlignLeft, dnsColor)
 
 	return 0, 0, 0, 0
 }
@@ -49,9 +59,14 @@ func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) 
 	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
 
-	tview.Print(screen, "[þ]", x-8, y+4, width, tview.AlignRight, tcell.ColorGreen)
-	tview.Print(screen, "[þ]", x-5, y+4, width, tview.AlignRight, tcell.ColorGreen)
-	tview.Print(screen, "[þ]", x-2, y+4, width, tview.AlignRight, tcell.ColorGreen)
+	for i, e := range stats.IPAide {
+		icon := "[≡]"
+		color := tcell.ColorGreen
+		if !e.IsOpened() {
+			color = tcell.ColorRed
+		}
+		tview.Print(screen, icon, x-2-(i*3), y+4, width, tview.AlignRight, color)
+	}
 	return 0, 0, 0, 0
 }
 

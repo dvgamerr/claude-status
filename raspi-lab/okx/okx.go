@@ -26,8 +26,8 @@ func (a *Account) WaitDone() {
 	}
 }
 
-func (a *Account) Initializer(s *zap.SugaredLogger) {
-	sugar = s
+func (a *Account) Initializer(zp *zap.SugaredLogger) {
+	sugar = zp
 	a.wg = &sync.WaitGroup{}
 	// Fix
 	a.Fulfill = 2872.57
