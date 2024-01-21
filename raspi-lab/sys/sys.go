@@ -55,12 +55,12 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 			e.Pinger.SetPrivileged(true)
 		}
 		// Blocks until finished.
-		if err := e.Pinger.Run(); err != nil {
-			sugar.Errorln(err)
-			if e.Err == nil {
-				e.Err = err
-			}
-		}
+		// if err := e.Pinger.Run(); err != nil {
+		// 	sugar.Errorln(err)
+		// 	if e.Err == nil {
+		// 		e.Err = err
+		// 	}
+		// }
 	}
 	s.CheckAll()
 }
