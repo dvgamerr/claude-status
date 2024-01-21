@@ -20,12 +20,9 @@ var (
 )
 
 type ResponseAPI struct {
-	Error  string                 `json:"error"`
-	Result map[string]interface{} `json:"result"`
-}
-type ResponseAPIArray struct {
-	Error  string                   `json:"error"`
-	Result []map[string]interface{} `json:"result"`
+	Error   int    `json:"error"`
+	Message string `json:"message"`
+	Result  any    `json:"result"`
 }
 
 func generateSignature(payload string) string {
@@ -34,48 +31,30 @@ func generateSignature(payload string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func Fetch(method string, path string, reqBody interface{}, resPayload interface{}) error {
-
-	if apiKey == "" || secretKey == "" {
-		apiKey = os.Getenv("BTK_APIKEY")
-		secretKey = os.Getenv("BTK_SECRETKEY")
-	}
-
-	var payload []byte = nil
-
-	serverTime, err := getServerTime()
+func FetchSecure(method string, path string, reqBody any, resPayload any) error {
+	resp, err := fetch(true, method, path, reqBody)
 	if err != nil {
-		return fmt.Errorf("server time: %+v", err)
+		return fmt.Errorf("error decoding response: %+v", err)
+	}
+	defer resp.Body.Close()
+
+	if err = json.NewDecoder(resp.Body).Decode(&resPayload); err != nil {
+		return fmt.Errorf("error decoding response: %+v", err)
 	}
 
-	if reqBody != nil {
-		payload, err = json.Marshal(reqBody)
-		if err != nil {
-			return fmt.Errorf("marshaling json: %+v", err)
-		}
+	res := resPayload.(*ResponseAPI)
+
+	if res.Error != 0 {
+		return fmt.Errorf("error response: %+v", ErrorCode[res.Error])
 	}
 
-	req, err := http.NewRequest(method, fmt.Sprintf("%s%s", BASE_URL, path), bytes.NewBuffer(payload))
+	return nil
+}
+
+func FetchNonSecure(method string, path string, reqBody any, resPayload any) error {
+	resp, err := fetch(true, method, path, reqBody)
 	if err != nil {
-		return fmt.Errorf("creating request: %+v", err)
-	}
-
-	// Generate timestamp and signature
-	signaturePayload := fmt.Sprintf(`%s%s%s`, serverTime, req.Method, req.URL.Path)
-	signature := generateSignature(signaturePayload)
-
-	// Set the required headers
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-BTK-TIMESTAMP", serverTime)
-	req.Header.Set("X-BTK-APIKEY", apiKey)
-	req.Header.Set("X-BTK-SIGN", signature)
-
-	// Make the request
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("making request: %+v", err)
+		return fmt.Errorf("error decoding response: %+v", err)
 	}
 	defer resp.Body.Close()
 
@@ -86,8 +65,56 @@ func Fetch(method string, path string, reqBody interface{}, resPayload interface
 	return nil
 }
 
+func fetch(secure bool, method string, path string, reqBody any) (*http.Response, error) {
+	if secure && (apiKey == "" || secretKey == "") {
+		apiKey = os.Getenv("BTK_APIKEY")
+		secretKey = os.Getenv("BTK_SECRETKEY")
+	}
+
+	var payload []byte = nil
+
+	serverTime, err := getServerTime()
+	if err != nil {
+		return nil, fmt.Errorf("server time: %+v", err)
+	}
+
+	if reqBody != nil {
+		payload, err = json.Marshal(reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling json: %+v", err)
+		}
+	}
+
+	req, err := http.NewRequest(method, fmt.Sprintf("%s%s", BASE_URL, path), bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %+v", err)
+	}
+
+	// Generate timestamp and signature
+	signaturePayload := fmt.Sprintf(`%s%s%s`, serverTime, req.Method, req.URL.Path)
+	signature := generateSignature(signaturePayload)
+
+	// Set the required headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	if secure {
+		req.Header.Set("X-BTK-TIMESTAMP", serverTime)
+		req.Header.Set("X-BTK-APIKEY", apiKey)
+		req.Header.Set("X-BTK-SIGN", signature)
+	}
+
+	// Make the request
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("making request: %+v", err)
+	}
+
+	return resp, nil
+}
+
 func getServerTime() (string, error) {
-	resp, err := http.Get("/servertime")
+	resp, err := http.Get(fmt.Sprintf("%s%s", BASE_URL, "/v3/servertime"))
 	if err != nil {
 		return "0", err
 	}
@@ -99,46 +126,4 @@ func getServerTime() (string, error) {
 	}
 
 	return string(result), nil
-}
-
-func GetBalances() {
-	url := "/v3/market/balances"
-
-	// Prepare the request payload
-	// payloadBytes, err := json.Marshal(map[string]interface{}{
-	// 	"sym": "THB_BTC",
-	// })
-	// if err != nil {
-	// 	fmt.Println("Error marshaling JSON:", err)
-	// 	return
-	// }
-
-	// Create the HTTP request , bytes.NewBuffer(payloadBytes)
-	_, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return
-	}
-
-	// for symbol, coin := range wallet.Result {
-	// 	if coin <= 0 {
-	// 		continue
-	// 	}
-
-	// 	fmt.Printf("- %s:%f\n", symbol, coin)
-	// }
-
-}
-
-type BitkubBalance struct {
-	Error  int `json:"error"`
-	Result map[string]struct {
-		Available float64 `json:"available"`
-		Reserved  float64 `json:"reserved"`
-	} `json:"result"`
-}
-
-type BitkubWallet struct {
-	Error  int                `json:"error"`
-	Result map[string]float64 `json:"result"`
 }

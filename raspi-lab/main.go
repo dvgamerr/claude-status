@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -10,6 +11,7 @@ import (
 	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/dvgamerr/aide-lab/raspi-lab/sys"
+	"github.com/go-ping/ping"
 	"github.com/joho/godotenv"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
@@ -53,7 +55,6 @@ func init() {
 }
 
 var (
-	app    *tview.Application
 	okxAcc okx.Account
 	btkAcc btk.Account
 	rpiOs  rpi.StatsOS
@@ -113,57 +114,72 @@ func checkResponseOKX() {
 }
 
 func main() {
-	if lab.Develop {
-		var res btk.ResponseAPI
-		btk.Fetch("POST", "/api/v3/market/wallet", nil, &res)
+	defer sugar.Sync()
+	app := tview.NewApplication()
 
-		fmt.Printf("%+v\n", res)
+	if lab.Develop {
+		pinger, err := ping.NewPinger("10.203.1.202")
+		if runtime.GOOS == "windows" {
+			pinger.SetPrivileged(true)
+		}
+		if err != nil {
+			sugar.Panicln(err)
+		}
+
+		pinger.Count = 3
+		if err := pinger.Run(); err != nil { // Blocks until finished.
+			sugar.Panicln(err)
+		}
+		stats := pinger.Statistics()
+		fmt.Printf("%.1fms\n", float64(stats.AvgRtt)/float64(time.Millisecond))
+
+		// var res map[string]btk.Ticker
+		// if err := btk.FetchNonSecure("GET", "/market/ticker?sym=THB_USDT", nil, &res); err != nil {
+		// 	sugar.Errorln(err)
+		// }
+		// sugar.Debugf(" %+v\n", res["THB_USDT"].Last)
+
+		// bal := btk.GetBalances()
+		// fmt.Printf(" Total: %.2f\n", bal.Total)
 		// checkResponseOKX()
 		os.Exit(0)
 	}
+
+	sugar.Infoln("OKX preplare initializing...")
+	rpiOs.Initializer(sugar)
+	stats.Initializer(sugar)
+	btkAcc.Initializer(sugar)
+	okxAcc.Initializer(sugar)
 
 	okxIntervel := 3 * time.Second
 	if os.Getenv("ENV") == "development" {
 		okxIntervel = 10 * time.Second
 	}
 
-	sugar.Infoln("OKX preplare initializing...")
-	defer sugar.Sync()
-	btkAcc = btk.Account{
-		Fulfill: (83700.0 - 29128.26) / 35,
-		Total:   10000.0 / 35,
-	}
-
-	okxAcc.Initializer(sugar)
-	rpiOs.Initializer(sugar)
-	stats.Initializer(sugar)
-
 	sugar.Infoln("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
+	if lab.Tty != "" {
+		go setTickerInterval(1*time.Second, stats.CheckAll)()
+		go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
+		go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
+		go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
 
-	go setTickerInterval(1*time.Second, stats.CheckAll)()
-	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
-	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
-	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
-
-	go setTickerInterval(11000*time.Millisecond, okxAcc.GetHistoryPositions)()
+		go setTickerInterval(5*time.Second, okxAcc.GetHistoryPositions)()
+	}
 
 	sugar.Infoln("Dashboard Renderer...")
-	app = tview.NewApplication()
 
 	flex := tview.NewFlex().
-		AddItem(tview.NewBox().SetDrawFunc(drawOverviewHeader), 0, 1, false).
-		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderText), 10, 0, false).
-		AddItem(tview.NewBox().SetDrawFunc(drawOSHeaderValue), 22, 0, false)
-	grid := tview.NewGrid().
-		SetRows(6, 0).
-		SetColumns(32, 0).
-		AddItem(flex, 0, 0, 1, 2, 0, 0, false)
+		AddItem(tview.NewBox().SetDrawFunc(boxDrawOverview), 0, 1, false).
+		AddItem(tview.NewBox().SetDrawFunc(boxDrawStatsLabel), 9, 0, false).
+		AddItem(tview.NewBox().SetDrawFunc(boxDrawStatsValue), 22, 0, false)
+
+	grid := tview.NewGrid().SetRows(6, 0).SetColumns(32, 0).AddItem(flex, 0, 0, 1, 2, 0, 0, false)
 
 	// Layout for screens wider than 100 cells.
 	grid.
-		AddItem(tview.NewBox().SetDrawFunc(drawCopyTrader), 1, 0, 1, 1, 0, 100, false).
-		AddItem(tview.NewBox().SetDrawFunc(drawOrderPositionHistory), 1, 1, 1, 1, 0, 100, false)
+		AddItem(tview.NewBox().SetDrawFunc(boxDrawCopyTrader), 1, 0, 1, 1, 0, 100, false).
+		AddItem(tview.NewBox().SetDrawFunc(boxDrawOrderPosition), 1, 1, 1, 1, 0, 100, false)
 
 	go httpController()
 	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {

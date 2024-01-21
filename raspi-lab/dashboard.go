@@ -19,7 +19,7 @@ import (
 // }
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func boxDrawStatsValue(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	mem, err := rpi.MemoryInfo()
 	if err != nil {
 		log.Fatal("Error:", err)
@@ -35,45 +35,51 @@ func drawOSHeaderValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
-	k8sLabel := "HTTPS"
+	aliveIcon := "[○]"
+	deadIcon := "[×]"
+	for i := len(stats.IPAide) - 1; i >= 0; i-- {
+		e := stats.IPAide[i]
+		// if e.State > 0 {
+		// 	tview.Print(screen, "[.]", x-(3*i), y+4, width, tview.AlignRight, tcell.ColorYellow)
+		// } else
+		if !e.IsOpened() {
+			tview.Print(screen, deadIcon, x-(3*i), y+4, width, tview.AlignRight, tcell.ColorRed)
+		} else {
+			tview.Print(screen, aliveIcon, x-(3*i), y+4, width, tview.AlignRight, tcell.ColorGreen)
+		}
+	}
+
+	k8sLabel := "HTTP"
 	k8sColor := tcell.ColorGreen
 	if !stats.IPK8S.IsOpened() {
 		k8sColor = tcell.ColorRed
 	}
-	tview.Print(screen, k8sLabel, x, y+4, len(k8sLabel), tview.AlignLeft, k8sColor)
+	tview.Print(screen, k8sLabel, x, y+4, width, tview.AlignLeft, k8sColor)
 
 	dnsLabel := "DNS"
 	dnsColor := tcell.ColorGreen
 	if !stats.IPDNS.IsOpened() {
 		dnsColor = tcell.ColorRed
 	}
-	tview.Print(screen, dnsLabel, x+4+len(k8sLabel), y+4, len(dnsLabel), tview.AlignLeft, dnsColor)
+	tview.Print(screen, dnsLabel, x+1+len(k8sLabel), y+4, width, tview.AlignLeft, dnsColor)
 
 	return 0, 0, 0, 0
 }
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawOSHeaderText(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func boxDrawStatsLabel(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	tview.Print(screen, "Time:", x-1, y, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
 
-	for i, e := range stats.IPAide {
-		icon := "[≡]"
-		color := tcell.ColorGreen
-		if !e.IsOpened() {
-			color = tcell.ColorRed
-		}
-		tview.Print(screen, icon, x-2-(i*3), y+4, width, tview.AlignRight, color)
-	}
 	return 0, 0, 0, 0
 }
 
 var aNum accounting.Accounting
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func boxDrawOverview(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	okxTodayPnLText, okxTodayPnLColor := getAmountUsdtColor(okxAcc.TodayPnL, true)
 	balanceName := "OKX Est"
 	balanceText := aNum.FormatMoney(okxAcc.Total)
@@ -94,7 +100,7 @@ func drawOverviewHeader(screen tcell.Screen, x int, y int, width int, height int
 
 	balanceName = "BTK Est"
 	btkFulfill := btkAcc.Fulfill
-	btkBalance := 10000.0 / 35
+	btkBalance := btkAcc.Total
 	btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
 	balanceText = aNum.FormatMoney(btkBalance)
 	posBalanceText = 11 - len(balanceText)
@@ -133,7 +139,7 @@ func getBorderTop(w int) (txt string) {
 }
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func boxDrawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	lineHeight := 2
 
 	headerText := " COPY TRADERS "
@@ -180,7 +186,7 @@ func drawCopyTrader(screen tcell.Screen, x int, y int, width int, height int) (i
 }
 
 // Define a draw function to draw a cross in the center of each cell.
-func drawOrderPositionHistory(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+func boxDrawOrderPosition(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
 	headerText := " ORDER POSITION "
 
 	borderTop := getBorderTop(width)
