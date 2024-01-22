@@ -2,6 +2,7 @@ package sys
 
 import (
 	"runtime"
+	"time"
 
 	"github.com/go-ping/ping"
 	"go.uber.org/zap"
@@ -29,8 +30,12 @@ type IPPinger struct {
 }
 
 func (ip *IPPinger) IsOpened() bool {
-	return ip.Err == nil
+	return ip.Err == nil && ip.Pinger.Statistics().AvgRtt > 0
 }
+func (ip *IPPinger) IsWait() bool {
+	return ip.Pinger == nil
+}
+
 func (ip *IPAddr) IsOpened() bool {
 	return ip.Err == nil
 }
@@ -46,22 +51,25 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 		{Addr: "10.203.1.203"},
 	}
 
-	for _, e := range s.IPAide {
-		if e.Pinger, e.Err = ping.NewPinger(e.Addr); e.Err != nil {
-			sugar.Errorln(e.Err)
+	go func() {
+		for _, e := range s.IPAide {
+			if e.Pinger, e.Err = ping.NewPinger(e.Addr); e.Err != nil {
+				sugar.Errorln(e.Err)
+			}
+			e.Pinger.Timeout = 500 * time.Millisecond
+			e.Pinger.Count = 3
+			if runtime.GOOS == "windows" {
+				e.Pinger.SetPrivileged(true)
+			}
+			// Blocks until finished.
+			if err := e.Pinger.Run(); err != nil {
+				sugar.Errorln(err)
+				if e.Err == nil {
+					e.Err = err
+				}
+			}
 		}
-		e.Pinger.Count = 3
-		if runtime.GOOS == "windows" {
-			e.Pinger.SetPrivileged(true)
-		}
-		// Blocks until finished.
-		// if err := e.Pinger.Run(); err != nil {
-		// 	sugar.Errorln(err)
-		// 	if e.Err == nil {
-		// 		e.Err = err
-		// 	}
-		// }
-	}
+	}()
 	s.CheckAll()
 }
 

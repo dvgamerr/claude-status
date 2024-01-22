@@ -35,17 +35,16 @@ func boxDrawStatsValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
-	aliveIcon := "[○]"
-	deadIcon := "[×]"
-	for i := len(stats.IPAide) - 1; i >= 0; i-- {
+	aliveIcon := "🟢"
+	deadIcon := "⭕"
+	for i := 0; i < len(stats.IPAide); i++ {
 		e := stats.IPAide[i]
-		// if e.State > 0 {
-		// 	tview.Print(screen, "[.]", x-(3*i), y+4, width, tview.AlignRight, tcell.ColorYellow)
-		// } else
-		if !e.IsOpened() {
-			tview.Print(screen, deadIcon, x-(3*i), y+4, width, tview.AlignRight, tcell.ColorRed)
+		if e.IsWait() {
+			tview.Print(screen, "🙄", x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorYellow)
+		} else if !e.IsOpened() {
+			tview.Print(screen, deadIcon, x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorRed)
 		} else {
-			tview.Print(screen, aliveIcon, x-(3*i), y+4, width, tview.AlignRight, tcell.ColorGreen)
+			tview.Print(screen, aliveIcon, x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorGreen)
 		}
 	}
 

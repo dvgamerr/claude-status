@@ -125,11 +125,11 @@ func main() {
 		if err != nil {
 			sugar.Panicln(err)
 		}
-
+		pinger.Timeout = 500 * time.Millisecond
 		pinger.Count = 3
-		if err := pinger.Run(); err != nil { // Blocks until finished.
-			sugar.Panicln(err)
-		}
+		// if err := pinger.Run(); err != nil { // Blocks until finished.
+		// 	sugar.Panicln(err)
+		// }
 		stats := pinger.Statistics()
 		fmt.Printf("%.1fms\n", float64(stats.AvgRtt)/float64(time.Millisecond))
 
