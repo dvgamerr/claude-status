@@ -106,6 +106,7 @@ func main() {
 		go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
 		go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
 		go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
+		go setTickerInterval(okxIntervel, btkAcc.GetTotalBalance)()
 
 		go setTickerInterval(5*time.Second, okxAcc.GetHistoryPositions)()
 	}

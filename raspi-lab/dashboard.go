@@ -105,19 +105,27 @@ func boxDrawOverview(screen tcell.Screen, x int, y int, width int, height int) (
 	lenBalance = 10 - len(okxTodayPnLText)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+5+6+lenBalance, y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
-	// labelBalance = "BTK Est"
-	// btkFulfill := btkAcc.Fulfill
-	// btkBalance := btkAcc.Total
-	// btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
-	// moneyBalance = aNum.FormatMoney(btkBalance)
-	// lenBalance = 11 - len(moneyBalance)
-	// tview.Print(screen, labelBalance, x+5, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	// tview.Print(screen, moneyBalance, x+4+len(labelBalance)+lenBalance, y+4, width, tview.AlignLeft, tcell.ColorWhite)
+	labelBalance = "Bitkub Est"
 
-	// pX := x + 5 + len(labelBalance) + len(btkPnLText)
-	// tview.Print(screen, "[", pX+lenBalance+1, y+4, width, tview.AlignLeft, tcell.ColorGray)
-	// tview.Print(screen, btkPnLText, pX+lenBalance+3, y+4, width, tview.AlignLeft, btkPnLColor)
-	// tview.Print(screen, "]", pX+lenBalance+len(btkPnLText)+4, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	an := accounting.Accounting{Precision: 2, Thousand: ","}
+
+	moneyBalance = an.FormatMoney(btkAcc.Total)
+	moneyAvailable := an.FormatMoney(btkAcc.Available)
+	moneyFulfill := an.FormatMoney((btkAcc.Total + btkAcc.Available) - btkAcc.Fulfill)
+	_, btkPnLColor := getAmountUsdtColor((btkAcc.Total+btkAcc.Available)-btkAcc.Fulfill, true)
+
+	tview.Print(screen, labelBalance, x+2, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, moneyBalance, x+4+len(labelBalance), y+4, width, tview.AlignLeft, tcell.ColorWhite)
+
+	pX = x + 4 + len(labelBalance) + len(moneyBalance) + 1
+	tview.Print(screen, "[", pX, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, moneyAvailable, pX+2, y+4, width, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "]", pX+len(moneyAvailable)+3, y+4, width, tview.AlignLeft, tcell.ColorGray)
+
+	pX = x + 4 + len(labelBalance) + len(moneyBalance) + 1 + len(moneyAvailable) + 5
+	tview.Print(screen, "[", pX, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, moneyFulfill, pX+2, y+4, width, tview.AlignLeft, btkPnLColor)
+	tview.Print(screen, "]", pX+len(moneyFulfill)+3, y+4, width, tview.AlignLeft, tcell.ColorGray)
 
 	return 0, 0, 0, 0
 }

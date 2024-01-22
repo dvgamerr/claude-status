@@ -9,8 +9,9 @@ import (
 var stdJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type BitkubBalances struct {
-	Total float64
-	Coins map[string]Balance
+	Total     float64
+	Available float64
+	Coins     map[string]Balance
 }
 
 type Balance struct {
@@ -47,16 +48,27 @@ func GetBalances() BitkubBalances {
 	}
 
 	data := BitkubBalances{
-		Total: 0,
-		Coins: map[string]Balance{},
+		Total:     0,
+		Available: 0,
+		Coins:     map[string]Balance{},
 	}
 
 	if err = stdJson.Unmarshal(byteData, &data.Coins); err != nil {
 		sugar.Errorln("Error unmarshaling:", err)
 	}
+	for ccy, coin := range data.Coins {
+		if coin.Available == 0 && coin.Reserved == 0 {
+			continue
+		}
 
-	data.Total = data.Coins["THB"].Available + data.Coins["THB"].Reserved
-
+		rate := 1.0
+		if ccy != "THB" {
+			ticker := GetMarketTicker(fmt.Sprintf("THB_%s", ccy))
+			rate = ticker.Last
+		}
+		data.Total += (coin.Available + coin.Reserved) * rate
+		data.Available += coin.Available * rate
+	}
 	return data
 }
 
