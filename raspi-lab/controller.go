@@ -11,7 +11,10 @@ import (
 var apiPort string
 
 func httpController() {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		CaseSensitive:         true,
+	})
 
 	app.Get("/_health", func(c *fiber.Ctx) error {
 		return c.SendString("☕\n")
@@ -19,7 +22,7 @@ func httpController() {
 
 	app.Put("/_exit", func(c *fiber.Ctx) error {
 		go delayedExit()
-		return c.SendString("Signal Exiting...\n")
+		return c.SendString("☕\n")
 	})
 
 	apiPort = os.Getenv("PORT")

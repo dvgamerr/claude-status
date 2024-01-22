@@ -49,15 +49,15 @@ func boxDrawStatsValue(screen tcell.Screen, x int, y int, width int, height int)
 	}
 	tview.Print(screen, dnsLabel, x+1+len(k8sLabel), y+4, width, tview.AlignLeft, dnsColor)
 
-	sX := x + 5 + len(k8sLabel) + len(dnsLabel)
-	deadIcon := "[x]"
+	sX := x + 3 + len(k8sLabel) + len(dnsLabel)
+	deadIcon := "[×]"
 	for i := 0; i < len(stats.IPAide); i++ {
-		aliveIcon := fmt.Sprintf("[%d]", i+1)
 		e := stats.IPAide[i]
+		aliveIcon := e.Ico
 		if e.IsWait() {
 			tview.Print(screen, "[ ]", sX+(3*i), y+4, 4, tview.AlignLeft, tcell.ColorYellow)
 		} else if !e.IsOpened() {
-			tview.Print(screen, deadIcon, sX+(len(deadIcon)*i), y+4, 4, tview.AlignLeft, tcell.ColorRed)
+			tview.Print(screen, deadIcon, sX+(len(aliveIcon)*i), y+4, 4, tview.AlignLeft, tcell.ColorRed)
 		} else {
 			tview.Print(screen, aliveIcon, sX+(len(aliveIcon)*i), y+4, 4, tview.AlignLeft, tcell.ColorGreen)
 		}
@@ -72,6 +72,7 @@ func boxDrawStatsLabel(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, "Uptime:", x-1, y+1, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "CPU:", x-1, y+2, width, tview.AlignRight, tcell.ColorNavy)
 	tview.Print(screen, "MEM:", x-1, y+3, width, tview.AlignRight, tcell.ColorNavy)
+	tview.Print(screen, "Healty:", x-1, y+4, width, tview.AlignRight, tcell.ColorNavy)
 
 	return 0, 0, 0, 0
 }

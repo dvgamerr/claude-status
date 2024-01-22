@@ -25,6 +25,7 @@ type IPAddr struct {
 
 type IPPinger struct {
 	Pinger *ping.Pinger
+	Ico    string
 	Addr   string
 	Err    error
 }
@@ -46,12 +47,14 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 	s.IPK8S = &IPAddr{Addr: "103.206.205.154", Port: 443}
 	s.IPDNS = &IPAddr{Addr: "10.203.1.202", Port: 53}
 	s.IPAide = []*IPPinger{
-		{Addr: "10.203.1.201"},
-		{Addr: "10.203.1.202"},
-		{Addr: "10.203.1.203"},
+		{Addr: "103.206.205.254", Ico: "{⌂}"},
+		{Addr: "10.203.1.201", Ico: "[1]"},
+		{Addr: "10.203.1.202", Ico: "[2]"},
+		{Addr: "10.203.1.203", Ico: "[3]"},
 	}
 
 	go func() {
+		s.CheckAll()
 		for _, e := range s.IPAide {
 			if e.Pinger, e.Err = ping.NewPinger(e.Addr); e.Err != nil {
 				sugar.Errorln(e.Err)
@@ -70,7 +73,6 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 			}
 		}
 	}()
-	s.CheckAll()
 }
 
 func (s *StatsOnline) CheckAll() {

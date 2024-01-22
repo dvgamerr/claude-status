@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -11,7 +9,6 @@ import (
 	"github.com/dvgamerr/aide-lab/raspi-lab/okx"
 	"github.com/dvgamerr/aide-lab/raspi-lab/rpi"
 	"github.com/dvgamerr/aide-lab/raspi-lab/sys"
-	"github.com/go-ping/ping"
 	"github.com/joho/godotenv"
 	"github.com/leekchan/accounting"
 	"github.com/rivo/tview"
@@ -35,11 +32,7 @@ func init() {
 
 	logger = NewLogger(&lab)
 	sugar = logger.Sugar()
-
-	// if lab.Tty == "" {
-	// 	symbolMoney = "₮"
-	// }
-	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
+	aNum = accounting.Accounting{Precision: 2, Thousand: ",", Format: "%s%v"}
 
 	// Load environment variables from .env
 	if _, err := os.Stat(".env"); err != nil {
@@ -61,91 +54,39 @@ var (
 	stats  sys.StatsOnline
 )
 
-func checkResponseOKX() {
-	var err error
-	var res okx.ResponseAPI
-	// var endpoint = fmt.Sprintf("/api/v5/account/positions-history?instType=SWAP&before=%d", time.Date(year, month, day, 0, 0, 0, 0, cur.Location()).UnixMilli())
-	var endpoint = fmt.Sprintf("/api/v5/account/positions-history?before=%d", okx.GetStartOfDate(0, 0, 0, -2).UnixMilli())
-
-	// var endpoint = "/api/v5/account/positions"
-	// Get Setting Copy Trading
-	// var endpoint = fmt.Sprintf("/api/v5/asset/bills?type=117%s", "")
-	if err = okx.Fetch("GET", endpoint, nil, &res); err != nil {
-		sugar.Fatalw(err.Error())
-	}
-	var data string
-	if len(res.Data) > 0 {
-		data, err = PrettyStruct(res.Data[len(res.Data)-1])
-	} else {
-		data, err = PrettyStruct(res)
-	}
-	if err != nil {
-		sugar.Errorln(err.Error())
-	}
-	sugar.Debugf("res: %d Structure:\n%s", len(res.Data), data)
-
-	if len(res.Data) > 0 {
-		var showData interface{}
-		pnlTotal := 0.0
-		closedTotal := 0.0
-		for i := len(res.Data) - 1; i >= 0; i-- {
-			e := res.Data[i]
-			if showData == nil {
-				showData = res.Data[i]
-			}
-			pnl := okx.CalcRealizedPnL(e)
-
-			pnlTotal += pnl.PnL
-			closedTotal += pnl.Closed
-
-			mgnMode := e["mgnMode"].(string)
-			orderType := e["type"].(string)
-			// closeAvgPx, _ := okx.ParseFloat64(e["closeAvgPx"])
-			// closeTotalPos, _ := okx.ParseFloat64(e["closeTotalPos"])
-			// openAvgPx, _ := okx.ParseFloat64(e["openAvgPx"])
-			// openMaxPos, _ := okx.ParseFloat64(e["openMaxPos"])
-
-			fmt.Printf("%s [%s]\tPnL: %.2f (%.2f%%)\tClosed: %.2f\tFee: %.2f", okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD), e["uly"], pnl.PnL, pnl.PnLPercent, pnl.Closed, pnl.Fee)
-			fmt.Printf("\tmgnMode: %s - %s \n", orderType, mgnMode)
-		}
-		sugar.Debugf("Closed: %.2f - PnL: %.2f (%.2f%%)", closedTotal, pnlTotal, pnlTotal*100/closedTotal)
-	}
-
-}
-
 func main() {
 	go httpController()
 
 	defer sugar.Sync()
 	app := tview.NewApplication()
 
-	if lab.Develop {
-		pinger, err := ping.NewPinger("10.203.1.202")
-		if runtime.GOOS == "windows" {
-			pinger.SetPrivileged(true)
-		}
-		if err != nil {
-			sugar.Panicln(err)
-		}
-		pinger.Timeout = 500 * time.Millisecond
-		pinger.Count = 3
-		// if err := pinger.Run(); err != nil { // Blocks until finished.
-		// 	sugar.Panicln(err)
-		// }
-		stats := pinger.Statistics()
-		fmt.Printf("%.1fms\n", float64(stats.AvgRtt)/float64(time.Millisecond))
+	// if lab.Develop {
+	// 	pinger, err := ping.NewPinger("10.203.1.202")
+	// 	if runtime.GOOS == "windows" {
+	// 		pinger.SetPrivileged(true)
+	// 	}
+	// 	if err != nil {
+	// 		sugar.Panicln(err)
+	// 	}
+	// 	pinger.Timeout = 500 * time.Millisecond
+	// 	pinger.Count = 3
+	// 	// if err := pinger.Run(); err != nil { // Blocks until finished.
+	// 	// 	sugar.Panicln(err)
+	// 	// }
+	// 	stats := pinger.Statistics()
+	// 	fmt.Printf("%.1fms\n", float64(stats.AvgRtt)/float64(time.Millisecond))
 
-		// var res map[string]btk.Ticker
-		// if err := btk.FetchNonSecure("GET", "/market/ticker?sym=THB_USDT", nil, &res); err != nil {
-		// 	sugar.Errorln(err)
-		// }
-		// sugar.Debugf(" %+v\n", res["THB_USDT"].Last)
+	// 	// var res map[string]btk.Ticker
+	// 	// if err := btk.FetchNonSecure("GET", "/market/ticker?sym=THB_USDT", nil, &res); err != nil {
+	// 	// 	sugar.Errorln(err)
+	// 	// }
+	// 	// sugar.Debugf(" %+v\n", res["THB_USDT"].Last)
 
-		// bal := btk.GetBalances()
-		// fmt.Printf(" Total: %.2f\n", bal.Total)
-		// checkResponseOKX()
-		os.Exit(0)
-	}
+	// 	// bal := btk.GetBalances()
+	// 	// fmt.Printf(" Total: %.2f\n", bal.Total)
+	// 	// checkResponseOKX()
+	// 	os.Exit(0)
+	// }
 
 	sugar.Infoln("OKX preplare initializing...")
 	rpiOs.Initializer(sugar)
