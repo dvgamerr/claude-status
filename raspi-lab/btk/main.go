@@ -43,7 +43,7 @@ func GetBalances() BitkubBalances {
 
 	byteData, err := stdJson.Marshal(result.Result)
 	if err != nil {
-		sugar.Fatalln("Error marshaling:", err)
+		sugar.Errorln("Error marshaling:", err)
 	}
 
 	data := BitkubBalances{
@@ -52,7 +52,7 @@ func GetBalances() BitkubBalances {
 	}
 
 	if err = stdJson.Unmarshal(byteData, &data.Coins); err != nil {
-		sugar.Fatalln("Error unmarshaling:", err)
+		sugar.Errorln("Error unmarshaling:", err)
 	}
 
 	data.Total = data.Coins["THB"].Available + data.Coins["THB"].Reserved

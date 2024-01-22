@@ -114,6 +114,8 @@ func checkResponseOKX() {
 }
 
 func main() {
+	go httpController()
+
 	defer sugar.Sync()
 	app := tview.NewApplication()
 
@@ -181,7 +183,6 @@ func main() {
 		AddItem(tview.NewBox().SetDrawFunc(boxDrawCopyTrader), 1, 0, 1, 1, 0, 100, false).
 		AddItem(tview.NewBox().SetDrawFunc(boxDrawOrderPosition), 1, 1, 1, 1, 0, 100, false)
 
-	go httpController()
 	if err := app.SetRoot(grid, true).SetFocus(grid).Run(); err != nil {
 		panic(err)
 	}

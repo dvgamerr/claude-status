@@ -88,7 +88,8 @@ func (a *Account) GetHistoryPositions() {
 	var err error
 	a.Historys, err = GETAccountPositionsHistory()
 	if err != nil {
-		sugar.Fatalln(err)
+		sugar.Errorln(err)
+		return
 	}
 
 	a.TodayPnL = 0
@@ -124,7 +125,8 @@ func (a *Account) GetTreaders() {
 	var err error
 	a.Traders, err = GETCopytradingCurrentLeadTraders()
 	if err != nil {
-		sugar.Fatalln(err)
+		sugar.Errorln(err)
+		return
 	}
 }
 func (a *Account) GetFulfill() {
@@ -132,7 +134,8 @@ func (a *Account) GetFulfill() {
 
 	asset, err := GETAssetBills(117)
 	if err != nil {
-		sugar.Fatalln(err)
+		sugar.Errorln(err)
+		return
 	}
 	a.Fulfill = 0
 	for _, e := range asset {
@@ -159,21 +162,24 @@ func (a *Account) GetBalances() {
 	go func() {
 		asset, err = GETAssetBalances()
 		if err != nil {
-			sugar.Fatalln(err)
+			sugar.Errorln(err)
+			return
 		}
 		bWg.Done()
 	}()
 	go func() {
 		account, err = GETAccountBalances()
 		if err != nil {
-			sugar.Fatalln(err)
+			sugar.Errorln(err)
+			return
 		}
 		bWg.Done()
 	}()
 	go func() {
 		saving, err = GETFinanceSavingsBalance()
 		if err != nil {
-			sugar.Fatalln(err)
+			sugar.Errorln(err)
+			return
 		}
 		bWg.Done()
 	}()

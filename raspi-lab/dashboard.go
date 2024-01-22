@@ -35,19 +35,6 @@ func boxDrawStatsValue(screen tcell.Screen, x int, y int, width int, height int)
 	tview.Print(screen, rpiOs.GPUTemp, x+14, y+2, width, tview.AlignLeft, tcell.ColorWhite)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", mem.Percent(), mem.UsedText()), x, y+3, width, tview.AlignLeft, tcell.ColorWhite)
 
-	aliveIcon := "🟢"
-	deadIcon := "⭕"
-	for i := 0; i < len(stats.IPAide); i++ {
-		e := stats.IPAide[i]
-		if e.IsWait() {
-			tview.Print(screen, "🙄", x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorYellow)
-		} else if !e.IsOpened() {
-			tview.Print(screen, deadIcon, x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorRed)
-		} else {
-			tview.Print(screen, aliveIcon, x-(len(aliveIcon)*i), y+4, width, tview.AlignRight, tcell.ColorGreen)
-		}
-	}
-
 	k8sLabel := "HTTP"
 	k8sColor := tcell.ColorGreen
 	if !stats.IPK8S.IsOpened() {
@@ -61,6 +48,20 @@ func boxDrawStatsValue(screen tcell.Screen, x int, y int, width int, height int)
 		dnsColor = tcell.ColorRed
 	}
 	tview.Print(screen, dnsLabel, x+1+len(k8sLabel), y+4, width, tview.AlignLeft, dnsColor)
+
+	sX := x + 5 + len(k8sLabel) + len(dnsLabel)
+	deadIcon := "[x]"
+	for i := 0; i < len(stats.IPAide); i++ {
+		aliveIcon := fmt.Sprintf("[%d]", i+1)
+		e := stats.IPAide[i]
+		if e.IsWait() {
+			tview.Print(screen, "[ ]", sX+(3*i), y+4, 4, tview.AlignLeft, tcell.ColorYellow)
+		} else if !e.IsOpened() {
+			tview.Print(screen, deadIcon, sX+(len(deadIcon)*i), y+4, 4, tview.AlignLeft, tcell.ColorRed)
+		} else {
+			tview.Print(screen, aliveIcon, sX+(len(aliveIcon)*i), y+4, 4, tview.AlignLeft, tcell.ColorGreen)
+		}
+	}
 
 	return 0, 0, 0, 0
 }
