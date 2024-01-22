@@ -32,7 +32,7 @@ func init() {
 
 	logger = NewLogger(&lab)
 	sugar = logger.Sugar()
-	aNum = accounting.Accounting{Precision: 2, Thousand: ",", Format: "%s%v"}
+	aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
 
 	// Load environment variables from .env
 	if _, err := os.Stat(".env"); err != nil {

@@ -24,10 +24,11 @@ type IPAddr struct {
 }
 
 type IPPinger struct {
-	Pinger *ping.Pinger
-	Ico    string
-	Addr   string
-	Err    error
+	Pinger   *ping.Pinger
+	UpIcon   string
+	DownIcon string
+	Addr     string
+	Err      error
 }
 
 func (ip *IPPinger) IsOpened() bool {
@@ -47,10 +48,10 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 	s.IPK8S = &IPAddr{Addr: "103.206.205.154", Port: 443}
 	s.IPDNS = &IPAddr{Addr: "10.203.1.202", Port: 53}
 	s.IPAide = []*IPPinger{
-		{Addr: "103.206.205.254", Ico: "{⌂}"},
-		{Addr: "10.203.1.201", Ico: "[1]"},
-		{Addr: "10.203.1.202", Ico: "[2]"},
-		{Addr: "10.203.1.203", Ico: "[3]"},
+		{Addr: "103.206.205.254", UpIcon: " → ", DownIcon: " × "},
+		{Addr: "10.203.1.201", UpIcon: "[1]", DownIcon: "[×]"},
+		{Addr: "10.203.1.202", UpIcon: "[2]", DownIcon: "[×]"},
+		{Addr: "10.203.1.203", UpIcon: "[3]", DownIcon: "[×]"},
 	}
 
 	go func() {
