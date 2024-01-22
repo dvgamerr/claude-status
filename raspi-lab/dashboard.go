@@ -80,37 +80,44 @@ var aNum accounting.Accounting
 
 // Define a draw function to draw a cross in the center of each cell.
 func boxDrawOverview(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
+	labelBalance := "OKX Est"
+	moneyBalance := aNum.FormatMoney(okxAcc.TotalTrade + okxAcc.TotalFund)
+	fundingText := aNum.FormatMoney(okxAcc.TotalFund)
+	// fulfillText := aNum.FormatMoney(okxAcc.Fulfill)
+	okxPnLMoney, okxPnLColor := getAmountUsdtColor(okxAcc.TotalTrade+okxAcc.TotalFund-okxAcc.Fulfill, true)
+
+	lenBalance := 9 - len(moneyBalance)
+	tview.Print(screen, labelBalance, x+5, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	tview.Print(screen, moneyBalance, x+5+len(labelBalance)+lenBalance, y+1, width, tview.AlignLeft, tcell.ColorWhite)
+
+	pX := x + 5 + len(labelBalance) + lenBalance + len(moneyBalance) + 1
+	tview.Print(screen, "[", pX, y+1, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, fundingText, pX+2, y+1, width, tview.AlignLeft, tcell.ColorGreen)
+	tview.Print(screen, "]", pX+len(fundingText)+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
+
+	pX = x + 5 + len(labelBalance) + lenBalance + len(moneyBalance) + 1 + len(okxPnLMoney) + 1
+	tview.Print(screen, "[", pX, y+1, width, tview.AlignLeft, tcell.ColorGray)
+	tview.Print(screen, okxPnLMoney, pX+2, y+1, width, tview.AlignLeft, okxPnLColor)
+	tview.Print(screen, "]", pX+len(okxPnLMoney)+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
+
 	okxTodayPnLText, okxTodayPnLColor := getAmountUsdtColor(okxAcc.TodayPnL, true)
-	balanceName := "OKX Est"
-	balanceText := aNum.FormatMoney(okxAcc.Total)
-	fulfillText := aNum.FormatMoney(okxAcc.Fulfill)
-	okxPnLText, okxPnLColor := getAmountUsdtColor(okxAcc.Total-okxAcc.Fulfill, true)
-	posBalanceText := 11 - len(balanceText)
-
-	tview.Print(screen, balanceName, x+5, y+1, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorWhite)
-
-	totalPnLPos := x + 3 + len(balanceName) + len(fulfillText)
-	tview.Print(screen, "[", totalPnLPos+posBalanceText, y+1, width, tview.AlignLeft, tcell.ColorGray)
-	tview.Print(screen, okxPnLText, totalPnLPos+posBalanceText+2, y+1, width, tview.AlignLeft, okxPnLColor)
-	tview.Print(screen, "]", totalPnLPos+len(okxPnLText)+posBalanceText+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
-
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+15+(len(balanceText)-len(okxTodayPnLText)), y+2, width, tview.AlignLeft, okxTodayPnLColor)
+	lenBalance = 10 - len(okxTodayPnLText)
+	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+5+6+lenBalance, y+2, width, tview.AlignLeft, okxTodayPnLColor)
 
-	balanceName = "BTK Est"
-	btkFulfill := btkAcc.Fulfill
-	btkBalance := btkAcc.Total
-	btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
-	balanceText = aNum.FormatMoney(btkBalance)
-	posBalanceText = 11 - len(balanceText)
-	tview.Print(screen, balanceName, x+5, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
-	tview.Print(screen, balanceText, x+4+len(balanceName)+posBalanceText, y+4, width, tview.AlignLeft, tcell.ColorWhite)
+	// labelBalance = "BTK Est"
+	// btkFulfill := btkAcc.Fulfill
+	// btkBalance := btkAcc.Total
+	// btkPnLText, btkPnLColor := getAmountUsdtColor(btkBalance-btkFulfill, true)
+	// moneyBalance = aNum.FormatMoney(btkBalance)
+	// lenBalance = 11 - len(moneyBalance)
+	// tview.Print(screen, labelBalance, x+5, y+4, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
+	// tview.Print(screen, moneyBalance, x+4+len(labelBalance)+lenBalance, y+4, width, tview.AlignLeft, tcell.ColorWhite)
 
-	totalPnLPos = x + 5 + len(balanceName) + len(btkPnLText)
-	tview.Print(screen, "[", totalPnLPos+posBalanceText+1, y+4, width, tview.AlignLeft, tcell.ColorGray)
-	tview.Print(screen, btkPnLText, totalPnLPos+posBalanceText+3, y+4, width, tview.AlignLeft, btkPnLColor)
-	tview.Print(screen, "]", totalPnLPos+posBalanceText+len(btkPnLText)+4, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	// pX := x + 5 + len(labelBalance) + len(btkPnLText)
+	// tview.Print(screen, "[", pX+lenBalance+1, y+4, width, tview.AlignLeft, tcell.ColorGray)
+	// tview.Print(screen, btkPnLText, pX+lenBalance+3, y+4, width, tview.AlignLeft, btkPnLColor)
+	// tview.Print(screen, "]", pX+lenBalance+len(btkPnLText)+4, y+4, width, tview.AlignLeft, tcell.ColorGray)
 
 	return 0, 0, 0, 0
 }

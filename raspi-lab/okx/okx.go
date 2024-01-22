@@ -13,7 +13,8 @@ var sugar *zap.SugaredLogger
 type Account struct {
 	wg           *sync.WaitGroup
 	Fulfill      float64
-	Total        float64
+	TotalTrade   float64
+	TotalFund    float64
 	TodayPnL     float64
 	TodayPercent float64
 	Traders      []map[string]interface{}
@@ -185,17 +186,18 @@ func (a *Account) GetBalances() {
 	}()
 	bWg.Wait()
 
-	a.Total = 0
+	a.TotalTrade = 0
 	var bal float64
-	if bal, err = ParseMoney(asset["bal"]); err != nil {
-		sugar.Errorln(err)
-	}
-	a.Total += bal
-
 	if bal, err = ParseMoney(account["totalEq"]); err != nil {
 		sugar.Errorln(err)
 	}
-	a.Total += bal
+	a.TotalTrade += bal
+
+	a.TotalFund = 0
+	if bal, err = ParseMoney(asset["bal"]); err != nil {
+		sugar.Errorln(err)
+	}
+	a.TotalFund += bal
 
 	for _, finn := range saving {
 		if finn["ccy"] != "USDT" {
@@ -205,7 +207,7 @@ func (a *Account) GetBalances() {
 		if bal, err = ParseMoney(finn["amt"]); err != nil {
 			sugar.Errorln(err)
 		}
-		a.Total += bal
+		a.TotalFund += bal
 	}
 }
 
