@@ -262,7 +262,7 @@ func renderHistoryTable(screen tcell.Screen, e map[string]interface{}, x int, y 
 
 	// percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
 
-	// feeText := aNum.FormatMoney(pnl.Fee)
+	feeText := aNum.FormatMoney(pnl.Fee)
 	closedText := aNum.FormatMoney(pnl.Closed)
 	percentText := showPercent(pnl.PnLPercent)
 
@@ -278,7 +278,7 @@ func renderHistoryTable(screen tcell.Screen, e map[string]interface{}, x int, y 
 
 	const (
 		colTime   = 5
-		colCcy    = 4
+		colCcy    = 5
 		colDirect = 5
 		colClosed = 9
 		colPnL    = 8
@@ -288,7 +288,7 @@ func renderHistoryTable(screen tcell.Screen, e map[string]interface{}, x int, y 
 
 	const (
 		labelPnL = "PnL:"
-		// labelFee = "Fee:"
+		labelFee = "Fee:"
 	)
 
 	sX := x + 3
@@ -301,7 +301,7 @@ func renderHistoryTable(screen tcell.Screen, e map[string]interface{}, x int, y 
 	tview.Print(screen, "(", (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL, y, 1, tview.AlignLeft, tcell.ColorGrey)
 	tview.Print(screen, percentText, (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL, y, colPnLPer, tview.AlignRight, pnlColor)
 	tview.Print(screen, ")", (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL+colPnLPer, y, 1, tview.AlignLeft, tcell.ColorGrey)
-	// tview.Print(screen, labelFee, (p*6)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1, y, len(labelFee), tview.AlignLeft, tcell.ColorGrey)
-	// tview.Print(screen, feeText, (p*7)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1+len(labelFee), y, colFee, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, labelFee, (p*6)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL+colPnLPer+1, y, len(labelFee), tview.AlignLeft, tcell.ColorGrey)
+	tview.Print(screen, feeText, (p*7)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL+colPnLPer+1+len(labelFee), y, colFee, tview.AlignLeft, tcell.ColorWhite)
 
 }
