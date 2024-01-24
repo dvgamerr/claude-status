@@ -86,7 +86,6 @@ func GETCopytradingCurrentLeadTraders() ([]map[string]interface{}, error) {
 }
 func GETAccountPositionsHistory() ([]map[string]interface{}, error) {
 	// Rate Limit: 1 request per 10 seconds
-	sugar.Infof("GET /api/v5/account/positions-history?before=%d", GetStartOfDate(0, 0, 0, -7).UnixMilli())
 	var res ResponseAPI
 	if err := Fetch("GET", fmt.Sprintf("/api/v5/account/positions-history?before=%d", GetStartOfDate(0, 0, 0, -7).UnixMilli()), nil, &res); err != nil {
 		return []map[string]interface{}{}, err
@@ -99,7 +98,6 @@ func GETAccountPositionsHistory() ([]map[string]interface{}, error) {
 }
 func GETAccountPositions() ([]map[string]interface{}, error) {
 	// Rate Limit: 1 request per 10 seconds
-	sugar.Infof("GET /api/v5/account/positions")
 	var res ResponseAPI
 	if err := Fetch("GET", "/api/v5/account/positions", nil, &res); err != nil {
 		return []map[string]interface{}{}, err

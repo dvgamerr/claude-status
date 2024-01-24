@@ -213,76 +213,95 @@ func boxDrawOrderPosition(screen tcell.Screen, x int, y int, width int, height i
 		tview.Print(screen, "│", x, y+i+1, width, tview.AlignLeft, tcell.ColorGrey)
 	}
 
+	totalOngoing := len(okxAcc.Ongoing)
 	totalHistory := len(okxAcc.Historys)
 	lineDate := ""
 
+	for i := totalOngoing - 1; i >= 0; i-- {
+		renderHistoryTable(screen, okxAcc.Ongoing[i], x, y+(totalOngoing-1)-i+1, 1, false)
+	}
+
+	tview.Print(screen, getBorderTop(int(float64(width)/1.5)), x, y+totalOngoing+1, width, tview.AlignCenter, tcell.ColorGrey)
+
 	l := 0
-	for i := 0; i < height; i++ {
+	for i := totalOngoing; i < height; i++ {
 		if i > totalHistory {
 			continue
 		}
 		e := okxAcc.Historys[totalHistory-(i-l)-1]
+
 		dateText := okx.ParseUnixDate(e["uTime"]).Format(okx.YYYYMMDD)
-		if dateText != lineDate && dateText != time.Now().Format(okx.YYYYMMDD) {
+		if dateText != lineDate {
 			if i < height-2 {
 				lineDate = dateText
-				tview.Print(screen, dateText, x+2, y+i+1, width, tview.AlignLeft, tcell.ColorAqua)
+				tview.Print(screen, dateText, x+2, y+i+2, width, tview.AlignLeft, tcell.ColorAqua)
 				l++
 			}
 			continue
 		}
 
-		pnl := okx.CalcRealizedPnL(e)
-
-		timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
-		mgnMode := e["mgnMode"].(string)
-		uly := e["uly"].(string)
-		ccy := uly[:len(uly)-5]
-
-		// percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
-
-		feeText := aNum.FormatMoney(pnl.Fee)
-		closedText := aNum.FormatMoney(pnl.Closed)
-		percentText := showPercent(pnl.PnLPercent)
-
-		// closeTag := ")"
-		// if pnl.PnLPercent-percent > 0.01 {
-		// 	orderType := e["type"].(string)
-		// 	closeTag = "|" + orderType + "|" + showPercent(percent) + ")"
-		// }
-		pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
-
-		const (
-			colTime   = 5
-			colCcy    = 4
-			colType   = 6
-			colClosed = 9
-			colPnL    = 8
-			colPnLPer = 8
-			colFee    = 6
-		)
-
-		const (
-			labelPnL = "PnL:"
-			labelFee = "Fee:"
-		)
-
-		func(x int, y int, p int) {
-			sX := x + 3
-			tview.Print(screen, timeText, sX, y, colTime, tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, ccy, (p*1)+sX+colTime, y, colCcy, tview.AlignLeft, tcell.ColorWhite)
-			tview.Print(screen, mgnMode, (p*2)+sX+colTime+colCcy, y, colType, tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, closedText, (p*3)+sX+colTime+colCcy+colType, y, colClosed, tview.AlignRight, tcell.ColorAqua)
-			tview.Print(screen, labelPnL, (p*4)+sX+colTime+colCcy+colType+colClosed, y, len(labelPnL), tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, pnlText, (p*4)+sX+colTime+colCcy+colType+colClosed+len(labelPnL), y, colPnL, tview.AlignRight, pnlColor)
-			tview.Print(screen, "(", (p*5)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL, y, 1, tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, percentText, (p*5)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL, y, colPnLPer, tview.AlignRight, pnlColor)
-			tview.Print(screen, ")", (p*5)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer, y, 1, tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, labelFee, (p*6)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1, y, len(labelFee), tview.AlignLeft, tcell.ColorGrey)
-			tview.Print(screen, feeText, (p*7)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1+len(labelFee), y, colFee, tview.AlignLeft, tcell.ColorWhite)
-
-		}(x, y+i+1, 1)
+		renderHistoryTable(screen, e, x, y+i+2, 1, true)
 	}
 
 	return 0, 0, 0, 0
+}
+
+func renderHistoryTable(screen tcell.Screen, e map[string]interface{}, x int, y int, p int, realizedPnL bool) {
+
+	pnl := okx.CalcRealizedPnL(e)
+
+	timeText := okx.ParseUnixDate(e["uTime"]).Format(okx.HHmm)
+	direction := ""
+	if e["direction"] == nil {
+		direction = e["posSide"].(string)
+	} else {
+		direction = e["direction"].(string)
+	}
+	instId := e["instId"].(string)
+	ccy := instId[:len(instId)-10]
+
+	// percent := pnl.PnL * 100 / (pnl.Closed / pnl.Lever)
+
+	// feeText := aNum.FormatMoney(pnl.Fee)
+	closedText := aNum.FormatMoney(pnl.Closed)
+	percentText := showPercent(pnl.PnLPercent)
+
+	// closeTag := ")"
+	// if pnl.PnLPercent-percent > 0.01 {
+	// 	orderType := e["type"].(string)
+	// 	closeTag = "|" + orderType + "|" + showPercent(percent) + ")"
+	// }
+	pnlText, pnlColor := getAmountUsdtColor(pnl.PnL, true)
+	if realizedPnL {
+		pnlText, pnlColor = getAmountUsdtColor(pnl.PnLRealized, true)
+	}
+
+	const (
+		colTime   = 5
+		colCcy    = 4
+		colDirect = 5
+		colClosed = 9
+		colPnL    = 8
+		colPnLPer = 8
+		colFee    = 6
+	)
+
+	const (
+		labelPnL = "PnL:"
+		// labelFee = "Fee:"
+	)
+
+	sX := x + 3
+	tview.Print(screen, timeText, sX, y, colTime, tview.AlignLeft, tcell.ColorGrey)
+	tview.Print(screen, ccy, (p*1)+sX+colTime, y, colCcy, tview.AlignLeft, tcell.ColorWhite)
+	tview.Print(screen, direction, (p*2)+sX+colTime+colCcy, y, colDirect, tview.AlignLeft, tcell.ColorGrey)
+	tview.Print(screen, closedText, (p*3)+sX+colTime+colCcy+colDirect, y, colClosed, tview.AlignRight, tcell.ColorAqua)
+	tview.Print(screen, labelPnL, (p*4)+sX+colTime+colCcy+colDirect+colClosed, y, len(labelPnL), tview.AlignLeft, tcell.ColorGrey)
+	tview.Print(screen, pnlText, (p*4)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL), y, colPnL, tview.AlignRight, pnlColor)
+	tview.Print(screen, "(", (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL, y, 1, tview.AlignLeft, tcell.ColorGrey)
+	tview.Print(screen, percentText, (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL, y, colPnLPer, tview.AlignRight, pnlColor)
+	tview.Print(screen, ")", (p*5)+sX+colTime+colCcy+colDirect+colClosed+len(labelPnL)+colPnL+colPnLPer, y, 1, tview.AlignLeft, tcell.ColorGrey)
+	// tview.Print(screen, labelFee, (p*6)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1, y, len(labelFee), tview.AlignLeft, tcell.ColorGrey)
+	// tview.Print(screen, feeText, (p*7)+sX+colTime+colCcy+colType+colClosed+len(labelPnL)+colPnL+colPnLPer+1+len(labelFee), y, colFee, tview.AlignLeft, tcell.ColorWhite)
+
 }

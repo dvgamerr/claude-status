@@ -18,6 +18,7 @@ type Account struct {
 	TodayPnL     float64
 	TodayPercent float64
 	Traders      []map[string]interface{}
+	Ongoing      []map[string]interface{}
 	Historys     []map[string]interface{}
 }
 
@@ -46,11 +47,12 @@ const YYYYMMDD = "2006-01-02"
 const HHmm = "15:04"
 
 type RealizedPnL struct {
-	PnL        float64
-	Closed     float64
-	Lever      float64
-	PnLPercent float64
-	Fee        float64
+	PnL         float64
+	PnLRealized float64
+	PnLPercent  float64
+	Closed      float64
+	Lever       float64
+	Fee         float64
 }
 
 func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
@@ -63,8 +65,15 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	// orderType := e["type"].(string)
 
 	realizedPnl, _ := ParseMoney(e["realizedPnl"])
-	pnl, _ := ParseMoney(e["pnl"])
-	pnlRatio, _ := ParsePercent(e["pnlRatio"])
+	pnl, _ := ParseMoney(e["upl"])
+	if e["upl"] == nil {
+		pnl, _ = ParseMoney(e["pnl"])
+	}
+
+	pnlRatio, _ := ParsePercent(e["uplRatio"])
+	if e["uplRatio"] == nil {
+		pnlRatio, _ = ParsePercent(e["pnlRatio"])
+	}
 
 	fee, _ := ParseMoney(e["fee"])
 	fundingFee, _ := ParseMoney(e["fundingFee"])
@@ -75,18 +84,24 @@ func CalcRealizedPnL(e map[string]interface{}) *RealizedPnL {
 	// }
 
 	return &RealizedPnL{
-		PnL:        realizedPnl,
-		Closed:     closed,
-		Lever:      lever,
-		PnLPercent: pnlRatio * 100,
-		Fee:        fee + fundingFee,
+		PnL:         pnl,
+		PnLRealized: realizedPnl,
+		Closed:      closed,
+		Lever:       lever,
+		PnLPercent:  pnlRatio * 100,
+		Fee:         fee + fundingFee,
 	}
 }
 
 func (a *Account) GetHistoryPositions() {
 	defer a.WaitDone()
-
 	var err error
+	a.Ongoing, err = GETAccountPositions()
+	if err != nil {
+		sugar.Errorln(err)
+		return
+	}
+
 	a.Historys, err = GETAccountPositionsHistory()
 	if err != nil {
 		sugar.Errorln(err)
