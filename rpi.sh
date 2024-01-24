@@ -24,6 +24,7 @@ if [[ "$1" == "--update" ]]; then
 fi
 
 if [[ "$1" == "--reload" ]]; then
+  git checkout .
   curl -s -o /dev/null -X PUT $url/_exit
   echo Signal exiting...
 fi
