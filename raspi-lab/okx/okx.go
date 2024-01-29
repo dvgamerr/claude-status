@@ -176,28 +176,28 @@ func (a *Account) GetBalances() {
 	)
 
 	go func() {
+		defer bWg.Done()
 		asset, err = GETAssetBalances()
 		if err != nil {
 			sugar.Errorln(err)
 			return
 		}
-		bWg.Done()
 	}()
 	go func() {
+		defer bWg.Done()
 		account, err = GETAccountBalances()
 		if err != nil {
 			sugar.Errorln(err)
 			return
 		}
-		bWg.Done()
 	}()
 	go func() {
+		defer bWg.Done()
 		saving, err = GETFinanceSavingsBalance()
 		if err != nil {
 			sugar.Errorln(err)
 			return
 		}
-		bWg.Done()
 	}()
 	bWg.Wait()
 

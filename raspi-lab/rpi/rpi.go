@@ -22,12 +22,12 @@ func (s *StatsOS) GetOSStats() {
 	w := &sync.WaitGroup{}
 	w.Add(2)
 	go func() {
+		defer w.Done()
 		s.CPUTemp = CPUTemp()
-		w.Done()
 	}()
 	go func() {
+		defer w.Done()
 		s.GPUTemp = GPUTemp()
-		w.Done()
 	}()
 	w.Wait()
 }
