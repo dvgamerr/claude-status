@@ -1,10 +1,12 @@
 #!/usr/bin/bash
 
+pushd /home/pi/lab > /dev/null
+
 url=http://localhost:21280
 rpi=raspi-lab
+
 # Check and update the 'aide-pi' repository
 check_updated () {
-  cd /home/pi/lab > /dev/null
   echo Checking \`aide-pi\` latest version...
   /usr/bin/git pull origin
 }
