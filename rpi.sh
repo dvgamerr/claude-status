@@ -1,7 +1,5 @@
 #!/usr/bin/bash
 
-echo Running \`aide-pi\`...
-
 pushd /home/pi/lab > /dev/null
 
 url=http://localhost:21280
@@ -80,7 +78,7 @@ do
       break  # Exit the loop
     fi
   else
-    echo a "$(tty)" not is tty1 or not build raspi-lab.
+    echo a \"$(tty)\" not is tty1 or not build raspi-lab.
     break
   fi
 done
