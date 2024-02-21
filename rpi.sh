@@ -8,6 +8,7 @@ rpi=raspi-lab
 # Check and update the 'aide-pi' repository
 check_updated () {
   echo Checking \`aide-pi\` latest version...
+  /usr/bin/git checkout .
   /usr/bin/git pull origin
 }
 
@@ -16,7 +17,7 @@ build_raspi_lab () {
   cd /home/pi/lab > /dev/null
   echo "``$rpi`` compiling..."
   go get ./raspi-lab/ > /dev/null
-  go build -o /home/pi/lab/bin/$rpi ./raspi-lab/ > /dev/null
+  go build -o /home/pi/lab/bin/$rpi -buildvcs=false ./raspi-lab/ > /dev/null
 }
 
 if [[ "$1" == "--update" ]]; then

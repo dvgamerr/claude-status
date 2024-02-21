@@ -44,12 +44,10 @@ func init() {
 	}
 
 	// Load environment variables from .env
-	if _, err = os.Stat(".env"); err != nil {
-		logger.Fatal("error .env not found: " + err.Error())
-	}
-
-	if err = godotenv.Load(); err != nil {
-		logger.Fatal(err.Error())
+	if _, err = os.Stat(".env"); err == nil {
+		if err = godotenv.Load(); err != nil {
+			logger.Fatal(err.Error())
+		}
 	}
 
 	if lab.Tty != "" {
