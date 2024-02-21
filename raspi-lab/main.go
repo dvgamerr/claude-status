@@ -128,6 +128,7 @@ func main() {
 		// 	sugar.Fatalln(err)
 		// }
 		// fmt.Print(data)
+		fmt.Print("done")
 
 		os.Exit(0)
 	}
@@ -149,14 +150,14 @@ func main() {
 
 	mainLog.Info("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
-	if lab.Tty != "" {
-		go setTickerInterval(1*time.Second, stats.CheckAll)()
-		go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
-		go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
-		go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
-		go setTickerInterval(okxIntervel, btkAcc.GetTotalBalance)()
-		go setTickerInterval(okxIntervel, okxAcc.GetHistoryPositions)()
-	}
+	// if lab.Tty != "" {
+	go setTickerInterval(1*time.Second, stats.CheckAll)()
+	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
+	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
+	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
+	go setTickerInterval(okxIntervel, btkAcc.GetTotalBalance)()
+	go setTickerInterval(okxIntervel, okxAcc.GetHistoryPositions)()
+	// }
 
 	mainLog.Info("Dashboard Renderer...")
 

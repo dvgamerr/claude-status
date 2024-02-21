@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 pushd /home/pi/lab > /dev/null
 
