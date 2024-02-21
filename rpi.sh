@@ -70,6 +70,9 @@ do
   if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/$rpi" ]]; then
     check_updated
     build_raspi_lab
+    if [ $? -ne 0 ]; then
+      exit 1
+    fi
     /home/pi/lab/bin/$rpi --tty $(tty) --db
     reset
 
