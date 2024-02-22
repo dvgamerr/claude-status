@@ -33,7 +33,7 @@ func getLoggingFilepath() (string, error) {
 
 func NewLogger(cli *Args) *zap.Logger {
 	cfg := zap.Config{}
-	if !lab.Develop {
+	if !lab.Develop && !lab.Debug {
 		logging, _ := getLoggingFilepath()
 		cfg = zap.NewProductionConfig()
 		cfg.OutputPaths = []string{logging}

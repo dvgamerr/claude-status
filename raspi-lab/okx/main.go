@@ -20,6 +20,7 @@ func GETAssetBalances() (map[string]interface{}, error) {
 		return map[string]interface{}{}, nil
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data[0])
 	return res.Data[0], nil
 }
 
@@ -37,6 +38,7 @@ func GETAccountBalances() (map[string]interface{}, error) {
 		return map[string]interface{}{}, nil
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data[0])
 	return res.Data[0], nil
 }
 
@@ -55,6 +57,7 @@ func GETAssetBills(t int) ([]map[string]interface{}, error) {
 		return []map[string]interface{}{}, errors.New(res.Msg)
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data)
 	return res.Data, nil
 }
 
@@ -69,6 +72,7 @@ func GETFinanceSavingsBalance() ([]map[string]interface{}, error) {
 		return []map[string]interface{}{}, errors.New(res.Msg)
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data)
 	return res.Data, nil
 }
 func GETCopytradingCurrentLeadTraders() ([]map[string]interface{}, error) {
@@ -82,6 +86,7 @@ func GETCopytradingCurrentLeadTraders() ([]map[string]interface{}, error) {
 		return []map[string]interface{}{}, errors.New(res.Msg)
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data)
 	return res.Data, nil
 }
 func GETAccountPositionsHistory() ([]map[string]interface{}, error) {
@@ -94,6 +99,7 @@ func GETAccountPositionsHistory() ([]map[string]interface{}, error) {
 		return []map[string]interface{}{}, errors.New(res.Msg)
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data)
 	return res.Data, nil
 }
 func GETAccountPositions() ([]map[string]interface{}, error) {
@@ -106,5 +112,6 @@ func GETAccountPositions() ([]map[string]interface{}, error) {
 		return []map[string]interface{}{}, errors.New(res.Msg)
 	}
 
+	sugar.Debugf("Response: %#v\n", res.Data)
 	return res.Data, nil
 }

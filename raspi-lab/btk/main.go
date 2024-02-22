@@ -38,6 +38,7 @@ type Ticker struct {
 func GetBalances() BitkubBalances {
 	var result ResponseAPI
 
+	sugar.Debugf("POST /v3/market/balances")
 	if err := FetchSecure("POST", "/v3/market/balances", nil, &result); err != nil {
 		sugar.Error(err)
 	}
@@ -69,14 +70,19 @@ func GetBalances() BitkubBalances {
 		data.Total += (coin.Available + coin.Reserved) * rate
 		data.Available += coin.Available * rate
 	}
+
+	sugar.Debugf("Response: %#v\n", data)
 	return data
 }
 
 func GetMarketTicker(symbol string) Ticker {
 	var res map[string]Ticker
-	if err := FetchNonSecure("GET", fmt.Sprintf("/market/ticker?sym=%s", symbol), nil, &res); err != nil {
+	url := fmt.Sprintf("/market/ticker?sym=%s", symbol)
+	sugar.Debugf("GET %s", url)
+	if err := FetchNonSecure("GET", url, nil, &res); err != nil {
 		sugar.Errorln(err)
 	}
 
+	sugar.Debugf("Response: %#v\n", res[symbol])
 	return res[symbol]
 }

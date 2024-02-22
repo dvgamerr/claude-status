@@ -19,6 +19,7 @@ import (
 type Args struct {
 	Tty        string `arg:"--tty" help:"tty source"`
 	Develop    bool   `arg:"--dev" help:"develop coding test"`
+	Debug      bool   `arg:"--debug" help:"debug coding test"`
 	DB         bool   `arg:"--db" help:"save history to database"`
 	BlackLight bool   `arg:"--blacklight" help:"turn on or off blacklight display lcd"`
 }
@@ -148,14 +149,23 @@ func main() {
 
 	mainLog.Info("Ticker interval setting...")
 	go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
-	// if lab.Tty != "" {
-	go setTickerInterval(1*time.Second, stats.CheckAll)()
-	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
-	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
-	go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
-	go setTickerInterval(okxIntervel, btkAcc.GetTotalBalance)()
-	go setTickerInterval(okxIntervel, okxAcc.GetHistoryPositions)()
-	// }
+	if lab.Tty != "" {
+		go setTickerInterval(1*time.Second, stats.CheckAll)()
+		go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
+		go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
+		go setTickerInterval(okxIntervel, okxAcc.GetTreaders)()
+		go setTickerInterval(okxIntervel, btkAcc.GetTotalBalance)()
+		go setTickerInterval(okxIntervel, okxAcc.GetHistoryPositions)()
+	}
+
+	if lab.Debug {
+		okxAcc.GetBalances()
+		okxAcc.GetTreaders()
+		okxAcc.GetHistoryPositions()
+
+		btkAcc.GetTotalBalance()
+		return
+	}
 
 	mainLog.Info("Dashboard Renderer...")
 

@@ -101,6 +101,7 @@ func boxDrawOverview(screen tcell.Screen, x int, y int, width int, height int) (
 	tview.Print(screen, "]", pX+len(okxPnLMoney)+3, y+1, width, tview.AlignLeft, tcell.ColorGray)
 
 	okxTodayPnLText, okxTodayPnLColor := getAmountUsdtColor(okxAcc.TodayPnL, true)
+
 	tview.Print(screen, "Today's PnL", x+1, y+2, width, tview.AlignLeft, tcell.ColorDarkSlateGray)
 	lenBalance = 10 - len(okxTodayPnLText)
 	tview.Print(screen, fmt.Sprintf("%s (%s)", okxTodayPnLText, showPercent(okxAcc.TodayPercent)), x+5+6+lenBalance, y+2, width, tview.AlignLeft, okxTodayPnLColor)
