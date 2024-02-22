@@ -42,6 +42,11 @@ trap ctrl_c INT
 eof=false
 
 while true; do
+  # Check if exit flag is set
+  if [ "$eof" = true ]; then
+    break
+  fi
+  
   # Run script on /dev/tty1 if executable exists
   if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/$RPI" ]]; then
     check_updated
@@ -53,10 +58,8 @@ while true; do
 
     reset
 
-    # Check if exit flag is set
-    if [ "$eof" = true ]; then
-      break
-    fi
+  else
+    break
   fi
 done
 
