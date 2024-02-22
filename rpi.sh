@@ -73,7 +73,6 @@ case "$1" in
     exit 0
     ;;
   "--reload")
-    git checkout .
     curl -s -o /dev/null -X PUT "$URL/_exit"
     echo "Signal exiting..."
     ;;
