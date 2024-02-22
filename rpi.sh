@@ -22,42 +22,6 @@ build_raspi_lab() {
   go build -o /home/pi/lab/bin/$RPI -buildvcs=false ./raspi-lab/ > /dev/null
 }
 
-# Handle different actions based on arguments
-case "$1" in
-  "--update")
-    check_updated
-    build_raspi_lab
-    exit 0
-    ;;
-  "--reload")
-    git checkout .
-    curl -s -o /dev/null -X PUT "$URL/_exit"
-    echo "Signal exiting..."
-    ;;
-  "--run")
-    build_raspi_lab
-    /home/pi/lab/bin/$RPI --tty $(tty)
-    ;;
-  "--blacklight")
-    if [[ "$2" == "off" ]]; then
-      for v in $(seq 255 15 -0); do
-        vcgencmd set_backlight $v > /dev/null
-        sleep 0.1
-      done
-    else
-      for v in $(seq 0 15 255); do
-        vcgencmd set_backlight $v > /dev/null
-        sleep 0.2
-      done
-    fi
-    exit 0
-    ;;
-  *)
-    echo "Invalid argument. Usage: $0 [--update, --reload, --run, --blacklight [on|off]]"
-    exit 1
-    ;;
-esac
-
 # Function to handle CTRL+C and set exit flag
 ctrl_c() {
   echo "CTRL+C detected. Exiting..."
@@ -93,10 +57,43 @@ while true; do
     if [ "$eof" = true ]; then
       break
     fi
-  else
-    echo "$(tty)" is not /dev/tty1 or raspi-lab not built.
-    break
   fi
 done
 
 popd  # Pop directory back
+
+# Handle different actions based on arguments
+case "$1" in
+  "--update")
+    check_updated
+    build_raspi_lab
+    exit 0
+    ;;
+  "--reload")
+    git checkout .
+    curl -s -o /dev/null -X PUT "$URL/_exit"
+    echo "Signal exiting..."
+    ;;
+  "--run")
+    build_raspi_lab
+    /home/pi/lab/bin/$RPI --tty $(tty)
+    ;;
+  "--blacklight")
+    if [[ "$2" == "off" ]]; then
+      for v in $(seq 255 15 -0); do
+        vcgencmd set_backlight $v > /dev/null
+        sleep 0.1
+      done
+    else
+      for v in $(seq 0 15 255); do
+        vcgencmd set_backlight $v > /dev/null
+        sleep 0.2
+      done
+    fi
+    exit 0
+    ;;
+  *)
+    echo "Invalid argument. Usage: $0 [--update, --reload, --run, --blacklight [on|off]]"
+    exit 1
+    ;;
+esac
