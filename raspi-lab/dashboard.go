@@ -200,14 +200,14 @@ func boxDrawCopyTrader(screen tcell.Screen, x int, y int, width int, height int)
 	return 0, 0, 0, 0
 }
 
-func checkfoundPositionOrder(posId string) bool {
-	for _, o := range okxAcc.Ongoing {
-		if posId == o["posId"].(string) {
-			return true
-		}
-	}
-	return false
-}
+// func checkfoundPositionOrder(posId string) bool {
+// 	for _, o := range okxAcc.Ongoing {
+// 		if posId == o["posId"].(string) {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
 
 // Define a draw function to draw a cross in the center of each cell.
 func boxDrawOrderPosition(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
@@ -234,7 +234,7 @@ func boxDrawOrderPosition(screen tcell.Screen, x int, y int, width int, height i
 
 	l := 0
 	for i := totalOngoing; i < height; i++ {
-		if i > totalHistory {
+		if i > totalHistory || totalHistory-(i-l)-1 < 0 {
 			continue
 		}
 
