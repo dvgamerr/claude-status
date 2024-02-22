@@ -132,7 +132,9 @@ func (a *Account) GetHistoryPositions() {
 		// totalClosed += closed / lever
 		// a.TodayPnL += pnl
 	}
-	a.TodayPercent += a.TodayPnL * 100 / totalClosed
+	if a.TodayPnL > 0 {
+		a.TodayPercent += a.TodayPnL * 100 / totalClosed
+	}
 }
 
 func (a *Account) GetTreaders() {
