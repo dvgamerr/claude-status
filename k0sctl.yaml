@@ -4,21 +4,24 @@ metadata:
   name: aide-pi
 spec:
   hosts:
-  - ssh:
-      address: 10.203.1.200
-      user: pi
-      port: 22
-      keyPath: ~/.ssh/id_pi200
-    role: controller
-    uploadBinary: false
-    os: debian
+  # - ssh:
+  #     address: 10.203.1.61
+  #     user: pi
+  #     port: 22
+  #     keyPath: ~/.ssh/id_pi200
+  #   role: controller
+  #   uploadBinary: true
+  #   os: debian
   - ssh:
       address: 10.203.1.201
       user: orangepi
       port: 22
       keyPath: ~/.ssh/id_pi201
-    role: worker
-    uploadBinary: true
+    role: controller
+    installFlags:
+      - --enable-worker
+      - --no-taints
+    uploadBinary: false
     os: ubuntu
   - ssh:
       address: 10.203.1.202
@@ -26,10 +29,10 @@ spec:
       port: 22
       keyPath: ~/.ssh/id_pi202
     role: worker
-    uploadBinary: true
+    uploadBinary: false
     os: ubuntu
   k0s:
-    version: 1.28.4+k0s.0
+    version: 1.29.2+k0s.0
     config:
       apiVersion: k0s.k0sproject.io/v1beta1
       kind: ClusterConfig
@@ -46,13 +49,13 @@ spec:
               url: https://helm.traefik.io/traefik
             - name: bitnami
               url: https://charts.bitnami.com/bitnami
-            - name: openebs
-              url: https://openebs.github.io/charts
+            # - name: openebs
+            #   url: https://openebs.github.io/charts
             charts:
-            - name: openebs
-              chartname: openebs/openebs
-              version: "3.9.0"
-              namespace: kube-system
+            # - name: openebs
+            #   chartname: openebs/openebs
+            #   version: "3.9.0"
+            #   namespace: kube-system
             - name: traefik
               chartname: traefik/traefik
               version: "24.0.0"

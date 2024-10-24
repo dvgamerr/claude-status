@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Push directory to /home/pi/lab silently
-pushd /home/pi/lab > /dev/null
+USR=dvgamerr
+# Push directory to /home/$USR/lab silently
+pushd /home/$USR/lab > /dev/null
 
 # Define constants
 URL="http://localhost:21280"
@@ -16,10 +17,10 @@ check_updated() {
 
 # Function to build the '$rpi' executable
 build_raspi_lab() {
-  cd /home/pi/lab > /dev/null
+  cd /home/$USR/lab > /dev/null
   echo "Compiling $RPI..."
   go get ./raspi-lab/ > /dev/null
-  go build -o /home/pi/lab/bin/$RPI -buildvcs=false ./raspi-lab/ > /dev/null
+  go build -o /home/$USR/lab/bin/$RPI -buildvcs=false ./raspi-lab/ > /dev/null
 }
 
 # Function to handle CTRL+C and set exit flag
@@ -48,12 +49,12 @@ while true; do
   fi
   
   # Run script on /dev/tty1 if executable exists
-  if [[ $(tty) == /dev/tty1 && -f "/home/pi/lab/bin/$RPI" ]]; then
+  if [[ $(tty) == /dev/tty1 && -f "/home/$USR/lab/bin/$RPI" ]]; then
     check_updated
     build_raspi_lab
     if_err_exit
 
-    /home/pi/lab/bin/$RPI --tty $(tty) --db
+    /home/$USR/lab/bin/$RPI --tty $(tty) --db
     if_err_exit
 
     reset
@@ -78,7 +79,7 @@ case "$1" in
     ;;
   "--run")
     build_raspi_lab
-    /home/pi/lab/bin/$RPI --tty $(tty)
+    /home/$USR/lab/bin/$RPI --tty $(tty)
     ;;
   "--blacklight")
     if [[ "$2" == "off" ]]; then
