@@ -61,39 +61,39 @@ if [[ $(tty) == /dev/tty1 && -f "/home/$USR/lab/bin/$RPI" ]]; then
 fi
 # done
 
-popd  # Pop directory back
+popd > /dev/null
 
 # # Handle different actions based on arguments
-# case "$1" in
-#   "--update")
-#     check_updated
-#     build_raspi_lab
-#     exit 0
-#     ;;
-#   "--reload")
-#     curl -s -o /dev/null -X PUT "$URL/_exit"
-#     echo "Signal exiting..."
-#     ;;
-#   "--run")
-#     build_raspi_lab
-#     /home/$USR/lab/bin/$RPI --tty $(tty)
-#     ;;
-#   "--blacklight")
-#     if [[ "$2" == "off" ]]; then
-#       for v in $(seq 255 15 -0); do
-#         vcgencmd set_backlight $v > /dev/null
-#         sleep 0.1
-#       done
-#     else
-#       for v in $(seq 0 15 255); do
-#         vcgencmd set_backlight $v > /dev/null
-#         sleep 0.2
-#       done
-#     fi
-#     exit 0
-#     ;;
-#   *)
-#     echo "Invalid argument. Usage: $0 [--update, --reload, --run, --blacklight [on|off]]"
-#     exit 1
-#     ;;
-# esac
+case "$1" in
+  "--update")
+    check_updated
+    build_raspi_lab
+    exit 0
+    ;;
+  "--reload")
+    curl -s -o /dev/null -X PUT "$URL/_exit"
+    echo "Signal exiting..."
+    ;;
+  "--run")
+    build_raspi_lab
+    /home/$USR/lab/bin/$RPI --tty $(tty)
+    ;;
+  "--blacklight")
+    if [[ "$2" == "off" ]]; then
+      for v in $(seq 255 15 -0); do
+        vcgencmd set_backlight $v > /dev/null
+        sleep 0.1
+      done
+    else
+      for v in $(seq 0 15 255); do
+        vcgencmd set_backlight $v > /dev/null
+        sleep 0.2
+      done
+    fi
+    exit 0
+    ;;
+  *)
+    echo "Invalid argument. Usage: $0 [--update, --reload, --run, --blacklight [on|off]]"
+    exit 1
+    ;;
+esac
