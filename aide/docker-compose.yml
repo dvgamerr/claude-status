@@ -1,0 +1,84 @@
+
+name: aide
+services:
+  flowise:
+    image: flowiseai/flowise:latest
+    restart: always
+    container_name: flowiseai
+    environment:
+      # - PORT=${PORT}
+      # - CORS_ORIGINS=${CORS_ORIGINS}
+      # - IFRAME_ORIGINS=${IFRAME_ORIGINS}
+      # - FLOWISE_USERNAME=${FLOWISE_USERNAME}
+      # - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}
+      # - FLOWISE_FILE_SIZE_LIMIT=${FLOWISE_FILE_SIZE_LIMIT}
+      - DISABLE_FLOWISE_TELEMETRY=true
+      - DATABASE_TYPE=aide
+      - DATABASE_PORT=5432
+      - DATABASE_HOST=postgres
+      - DATABASE_NAME=prod_flowise
+      - DATABASE_USER=flowise
+      - DATABASE_PASSWORD=bM66rMIUnmCE
+      # - DATABASE_SSL=${DATABASE_SSL}
+      # - DATABASE_SSL_KEY_BASE64=${DATABASE_SSL_KEY_BASE64}
+      # - APIKEY_STORAGE_TYPE=${APIKEY_STORAGE_TYPE}
+      # - APIKEY_PATH=${APIKEY_PATH}
+      # - SECRETKEY_PATH=${SECRETKEY_PATH}
+      # - FLOWISE_SECRETKEY_OVERWRITE=${FLOWISE_SECRETKEY_OVERWRITE}
+      # - LOG_LEVEL=${LOG_LEVEL}
+      # - LOG_PATH=${LOG_PATH}
+      # - BLOB_STORAGE_PATH=${BLOB_STORAGE_PATH}
+      # - MODEL_LIST_CONFIG_JSON=${MODEL_LIST_CONFIG_JSON}
+      # - GLOBAL_AGENT_HTTP_PROXY=${GLOBAL_AGENT_HTTP_PROXY}
+      # - GLOBAL_AGENT_HTTPS_PROXY=${GLOBAL_AGENT_HTTPS_PROXY}
+      # - GLOBAL_AGENT_NO_PROXY=${GLOBAL_AGENT_NO_PROXY}
+    ports:
+      - '3001:3000'
+    volumes:
+      - ~/.flowise:/root/.flowise
+    entrypoint: /bin/sh -c "sleep 3; flowise start"
+    networks:
+      - flowise
+      - backend
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=aide
+      - POSTGRES_PASSWORD=B8oGYOmx6c
+      - POSTGRES_DB=dvgamerr
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-postgres:/var/lib/postgresql/data
+    networks:
+      - flowise
+      - backend
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - '9000:9000'
+    volumes:
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.xml
+      - db-clickhouse:/var/lib/clickhouse
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_PTRACE
+
+
+networks:
+  backend:
+  flowise:
+
+volumes:
+  db-postgres:
+  db-clickhouse:
