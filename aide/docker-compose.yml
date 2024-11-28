@@ -68,12 +68,27 @@ services:
     volumes:
       - ./clickhouse/config.xml:/etc/clickhouse-server/config.xml
       - db-clickhouse:/var/lib/clickhouse
+    networks:
+      backend:
     cap_add:
       - SYS_NICE
       - NET_ADMIN
       - IPC_LOCK
       - SYS_PTRACE
 
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    container_name: openobserve
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: "me@dvgamerr.app"
+      ZO_ROOT_USER_PASSWORD: "BViQeFXScc71tMfp"
+    ports:
+      - "5080:5080"
+    volumes:
+      - db-openobserve:/data
+    networks:
+      backend:
 
 networks:
   backend:
@@ -81,4 +96,5 @@ networks:
 
 volumes:
   db-postgres:
+  db-openobserve:
   db-clickhouse:
