@@ -67,7 +67,6 @@ popd > /dev/null
 case "$1" in
   "--update")
     check_updated
-    build_raspi_lab
     exit 0
     ;;
   "--reload")

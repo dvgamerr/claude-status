@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
-var sugar *zap.SugaredLogger
+var logger *zerolog.Logger
 
 type Account struct {
 	wg           *sync.WaitGroup
@@ -28,8 +28,8 @@ func (a *Account) WaitDone() {
 	}
 }
 
-func (a *Account) Initializer(zp *zap.SugaredLogger) {
-	sugar = zp
+func (a *Account) Initializer(log *zerolog.Logger) {
+	logger = log
 	a.wg = &sync.WaitGroup{}
 	// Fix
 	a.Fulfill = 2872.57
@@ -98,13 +98,13 @@ func (a *Account) GetHistoryPositions() {
 	var err error
 	a.Ongoing, err = GETAccountPositions()
 	if err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error getting account positions")
 		return
 	}
 
 	a.Historys, err = GETAccountPositionsHistory()
 	if err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error getting account positions history")
 		return
 	}
 
@@ -143,7 +143,7 @@ func (a *Account) GetTreaders() {
 	var err error
 	a.Traders, err = GETCopytradingCurrentLeadTraders()
 	if err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error getting copytrading current lead traders")
 		return
 	}
 }
@@ -152,14 +152,14 @@ func (a *Account) GetFulfill() {
 
 	asset, err := GETAssetBills(117)
 	if err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error getting asset bills")
 		return
 	}
 	a.Fulfill = 0
 	for _, e := range asset {
 		bal, err := ParseMoney(e["bal"])
 		if err != nil {
-			sugar.Errorln(e["bal"], ":", err)
+			logger.Error().Err(err).Interface("balance", e["bal"]).Msg("Error parsing balance")
 		}
 		a.Fulfill += bal
 	}
@@ -181,7 +181,7 @@ func (a *Account) GetBalances() {
 		defer bWg.Done()
 		asset, err = GETAssetBalances()
 		if err != nil {
-			sugar.Errorln(err)
+			logger.Error().Err(err).Msg("Error getting asset balances")
 			return
 		}
 	}()
@@ -189,7 +189,7 @@ func (a *Account) GetBalances() {
 		defer bWg.Done()
 		account, err = GETAccountBalances()
 		if err != nil {
-			sugar.Errorln(err)
+			logger.Error().Err(err).Msg("Error getting account balances")
 			return
 		}
 	}()
@@ -197,7 +197,7 @@ func (a *Account) GetBalances() {
 		defer bWg.Done()
 		saving, err = GETFinanceSavingsBalance()
 		if err != nil {
-			sugar.Errorln(err)
+			logger.Error().Err(err).Msg("Error getting finance savings balance")
 			return
 		}
 	}()
@@ -206,13 +206,13 @@ func (a *Account) GetBalances() {
 	a.TotalTrade = 0
 	var bal float64
 	if bal, err = ParseMoney(account["totalEq"]); err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error parsing total equity")
 	}
 	a.TotalTrade += bal
 
 	a.TotalFund = 0
 	if bal, err = ParseMoney(asset["bal"]); err != nil {
-		sugar.Errorln(err)
+		logger.Error().Err(err).Msg("Error parsing asset balance")
 	}
 	a.TotalFund += bal
 
@@ -222,7 +222,7 @@ func (a *Account) GetBalances() {
 		}
 
 		if bal, err = ParseMoney(finn["amt"]); err != nil {
-			sugar.Errorln(err)
+			logger.Error().Err(err).Msg("Error parsing savings amount")
 		}
 		a.TotalFund += bal
 	}

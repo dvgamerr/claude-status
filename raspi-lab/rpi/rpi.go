@@ -3,7 +3,7 @@ package rpi
 import (
 	"sync"
 
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
 type StatsOS struct {
@@ -11,10 +11,10 @@ type StatsOS struct {
 	GPUTemp string
 }
 
-// var sugar *zap.SugaredLogger
+var logger *zerolog.Logger
 
-func (s *StatsOS) Initializer(zp *zap.SugaredLogger) {
-	// sugar = l
+func (s *StatsOS) Initializer(log *zerolog.Logger) {
+	logger = log
 	s.GetOSStats()
 }
 

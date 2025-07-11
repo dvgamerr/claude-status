@@ -30,13 +30,12 @@ func httpController() {
 		apiPort = "21280"
 	}
 
-	sugar.Infof("Listen backend port: %s", apiPort)
+	logger.Info().Msgf("Listen backend port: %s", apiPort)
 	app.Listen(fmt.Sprintf(":%s", apiPort))
 }
 
 func delayedExit() {
-	sugar.Infoln("Signal Exiting...")
-	sugar.Sync()
+	logger.Info().Msg("Signal Exiting...")
 	time.Sleep(200 * time.Millisecond)
 	fmt.Print("\033[H\033[2J")
 	os.Exit(0)

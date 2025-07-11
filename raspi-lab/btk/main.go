@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/rs/zerolog/log"
 )
 
 var stdJson = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -38,14 +39,14 @@ type Ticker struct {
 func GetBalances() BitkubBalances {
 	var result ResponseAPI
 
-	sugar.Debugf("POST /v3/market/balances")
+	log.Debug().Msg("POST /v3/market/balances")
 	if err := FetchSecure("POST", "/v3/market/balances", nil, &result); err != nil {
-		sugar.Error(err)
+		log.Error().Err(err).Msg("Error fetching balances")
 	}
 
 	byteData, err := stdJson.Marshal(result.Result)
 	if err != nil {
-		sugar.Errorln("Error marshaling:", err)
+		log.Error().Err(err).Msg("Error marshaling")
 	}
 
 	data := BitkubBalances{
@@ -55,7 +56,7 @@ func GetBalances() BitkubBalances {
 	}
 
 	if err = stdJson.Unmarshal(byteData, &data.Coins); err != nil {
-		sugar.Errorln("Error unmarshaling:", err)
+		log.Error().Err(err).Msg("Error unmarshaling")
 	}
 	for ccy, coin := range data.Coins {
 		if coin.Available == 0 && coin.Reserved == 0 {
@@ -71,18 +72,18 @@ func GetBalances() BitkubBalances {
 		data.Available += coin.Available * rate
 	}
 
-	sugar.Debugf("Response: %#v\n", data)
+	log.Debug().Interface("data", data).Msg("Response")
 	return data
 }
 
 func GetMarketTicker(symbol string) Ticker {
 	var res map[string]Ticker
 	url := fmt.Sprintf("/market/ticker?sym=%s", symbol)
-	sugar.Debugf("GET %s", url)
+	log.Debug().Msgf("GET %s", url)
 	if err := FetchNonSecure("GET", url, nil, &res); err != nil {
-		sugar.Errorln(err)
+		log.Error().Err(err)
 	}
 
-	sugar.Debugf("Response: %#v\n", res[symbol])
+	log.Debug().Msgf("Response: %#v\n", res[symbol])
 	return res[symbol]
 }

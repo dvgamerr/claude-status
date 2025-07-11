@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/go-ping/ping"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog"
 )
 
-var sugar *zap.SugaredLogger
+var logger *zerolog.Logger
 
 type StatsOnline struct {
 	IPK8S  *IPAddr
@@ -42,8 +42,8 @@ func (ip *IPAddr) IsOpened() bool {
 	return ip.Err == nil
 }
 
-func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
-	sugar = zp
+func (s *StatsOnline) Initializer(log *zerolog.Logger) {
+	logger = log
 
 	s.IPK8S = &IPAddr{Addr: "103.206.205.154", Port: 443}
 	s.IPDNS = &IPAddr{Addr: "10.203.1.202", Port: 53}
@@ -58,7 +58,7 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 		s.CheckAll()
 		for _, e := range s.IPAide {
 			if e.Pinger, e.Err = ping.NewPinger(e.Addr); e.Err != nil {
-				sugar.Errorln(e.Err)
+				logger.Error().Err(e.Err).Msg("Error creating pinger")
 			}
 			e.Pinger.Timeout = 500 * time.Millisecond
 			e.Pinger.Count = 3
@@ -67,7 +67,7 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 			}
 			// Blocks until finished.
 			if err := e.Pinger.Run(); err != nil {
-				sugar.Errorln(err)
+				logger.Error().Err(err).Msg("Error running ping")
 				if e.Err == nil {
 					e.Err = err
 				}
@@ -78,10 +78,10 @@ func (s *StatsOnline) Initializer(zp *zap.SugaredLogger) {
 
 func (s *StatsOnline) CheckAll() {
 	if s.IPK8S.Err = PingTCP(s.IPK8S.Addr, s.IPK8S.Port); s.IPK8S.Err != nil {
-		sugar.Errorln(s.IPK8S.Err)
+		logger.Error().Err(s.IPK8S.Err).Msg("Error pinging K8S")
 	}
 
 	if s.IPDNS.Err = PingTCP(s.IPDNS.Addr, s.IPDNS.Port); s.IPDNS.Err != nil {
-		sugar.Errorln(s.IPDNS.Err)
+		logger.Error().Err(s.IPDNS.Err).Msg("Error pinging DNS")
 	}
 }

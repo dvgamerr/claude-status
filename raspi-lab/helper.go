@@ -9,7 +9,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/leekchan/accounting"
-	"go.uber.org/zap"
 )
 
 var symbolMoney = "$" // "₮"
@@ -31,30 +30,21 @@ func getLoggingFilepath() (string, error) {
 	return logging, nil
 }
 
-func NewLogger(cli *Args) *zap.Logger {
-	cfg := zap.Config{}
-	if !lab.Develop && !lab.Debug {
-		logging, _ := getLoggingFilepath()
-		cfg = zap.NewProductionConfig()
-		cfg.OutputPaths = []string{logging}
-		cfg.ErrorOutputPaths = []string{logging}
-	} else {
-		cfg = zap.NewDevelopmentConfig()
-		cfg.Level.SetLevel(zap.DebugLevel)
-		cfg.OutputPaths = []string{"stdout"}
-	}
-	log, _ := cfg.Build()
-	return log
-}
-
-// checkEnvVars checks that all specified environment variables are set and not empty.
-func checkEnvVars(envs ...string) {
+// checkEnvList checks that all specified environment variables are set and not empty.
+func checkEnvList(envs ...string) {
 	for _, v := range envs {
 		if os.Getenv(v) == "" {
 			fmt.Printf("Error: %s environment variable is not set\n", v)
 			os.Exit(1)
 		}
 	}
+}
+
+func getEnvString(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 func showMoney(n float64) string {
