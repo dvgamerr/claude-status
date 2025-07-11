@@ -10,9 +10,11 @@ import (
 var stdJson = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type BitkubBalances struct {
-	Total     float64
-	Available float64
-	Coins     map[string]Balance
+	Total      float64
+	Available  float64
+	InOrder    float64
+	InWithdraw float64
+	Coins      map[string]Balance
 }
 
 type Balance struct {
@@ -36,27 +38,27 @@ type Ticker struct {
 	PrevOpen      float64 `json:"prevOpen"`
 }
 
-func GetBalances() BitkubBalances {
+func GetBalances() (*BitkubBalances, error) {
 	var result ResponseAPI
 
 	log.Debug().Msg("POST /v3/market/balances")
 	if err := FetchSecure("POST", "/v3/market/balances", nil, &result); err != nil {
-		log.Error().Err(err).Msg("Error fetching balances")
+		return nil, err
 	}
 
 	byteData, err := stdJson.Marshal(result.Result)
 	if err != nil {
-		log.Error().Err(err).Msg("Error marshaling")
+		return nil, fmt.Errorf("marshaling: %w", err)
 	}
 
-	data := BitkubBalances{
+	data := &BitkubBalances{
 		Total:     0,
 		Available: 0,
 		Coins:     map[string]Balance{},
 	}
 
 	if err = stdJson.Unmarshal(byteData, &data.Coins); err != nil {
-		log.Error().Err(err).Msg("Error unmarshaling")
+		return nil, fmt.Errorf("unmarshaling: %w", err)
 	}
 	for ccy, coin := range data.Coins {
 		if coin.Available == 0 && coin.Reserved == 0 {
@@ -65,25 +67,32 @@ func GetBalances() BitkubBalances {
 
 		rate := 1.0
 		if ccy != "THB" {
-			ticker := GetMarketTicker(fmt.Sprintf("THB_%s", ccy))
+			ticker, err := GetMarketTicker(fmt.Sprintf("THB_%s", ccy))
+			if err != nil {
+				return nil, fmt.Errorf("market ticker for %s: %w", ccy, err)
+			}
 			rate = ticker.Last
+
+			data.InOrder += coin.Available * rate
+		} else {
+			data.Available += coin.Available
 		}
 		data.Total += (coin.Available + coin.Reserved) * rate
-		data.Available += coin.Available * rate
 	}
 
 	log.Debug().Interface("data", data).Msg("Response")
-	return data
+	return data, nil
 }
 
-func GetMarketTicker(symbol string) Ticker {
+func GetMarketTicker(symbol string) (*Ticker, error) {
 	var res map[string]Ticker
 	url := fmt.Sprintf("/market/ticker?sym=%s", symbol)
 	log.Debug().Msgf("GET %s", url)
 	if err := FetchNonSecure("GET", url, nil, &res); err != nil {
-		log.Error().Err(err)
+		return nil, err
 	}
 
 	log.Debug().Msgf("Response: %#v\n", res[symbol])
-	return res[symbol]
+	ticker := res[symbol]
+	return &ticker, nil
 }

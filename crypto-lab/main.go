@@ -1,10 +1,14 @@
 package main
 
 import (
-	"log"
+	"crypto_lab/crypto-lab/btk"
+	"os"
 
 	"github.com/alexflint/go-arg"
 	"github.com/joho/godotenv"
+	"github.com/leekchan/accounting"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -14,14 +18,16 @@ var (
 func init() {
 	arg.MustParse(&args)
 
-	// aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
+	if args.Tty == "" {
+		godotenv.Load()
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	// Load environment variables from .env
-	godotenv.Load()
-
-	if args.Tty != "" {
-		// Check that all required environment variables are set
-		checkEnvList("BTK_APIKEY", "BTK_SECRETKEY")
+	// Check that all required environment variables are set
+	if err := checkEnvList("BTK_APIKEY", "BTK_SECRETKEY"); err != nil {
+		log.Fatal().Err(err).Send()
+		os.Exit(1)
 	}
 }
 
@@ -33,7 +39,22 @@ func init() {
 // )
 
 func main() {
-	log.Println("raspi-lab starting...")
+	aNum := accounting.Accounting{Precision: 2, Thousand: ","}
+
+	log.Info().Str("name", "crypto-lab").Msg("Starting...")
+	acc, err := btk.GetBalancer()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get Bitkub balances")
+		os.Exit(1)
+	}
+	btk := acc.Account.(*btk.BitkubBalances)
+
+	log.Info().
+		Str("Total", aNum.FormatMoney(btk.Total)).
+		Str("Available", aNum.FormatMoney(btk.Available)).
+		Str("In-Order", aNum.FormatMoney(btk.InOrder)).
+		Str("In-Withdraw", aNum.FormatMoney(btk.InWithdraw)).
+		Msg("Bitkub.com Initialized")
 	// if args.Develop {
 	// 	// 	pinger, err := ping.NewPinger("10.203.1.202")
 	// 	// 	if runtime.GOOS == "windows" {

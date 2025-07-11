@@ -1,23 +1,25 @@
 package btk
 
 type Account struct {
-	Fulfill      float64
-	Total        float64
-	Available    float64
+	Account      any
 	USDT         float64
 	TodayPercent float64
 	Traders      []map[string]interface{}
 	Historys     []map[string]interface{}
 }
 
-func New() *Account {
-	ticker := GetMarketTicker("THB_USDT")
-	bal := GetBalances()
+func GetBalancer() (*Account, error) {
+	ticker, err := GetMarketTicker("THB_USDT")
+	if err != nil {
+		return nil, err
+	}
+	bal, err := GetBalances()
+	if err != nil {
+		return nil, err
+	}
 
 	return &Account{
-		Fulfill:   (83700.0 - 29128.26),
-		Total:     bal.Total,
-		Available: bal.Available,
-		USDT:      ticker.Last,
-	}
+		Account: bal,
+		USDT:    ticker.Last,
+	}, nil
 }

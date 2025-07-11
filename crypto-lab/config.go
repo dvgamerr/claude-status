@@ -1,5 +1,12 @@
 package main
 
+import (
+	"fmt"
+	"os"
+
+	"github.com/rs/zerolog/log"
+)
+
 type ApplicationSettings struct {
 	Tty        string `arg:"--tty" help:"tty source"`
 	Develop    bool   `arg:"--dev" help:"develop coding test"`
@@ -27,22 +34,22 @@ type ApplicationSettings struct {
 // 	return logging, nil
 // }
 
-// // checkEnvList checks that all specified environment variables are set and not empty.
-// func checkEnvList(envs ...string) {
-// 	for _, v := range envs {
-// 		if os.Getenv(v) == "" {
-// 			fmt.Printf("Error: %s environment variable is not set\n", v)
-// 			os.Exit(1)
-// 		}
-// 	}
-// }
+func checkEnvList(envs ...string) error {
+	for _, v := range envs {
+		if os.Getenv(v) == "" {
+			return fmt.Errorf("error: %s environment variable is not set", v)
+		}
+		log.Info().Str("env", v).Msg("checking")
+	}
+	return nil
+}
 
-// func getEnvString(key, defaultValue string) string {
-// 	if value := os.Getenv(key); value != "" {
-// 		return value
-// 	}
-// 	return defaultValue
-// }
+func getEnvString(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 // func showMoney(n float64) string {
 // 	ac := accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ","}
