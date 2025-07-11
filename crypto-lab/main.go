@@ -1,50 +1,40 @@
 package main
 
 import (
-	"crypto_lab/raspi-lab/btk"
-	"crypto_lab/raspi-lab/okx"
-	"crypto_lab/raspi-lab/rpi"
-	"crypto_lab/raspi-lab/sys"
+	"log"
 
 	"github.com/alexflint/go-arg"
 	"github.com/joho/godotenv"
 )
 
-type Args struct {
-	Tty        string `arg:"--tty" help:"tty source"`
-	Develop    bool   `arg:"--dev" help:"develop coding test"`
-	Debug      bool   `arg:"--debug" help:"debug coding test"`
-	DB         bool   `arg:"--db" help:"save history to database"`
-	BlackLight bool   `arg:"--blacklight" help:"turn on or off blacklight display lcd"`
-}
-
 var (
-	lab Args
+	args ApplicationSettings
 )
 
 func init() {
-	arg.MustParse(&lab)
+	arg.MustParse(&args)
 
 	// aNum = accounting.Accounting{Symbol: symbolMoney, Precision: 2, Thousand: ",", Format: "%s%v"}
 
 	// Load environment variables from .env
 	godotenv.Load()
 
-	if lab.Tty != "" {
+	if args.Tty != "" {
 		// Check that all required environment variables are set
 		checkEnvList("BTK_APIKEY", "BTK_SECRETKEY")
 	}
 }
 
-var (
-	okxAcc okx.Account
-	btkAcc btk.Account
-	rpiOs  rpi.StatsOS
-	stats  sys.StatsOnline
-)
+// var (
+// 	okxAcc okx.Account
+// 	btkAcc btk.Account
+// 	rpiOs  rpi.StatsOS
+// 	stats  sys.StatsOnline
+// )
 
 func main() {
-	// if lab.Develop {
+	log.Println("raspi-lab starting...")
+	// if args.Develop {
 	// 	// 	pinger, err := ping.NewPinger("10.203.1.202")
 	// 	// 	if runtime.GOOS == "windows" {
 	// 	// 		pinger.SetPrivileged(true)
@@ -122,7 +112,7 @@ func main() {
 
 	// log.Info().Msg("Ticker interval setting...")
 	// go setTickerInterval(500*time.Millisecond, func() { app.Draw() })()
-	// if lab.Tty != "" {
+	// if args.Tty != "" {
 	// 	go setTickerInterval(1*time.Second, stats.CheckAll)()
 	// 	go setTickerInterval(1*time.Second, rpiOs.GetOSStats)()
 	// 	go setTickerInterval(okxIntervel, okxAcc.GetBalances)()
@@ -131,7 +121,7 @@ func main() {
 	// 	go setTickerInterval(okxIntervel, okxAcc.GetHistoryPositions)()
 	// }
 
-	// if lab.Debug {
+	// if args.Debug {
 	// 	okxAcc.GetBalances()
 	// 	okxAcc.GetTreaders()
 	// 	okxAcc.GetHistoryPositions()
