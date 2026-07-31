@@ -106,11 +106,22 @@ func TestLoadAllSkipsCorruptFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshots, err := store.LoadAll()
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "ignored 1 invalid session snapshot") {
+		t.Fatalf("LoadAll() error = %v, want corruption warning", err)
 	}
 	if len(snapshots) != 1 || snapshots[0].Session.ID != "valid" {
 		t.Fatalf("unexpected snapshots: %+v", snapshots)
+	}
+}
+
+func TestSaveRejectsMissingCaptureTime(t *testing.T) {
+	store, err := New(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := sampleSnapshot("missing-time", time.Time{})
+	if err := store.Save(snapshot); err == nil || !strings.Contains(err.Error(), "capture time") {
+		t.Fatalf("Save() error = %v, want capture time error", err)
 	}
 }
 

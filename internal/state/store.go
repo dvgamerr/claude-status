@@ -56,6 +56,9 @@ func (s *Store) Save(snapshot model.Snapshot) error {
 	if strings.TrimSpace(snapshot.Session.ID) == "" {
 		return errors.New("snapshot session ID is empty")
 	}
+	if snapshot.CapturedAt.IsZero() {
+		return errors.New("snapshot capture time is empty")
+	}
 
 	sessionsDir := filepath.Join(s.dir, "sessions")
 	if err := ensurePrivateDir(s.dir); err != nil {
@@ -95,13 +98,20 @@ func (s *Store) LoadAll() ([]model.Snapshot, error) {
 	}
 
 	snapshots := make([]model.Snapshot, 0, len(entries))
+	invalidCount := 0
+	var firstInvalid error
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
 		snapshot, err := readSnapshot(filepath.Join(dir, entry.Name()))
 		if err != nil {
-			// One interrupted or manually edited file must not take down the TUI.
+			// Preserve valid sessions, but surface corruption so the TUI can warn
+			// instead of silently pretending the missing session never existed.
+			invalidCount++
+			if firstInvalid == nil {
+				firstInvalid = err
+			}
 			continue
 		}
 		snapshots = append(snapshots, snapshot)
@@ -110,6 +120,9 @@ func (s *Store) LoadAll() ([]model.Snapshot, error) {
 	sort.SliceStable(snapshots, func(i, j int) bool {
 		return snapshots[i].CapturedAt.After(snapshots[j].CapturedAt)
 	})
+	if invalidCount > 0 {
+		return snapshots, fmt.Errorf("ignored %d invalid session snapshot(s); first error: %w", invalidCount, firstInvalid)
+	}
 	return snapshots, nil
 }
 
@@ -171,8 +184,11 @@ func readSnapshot(path string) (model.Snapshot, error) {
 	if snapshot.SchemaVersion != model.CurrentSchemaVersion {
 		return snapshot, fmt.Errorf("unsupported snapshot schema version %d", snapshot.SchemaVersion)
 	}
-	if snapshot.Session.ID == "" {
+	if strings.TrimSpace(snapshot.Session.ID) == "" {
 		return snapshot, errors.New("snapshot has no session ID")
+	}
+	if snapshot.CapturedAt.IsZero() {
+		return snapshot, errors.New("snapshot has no capture time")
 	}
 	return snapshot, nil
 }

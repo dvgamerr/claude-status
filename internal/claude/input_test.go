@@ -86,6 +86,17 @@ func TestDecodeAllowsMissingAndNullFields(t *testing.T) {
 	}
 }
 
+func TestToSnapshotSanitizesAndLimitsSessionID(t *testing.T) {
+	input := Input{SessionID: "  abc\n\t" + strings.Repeat("x", maxSessionIDRunes+20) + "  "}
+	snapshot := ToSnapshot(input, time.Unix(1, 0))
+	if strings.ContainsAny(snapshot.Session.ID, "\n\t") {
+		t.Fatalf("session ID still contains control characters: %q", snapshot.Session.ID)
+	}
+	if got := len([]rune(snapshot.Session.ID)); got != maxSessionIDRunes {
+		t.Fatalf("session ID length = %d, want %d", got, maxSessionIDRunes)
+	}
+}
+
 func TestStatusLine(t *testing.T) {
 	input, err := Decode(strings.NewReader(`{
       "session_id":"x",

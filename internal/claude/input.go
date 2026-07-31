@@ -13,7 +13,10 @@ import (
 	"github.com/dvgamerr/claude-status/internal/model"
 )
 
-const maxInputBytes = 4 << 20
+const (
+	maxInputBytes     = 4 << 20
+	maxSessionIDRunes = 256
+)
 
 // Input models only the official statusLine fields used by this application.
 // Unknown fields are intentionally accepted for forward compatibility and are
@@ -106,7 +109,7 @@ func Decode(r io.Reader) (Input, error) {
 }
 
 func ToSnapshot(input Input, now time.Time) model.Snapshot {
-	sessionID := strings.TrimSpace(input.SessionID)
+	sessionID := cleanText(input.SessionID, maxSessionIDRunes)
 	if sessionID == "" {
 		sessionID = "unknown"
 	}
