@@ -1,10 +1,16 @@
-.PHONY: test vet build build-pi package clean
+.PHONY: test coverage vet check build build-pi package clean
 
 test:
 	go test ./...
 
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+
 vet:
 	go vet ./...
+
+check: test vet build-pi
 
 build:
 	go build -trimpath -o bin/claude-status ./cmd/claude-status
