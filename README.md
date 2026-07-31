@@ -33,7 +33,7 @@ Terminal dashboard สำหรับดู Claude Code usage บน Raspberry P
 
 ## ติดตั้งบน Raspberry Pi
 
-ต้องใช้ Raspberry Pi OS 64-bit และ Go 1.24 ขึ้นไป ตัว dashboard ใช้งานบน Pi 4
+ต้องใช้ Raspberry Pi OS 64-bit และ Go 1.25 ขึ้นไป ตัว dashboard ใช้งานบน Pi 4
 RAM 2 GB ได้ แต่ถ้าจะรัน Claude Code บน Pi เครื่องเดียวกัน ควรใช้ RAM 4 GB หรือ
 8 GB ตามข้อกำหนดของ Claude Code
 
