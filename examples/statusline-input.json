@@ -1,0 +1,46 @@
+{
+  "session_id": "demo-session-abc123",
+  "session_name": "Pi dashboard demo",
+  "model": {
+    "id": "claude-opus-4-7",
+    "display_name": "Opus"
+  },
+  "version": "2.1.90",
+  "cost": {
+    "total_cost_usd": 1.28,
+    "total_duration_ms": 6138000,
+    "total_api_duration_ms": 482000,
+    "total_lines_added": 186,
+    "total_lines_removed": 42
+  },
+  "context_window": {
+    "total_input_tokens": 140000,
+    "total_output_tokens": 4000,
+    "context_window_size": 200000,
+    "used_percentage": 72,
+    "remaining_percentage": 28,
+    "current_usage": {
+      "input_tokens": 8500,
+      "output_tokens": 1200,
+      "cache_creation_input_tokens": 5000,
+      "cache_read_input_tokens": 2000
+    }
+  },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 51,
+      "resets_at": 1785500280
+    },
+    "seven_day": {
+      "used_percentage": 34,
+      "resets_at": 1785675600
+    }
+  },
+  "effort": {
+    "level": "high"
+  },
+  "thinking": {
+    "enabled": true
+  },
+  "transcript_path": "/this/field/is/intentionally/not/persisted.jsonl"
+}

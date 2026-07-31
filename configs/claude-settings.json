@@ -1,0 +1,8 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.local/bin/claude-status ingest",
+    "padding": 1,
+    "refreshInterval": 5
+  }
+}

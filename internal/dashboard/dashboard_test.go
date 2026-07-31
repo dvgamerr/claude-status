@@ -1,0 +1,115 @@
+package dashboard
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	statusmodel "github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/systeminfo"
+)
+
+type fakeLoader struct {
+	snapshots []statusmodel.Snapshot
+	err       error
+}
+
+func (f fakeLoader) LoadAll() ([]statusmodel.Snapshot, error) { return f.snapshots, f.err }
+
+type fakeMetrics struct{ stats systeminfo.Stats }
+
+func (f fakeMetrics) Read() systeminfo.Stats { return f.stats }
+
+func TestDashboardViewAndSessionSelection(t *testing.T) {
+	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.Local)
+	pct5, pct7, contextPct := 51.0, 34.0, 72.0
+	window := int64(200000)
+	input := int64(140000)
+	output := int64(4000)
+	duration := int64(6_138_000)
+	cost := 1.28
+	added, removed := int64(186), int64(42)
+	reset := now.Add(2 * time.Hour).Unix()
+	snapshots := []statusmodel.Snapshot{
+		{
+			SchemaVersion: modelSchema(), CapturedAt: now.Add(-4 * time.Second),
+			Session: statusmodel.Session{ID: "abc1234567890123", Name: "primary"},
+			Model:   statusmodel.Model{DisplayName: "Opus"},
+			RateLimits: statusmodel.RateLimits{
+				FiveHour: statusmodel.RateWindow{UsedPercentage: &pct5, ResetsAt: &reset},
+				SevenDay: statusmodel.RateWindow{UsedPercentage: &pct7, ResetsAt: &reset},
+			},
+			Context: statusmodel.Context{UsedPercentage: &contextPct, WindowSize: &window, TotalInputTokens: &input, TotalOutputTokens: &output},
+			Cost:    statusmodel.Cost{TotalDurationMS: &duration, TotalCostUSD: &cost, TotalLinesAdded: &added, TotalLinesRemoved: &removed},
+		},
+		{SchemaVersion: modelSchema(), CapturedAt: now.Add(-time.Minute), Session: statusmodel.Session{ID: "second"}, Model: statusmodel.Model{DisplayName: "Sonnet"}},
+	}
+	cpu, temp := 18.0, 52.0
+	used, total := uint64(1<<30), uint64(4<<30)
+	uptime := 102*time.Minute + 18*time.Second
+	m := NewModel(fakeLoader{snapshots: snapshots}, fakeMetrics{systeminfo.Stats{CPUPercent: &cpu, TemperatureC: &temp, MemoryUsedBytes: &used, MemoryTotalBytes: &total, Uptime: &uptime}}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: snapshots, stats: m.metrics.Read()})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 90, Height: 30})
+	m = updated.(Model)
+
+	view := m.View()
+	for _, want := range []string{"Claude Status", "LIVE", "Opus", "5-hour", "51%", "144k / 200k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() does not contain %q:\n%s", want, view)
+		}
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(Model)
+	if !strings.Contains(m.View(), "Sessions") || !strings.Contains(m.View(), "Sonnet") {
+		t.Fatalf("sessions view is incomplete:\n%s", m.View())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.selectedID != "second" || m.showSessions {
+		t.Fatalf("session selection failed: selected=%q show=%v", m.selectedID, m.showSessions)
+	}
+}
+
+func TestDashboardMarksOldSnapshotStale(t *testing.T) {
+	now := time.Now()
+	snapshot := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now.Add(-time.Minute), Session: statusmodel.Session{ID: "old"}}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{StaleAfter: 15 * time.Second})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}})
+	m = updated.(Model)
+	if !strings.Contains(m.View(), "STALE") {
+		t.Fatalf("old snapshot was not marked stale:\n%s", m.View())
+	}
+}
+
+func TestDashboardDisplaysPartialLoadWarning(t *testing.T) {
+	now := time.Now()
+	snapshot := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "valid"}}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}, err: errors.New("ignored 1 invalid session snapshot")})
+	m = updated.(Model)
+	view := m.View()
+	if !strings.Contains(view, "ignored 1 invalid session snapshot") || !strings.Contains(view, "valid") {
+		t.Fatalf("partial load warning or valid session missing:\n%s", view)
+	}
+}
+
+func TestDashboardFitsNarrowTerminal(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	m = updated.(Model)
+	if got := lipgloss.Width(m.View()); got > 40 {
+		t.Fatalf("dashboard width = %d, want at most 40:\n%s", got, m.View())
+	}
+}
+
+func modelSchema() int { return statusmodel.CurrentSchemaVersion }
