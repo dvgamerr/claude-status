@@ -15,7 +15,7 @@ Terminal dashboard สำหรับดู Claude Code usage บน Raspberry P
  Est. cost    $1.28
  Code         +186  -42
 
- Pi           CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42
+ Pi           CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42  Up 1d02h
 
  Last update  4s ago
  [q] Quit  [r] Refresh  [s] Sessions
@@ -26,7 +26,7 @@ Terminal dashboard สำหรับดู Claude Code usage บน Raspberry P
 - `claude-status ingest` อ่าน JSON จาก stdin, sanitize, เขียน state แบบ atomic
   แล้วพิมพ์ status line สั้นกลับให้ Claude Code
 - `claude-status tui` แสดง 5-hour/weekly quota, context, session, estimated cost,
-  code activity และ CPU/RAM/load/temperature ของ Pi
+  code activity และ CPU/RAM/load/temperature/uptime ของ Pi
 - แยก state ตาม `session_id` และเลือก session ด้วย `s`, ลูกศร และ Enter
 - แสดง `LIVE`/`STALE` ชัดเจน ป้องกันการเข้าใจ snapshot เก่าว่าเป็นข้อมูลสด
 - รองรับ field ที่หาย, เป็น `null` และ field ใหม่ที่โปรแกรมยังไม่รู้จัก

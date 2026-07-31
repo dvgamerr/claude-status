@@ -3,15 +3,16 @@ package systeminfo
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Stats struct {
-	CapturedAt       time.Time
 	CPUPercent       *float64
 	MemoryUsedBytes  *uint64
 	MemoryTotalBytes *uint64
@@ -22,6 +23,7 @@ type Stats struct {
 
 type Reader struct {
 	root    string
+	mu      sync.Mutex
 	lastCPU cpuSample
 	hasCPU  bool
 }
@@ -42,15 +44,20 @@ func NewReader(root string) *Reader {
 // nil fields so the dashboard remains usable on macOS, Windows, and unusual Pi
 // images instead of failing as a whole.
 func (r *Reader) Read() Stats {
-	stats := Stats{CapturedAt: time.Now()}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	stats := Stats{}
 
 	if data, err := os.ReadFile(r.path("proc", "stat")); err == nil {
 		if sample, err := parseCPUSample(string(data)); err == nil {
 			if r.hasCPU && sample.total > r.lastCPU.total && sample.idle >= r.lastCPU.idle {
 				totalDelta := sample.total - r.lastCPU.total
 				idleDelta := sample.idle - r.lastCPU.idle
-				value := 100 * float64(totalDelta-idleDelta) / float64(totalDelta)
-				stats.CPUPercent = &value
+				if idleDelta <= totalDelta {
+					value := 100 * float64(totalDelta-idleDelta) / float64(totalDelta)
+					stats.CPUPercent = &value
+				}
 			}
 			r.lastCPU = sample
 			r.hasCPU = true
@@ -165,7 +172,11 @@ func parseLoad(data string) (float64, error) {
 	if len(fields) == 0 {
 		return 0, fmt.Errorf("load average is empty")
 	}
-	return strconv.ParseFloat(fields[0], 64)
+	value, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return 0, fmt.Errorf("invalid load average %q", fields[0])
+	}
+	return value, nil
 }
 
 func parseUptime(data string) (time.Duration, error) {
@@ -174,7 +185,7 @@ func parseUptime(data string) (time.Duration, error) {
 		return 0, fmt.Errorf("uptime is empty")
 	}
 	seconds, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil || seconds < 0 {
+	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
 		return 0, fmt.Errorf("invalid uptime %q", fields[0])
 	}
 	return time.Duration(seconds * float64(time.Second)), nil
@@ -182,10 +193,10 @@ func parseUptime(data string) (time.Duration, error) {
 
 func parseTemperature(data string) (float64, error) {
 	value, err := strconv.ParseFloat(strings.TrimSpace(data), 64)
-	if err != nil {
-		return 0, err
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, fmt.Errorf("invalid temperature %q", strings.TrimSpace(data))
 	}
-	if value > 1000 {
+	if math.Abs(value) >= 1000 {
 		value /= 1000
 	}
 	if value < -40 || value > 150 {

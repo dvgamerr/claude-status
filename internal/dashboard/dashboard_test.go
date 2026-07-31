@@ -46,7 +46,8 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	}
 	cpu, temp := 18.0, 52.0
 	used, total := uint64(1<<30), uint64(4<<30)
-	m := NewModel(fakeLoader{snapshots}, fakeMetrics{systeminfo.Stats{CPUPercent: &cpu, TemperatureC: &temp, MemoryUsedBytes: &used, MemoryTotalBytes: &total}}, Config{})
+	uptime := 102*time.Minute + 18*time.Second
+	m := NewModel(fakeLoader{snapshots}, fakeMetrics{systeminfo.Stats{CPUPercent: &cpu, TemperatureC: &temp, MemoryUsedBytes: &used, MemoryTotalBytes: &total, Uptime: &uptime}}, Config{})
 	m.now = func() time.Time { return now }
 	updated, _ := m.Update(dataMsg{snapshots: snapshots, stats: m.metrics.Read()})
 	m = updated.(Model)
@@ -54,7 +55,7 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	m = updated.(Model)
 
 	view := m.View()
-	for _, want := range []string{"Claude Status", "LIVE", "Opus", "5-hour", "51%", "144k / 200k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "primary"} {
+	for _, want := range []string{"Claude Status", "LIVE", "Opus", "5-hour", "51%", "144k / 200k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() does not contain %q:\n%s", want, view)
 		}

@@ -35,7 +35,6 @@ type Model struct {
 	metrics       metricsReader
 	config        Config
 	width         int
-	height        int
 	snapshots     []statusmodel.Snapshot
 	stats         systeminfo.Stats
 	selectedID    string
@@ -104,7 +103,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		m.height = msg.Height
 	case tickMsg:
 		return m, tea.Batch(m.loadData(), m.nextTick())
 	case dataMsg:
@@ -286,6 +284,9 @@ func (m Model) systemLine() string {
 	}
 	if m.stats.Load1 != nil {
 		parts = append(parts, fmt.Sprintf("Load %.2f", *m.stats.Load1))
+	}
+	if m.stats.Uptime != nil {
+		parts = append(parts, "Up "+compactDuration(*m.stats.Uptime))
 	}
 	return labelStyle.Render("Pi") + "           " + strings.Join(parts, "  ")
 }
