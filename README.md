@@ -4,29 +4,32 @@ Terminal dashboard สำหรับดู Claude Code usage บน Raspberry P
 `statusLine` JSON โดยตรง ไม่ scrape หน้าเว็บและไม่อ่าน credential ของ Claude
 
 ```text
- Claude Status  21:42:03 ICT  LIVE
-
- Model        Opus
- 5-hour       █████░░░░░  51%  reset 23:18 (in 1h36m)
- Weekly       ███░░░░░░░  34%  reset Fri 14:00 (in 2d16h)
-
- Context      ███████░░░  72%  144k / 200k
- Session      01:42:18
- Est. cost    $1.28
- Code         +186  -42
-
- Pi           CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42  Up 1d02h
-
- Last update  4s ago
- [q] Quit  [r] Refresh  [s] Sessions
+╭────────────────────────────────────────────────────────────────╮
+│╭──────────────────╮  ✦ Clauding…                      ● LIVE   │
+││ OPUS             │                                             │
+││ claude-opus-4-7  │  5H LIMIT                  resets 1h36m    │
+││ CONTEXT       72%│  ███████████████░░░░░░░░░░░░░░░ 51%       │
+││ ████████████░░░░ │  7 DAY LIMIT               resets 2d16h    │
+││ 144k / 200k      │  ██████████░░░░░░░░░░░░░░░░░░░░ 34%       │
+│╰──────────────────╯  TOKENS  ↑ 140k INPUT   ↓ 4k OUTPUT        │
+│                                                                │
+│SESSION  Pi dashboard demo  ·  01:42:18                         │
+│ACTIVITY Cost $1.28  ·  Code +186  -42  ·  effort high          │
+│PI       CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42          │
+│UPDATED  4s ago  ·  21:42:03 ICT                               │
+│                                                                │
+│[q] Quit   [r] Refresh   [s] Sessions                           │
+╰────────────────────────────────────────────────────────────────╯
 ```
 
 ## สิ่งที่โปรแกรมทำ
 
 - `claude-status ingest` อ่าน JSON จาก stdin, sanitize, เขียน state แบบ atomic
   แล้วพิมพ์ status line สั้นกลับให้ Claude Code
-- `claude-status tui` แสดง 5-hour/weekly quota, context, session, estimated cost,
-  code activity และ CPU/RAM/load/temperature/uptime ของ Pi
+- `claude-status tui` แสดง progress bar ของ 5-hour/7-day quota, context,
+  input/output token, session, estimated cost, code activity และสถานะระบบ Pi
+- layout หลักออกแบบสำหรับ Raspberry Pi Touch Display 7″ ที่ 800×480 โดยใช้
+  TerminusBold 12x24 (พื้นที่ 66×20 ตัวอักษร) และมี compact layout เมื่อจอแคบกว่า
 - แยก state ตาม `session_id` และเลือก session ด้วย `s`, ลูกศร และ Enter
 - แสดง `LIVE`/`STALE` ชัดเจน ป้องกันการเข้าใจ snapshot เก่าว่าเป็นข้อมูลสด
 - รองรับ field ที่หาย, เป็น `null` และ field ใหม่ที่โปรแกรมยังไม่รู้จัก
@@ -67,6 +70,10 @@ bash scripts/install.sh ./claude-status
 Claude Code ต้องได้รับ trust สำหรับ project ก่อนจึงจะเรียก command status line ได้
 ค่า `rate_limits` จะปรากฏเฉพาะบัญชี Claude.ai Pro/Max และหลัง API response แรกของ
 session เท่านั้น
+
+ตั้งแต่ Claude Code v2.1.132 ค่า `total_input_tokens` และ `total_output_tokens`
+หมายถึง token ใน context ปัจจุบันจาก API response ล่าสุด; รุ่นก่อนหน้านั้นเป็นยอดสะสม
+ของ session
 
 เปิด dashboard:
 

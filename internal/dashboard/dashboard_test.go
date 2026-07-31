@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -54,14 +55,20 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	m.now = func() time.Time { return now }
 	updated, _ := m.Update(dataMsg{snapshots: snapshots, stats: m.metrics.Read()})
 	m = updated.(Model)
-	updated, _ = m.Update(tea.WindowSizeMsg{Width: 90, Height: 30})
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
 	m = updated.(Model)
 
 	view := m.View()
-	for _, want := range []string{"Claude Status", "LIVE", "Opus", "5-hour", "51%", "144k / 200k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
+	for _, want := range []string{"Clauding", "LIVE", "OPUS", "5H LIMIT", "7 DAY LIMIT", "51%", "34%", "CONTEXT", "72%", "144k / 200k", "↑ 140k", "↓ 4k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() does not contain %q:\n%s", want, view)
 		}
+	}
+	if got := lipgloss.Width(view); got > 66 {
+		t.Fatalf("Pi dashboard width = %d, want at most 66:\n%s", got, view)
+	}
+	if got := lipgloss.Height(view); got > 20 {
+		t.Fatalf("Pi dashboard height = %d, want at most 20:\n%s", got, view)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
@@ -104,11 +111,75 @@ func TestDashboardDisplaysPartialLoadWarning(t *testing.T) {
 }
 
 func TestDashboardFitsNarrowTerminal(t *testing.T) {
+	now := time.Now()
+	contextPct, fivePct, sevenPct := 18.0, 27.0, 44.0
+	input, cacheCreate, cacheRead, output := int64(500), int64(1000), int64(1500), int64(750)
+	snapshot := statusmodel.Snapshot{
+		SchemaVersion: modelSchema(),
+		CapturedAt:    now,
+		Session:       statusmodel.Session{ID: "narrow"},
+		Context: statusmodel.Context{
+			UsedPercentage: &contextPct,
+			CurrentUsage: statusmodel.TokenUsage{
+				InputTokens:              &input,
+				CacheCreationInputTokens: &cacheCreate,
+				CacheReadInputTokens:     &cacheRead,
+				OutputTokens:             &output,
+			},
+		},
+		RateLimits: statusmodel.RateLimits{
+			FiveHour: statusmodel.RateWindow{UsedPercentage: &fivePct},
+			SevenDay: statusmodel.RateWindow{UsedPercentage: &sevenPct},
+		},
+	}
 	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}})
 	m = updated.(Model)
-	if got := lipgloss.Width(m.View()); got > 40 {
-		t.Fatalf("dashboard width = %d, want at most 40:\n%s", got, m.View())
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	m = updated.(Model)
+	view := m.View()
+	if got := lipgloss.Width(view); got > 40 {
+		t.Fatalf("dashboard width = %d, want at most 40:\n%s", got, view)
+	}
+	if got := lipgloss.Height(view); got > 20 {
+		t.Fatalf("dashboard height = %d, want at most 20:\n%s", got, view)
+	}
+	for _, want := range []string{"Claude Status", "CTX", "18%", "5H", "27%", "7D", "44%", "↑ 3k input", "↓ 750 output"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("compact dashboard does not contain %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestSessionPickerPaginatesWithinPiDisplay(t *testing.T) {
+	now := time.Now()
+	snapshots := make([]statusmodel.Snapshot, 30)
+	for i := range snapshots {
+		snapshots[i] = statusmodel.Snapshot{
+			SchemaVersion: modelSchema(),
+			CapturedAt:    now.Add(-time.Duration(i) * time.Minute),
+			Session:       statusmodel.Session{ID: fmt.Sprintf("session-%02d", i)},
+		}
+	}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: snapshots})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(Model)
+
+	view := m.View()
+	if got := lipgloss.Width(view); got > 66 {
+		t.Fatalf("session picker width = %d, want at most 66:\n%s", got, view)
+	}
+	if got := lipgloss.Height(view); got > 20 {
+		t.Fatalf("session picker height = %d, want at most 20:\n%s", got, view)
+	}
+	if !strings.Contains(view, "Showing 1–13 of 30") {
+		t.Fatalf("session pagination summary missing:\n%s", view)
 	}
 }
 
