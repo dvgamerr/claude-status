@@ -1,20 +1,23 @@
 package dashboard
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	statusmodel "github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 )
 
 type fakeLoader struct {
 	snapshots []statusmodel.Snapshot
+	err       error
 }
 
-func (f fakeLoader) LoadAll() ([]statusmodel.Snapshot, error) { return f.snapshots, nil }
+func (f fakeLoader) LoadAll() ([]statusmodel.Snapshot, error) { return f.snapshots, f.err }
 
 type fakeMetrics struct{ stats systeminfo.Stats }
 
@@ -47,7 +50,7 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	cpu, temp := 18.0, 52.0
 	used, total := uint64(1<<30), uint64(4<<30)
 	uptime := 102*time.Minute + 18*time.Second
-	m := NewModel(fakeLoader{snapshots}, fakeMetrics{systeminfo.Stats{CPUPercent: &cpu, TemperatureC: &temp, MemoryUsedBytes: &used, MemoryTotalBytes: &total, Uptime: &uptime}}, Config{})
+	m := NewModel(fakeLoader{snapshots: snapshots}, fakeMetrics{systeminfo.Stats{CPUPercent: &cpu, TemperatureC: &temp, MemoryUsedBytes: &used, MemoryTotalBytes: &total, Uptime: &uptime}}, Config{})
 	m.now = func() time.Time { return now }
 	updated, _ := m.Update(dataMsg{snapshots: snapshots, stats: m.metrics.Read()})
 	m = updated.(Model)
@@ -84,6 +87,28 @@ func TestDashboardMarksOldSnapshotStale(t *testing.T) {
 	m = updated.(Model)
 	if !strings.Contains(m.View(), "STALE") {
 		t.Fatalf("old snapshot was not marked stale:\n%s", m.View())
+	}
+}
+
+func TestDashboardDisplaysPartialLoadWarning(t *testing.T) {
+	now := time.Now()
+	snapshot := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "valid"}}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}, err: errors.New("ignored 1 invalid session snapshot")})
+	m = updated.(Model)
+	view := m.View()
+	if !strings.Contains(view, "ignored 1 invalid session snapshot") || !strings.Contains(view, "valid") {
+		t.Fatalf("partial load warning or valid session missing:\n%s", view)
+	}
+}
+
+func TestDashboardFitsNarrowTerminal(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+	m = updated.(Model)
+	if got := lipgloss.Width(m.View()); got > 40 {
+		t.Fatalf("dashboard width = %d, want at most 40:\n%s", got, m.View())
 	}
 }
 

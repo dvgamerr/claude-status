@@ -57,3 +57,40 @@ func TestRunHelpAndUnknownCommand(t *testing.T) {
 		t.Fatalf("unknown command: exit=%d stderr=%q", exitCode, stderr.String())
 	}
 }
+
+func TestRunVersion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exitCode := Run(context.Background(), []string{"version"}, strings.NewReader(""), &stdout, &stderr)
+	if exitCode != 0 || !strings.Contains(stdout.String(), "claude-status dev") || stderr.Len() != 0 {
+		t.Fatalf("version: exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunValidatesCommandFlags(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantExit int
+		wantText string
+	}{
+		{name: "ingest help", args: []string{"ingest", "--help"}, wantExit: 0, wantText: "Usage: claude-status ingest"},
+		{name: "ingest positional", args: []string{"ingest", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "ingest empty state", args: []string{"ingest", "--state-dir", ""}, wantExit: 1, wantText: "state directory is empty"},
+		{name: "tui help", args: []string{"tui", "--help"}, wantExit: 0, wantText: "Usage: claude-status tui"},
+		{name: "tui positional", args: []string{"tui", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "tui refresh too fast", args: []string{"tui", "--refresh", "100ms"}, wantExit: 2, wantText: "at least 250ms"},
+		{name: "tui stale invalid", args: []string{"tui", "--stale-after", "0s"}, wantExit: 2, wantText: "greater than zero"},
+		{name: "tui duration invalid", args: []string{"tui", "--refresh", "invalid"}, wantExit: 2, wantText: "invalid value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			exitCode := Run(context.Background(), tt.args, strings.NewReader(""), &stdout, &stderr)
+			combined := stdout.String() + stderr.String()
+			if exitCode != tt.wantExit || !strings.Contains(combined, tt.wantText) {
+				t.Fatalf("exit=%d output=%q, want exit=%d containing %q", exitCode, combined, tt.wantExit, tt.wantText)
+			}
+		})
+	}
+}
