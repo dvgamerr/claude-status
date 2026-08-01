@@ -89,6 +89,7 @@ type Renderer struct {
 	bold22    font.Face
 	bold30    font.Face
 	bold44    font.Face
+	icons     iconSet
 }
 
 func NewRenderer() (*Renderer, error) {
@@ -118,6 +119,10 @@ func NewRenderer() (*Renderer, error) {
 			return nil, fmt.Errorf("create UI font %.0f: %w", target.size, err)
 		}
 		*target.destination = created
+	}
+	r.icons, err = loadIconSet()
+	if err != nil {
+		return nil, err
 	}
 	return r, nil
 }
@@ -314,10 +319,6 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 	mascotY := bounds.Min.Y + 100
 	radius := 54
 	r.drawMascot(canvas, centerX, mascotY, radius, now, activityState)
-	if activityState == model.ActivityWaitingApproval {
-		r.drawApprovalBadge(canvas, centerX+int(float64(radius)*0.7), mascotY-int(float64(radius)*0.7), now)
-	}
-
 	label, accent := activityLabel(activityState)
 	pillWidth := bounds.Dx() - 40
 	pillTop := mascotY + radius + 22
@@ -473,27 +474,24 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 	}
 }
 
-// activityVisual is the animation "voice" for one activity state: the
-// mascot's body color, its background glow, and whether it bounces
-// (working) or goes still and asleep (idle).
+// activityVisual is the animation "voice" around each context-specific
+// Clawd SVG: working bounces, while idle and approval breathe at different
+// speeds and colors.
 type activityVisual struct {
-	period    time.Duration
-	bodyColor color.RGBA
-	halo      color.RGBA
-	bounce    bool
-	sleeping  bool
+	period  time.Duration
+	halo    color.RGBA
+	bounce  bool
+	breathe bool
 }
 
 func visualForActivity(state string) activityVisual {
 	switch state {
 	case model.ActivityWorking:
-		return activityVisual{period: 900 * time.Millisecond, bodyColor: claudeOrange, halo: rgb(58, 40, 32), bounce: true}
+		return activityVisual{period: 900 * time.Millisecond, halo: rgb(58, 40, 32), bounce: true}
 	case model.ActivityWaitingApproval:
-		return activityVisual{period: 1500 * time.Millisecond, bodyColor: yellow, halo: rgb(58, 49, 24)}
+		return activityVisual{period: 1100 * time.Millisecond, halo: rgb(58, 49, 24), breathe: true}
 	default:
-		// Idle reads as asleep, not just "slow" — a still mascot with
-		// drifting z's communicates it at a glance, no text required.
-		return activityVisual{bodyColor: withAlpha(claudeOrange, 130), halo: rgb(32, 29, 27), sleeping: true}
+		return activityVisual{period: 2400 * time.Millisecond, halo: rgb(42, 34, 30), breathe: true}
 	}
 }
 
@@ -550,118 +548,39 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 
 func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, state string) {
 	visual := visualForActivity(state)
-	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
-
-	if visual.sleeping {
-		r.drawPixelMascot(canvas, centerX, centerY, radius, visual.bodyColor, true, 0)
-		r.drawSleepZs(canvas, centerX, centerY, radius, now)
-		return
-	}
-
-	bounce := 0
-	if visual.bounce {
-		periodMS := visual.period.Milliseconds()
-		if periodMS <= 0 {
-			periodMS = 900
+	periodMS := max(int64(1), visual.period.Milliseconds())
+	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
+	haloRadius := radius + 10
+	halo := visual.halo
+	if visual.breathe {
+		haloRadius += int(2 * (math.Sin(phase) + 1))
+		alpha := uint8(58 + 24*((math.Sin(phase)+1)/2))
+		tint := claudePeach
+		if state == model.ActivityWaitingApproval {
+			tint = yellow
 		}
-		phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
-		bounce = int(4 * math.Sin(phase))
+		halo = withAlpha(tint, alpha)
 	}
-	r.drawPixelMascot(canvas, centerX, centerY, radius, visual.bodyColor, false, bounce)
-}
+	fillCircle(canvas, centerX, centerY, haloRadius, halo)
 
-// pixelMascotBody and pixelMascotEyes lay out the blocky pixel-art creature
-// on a small (col, row) grid: a two-row head with ear/arm nubs sticking out
-// on the wider bottom row, then three separated leg blocks below.
-var pixelMascotBody = [][2]int{
-	{-1, 0}, {0, 0}, {1, 0}, // head, top row
-	{-3, 1}, {-1, 1}, {0, 1}, {1, 1}, {3, 1}, // ears + head, bottom row
-	{-2, 3}, {0, 3}, {2, 3}, // legs, row 1
-	{-2, 4}, {0, 4}, {2, 4}, // legs, row 2
-}
-
-var pixelMascotEyes = [][2]int{{-1, 0}, {1, 0}}
-
-// drawPixelMascot renders the creature as flat squares on a 7x5 grid —
-// eyesClosed swaps the eye squares for a thin closed-eye line (idle/asleep),
-// and yOffset lets the working state bounce the whole body in place.
-func (r *Renderer) drawPixelMascot(canvas *image.RGBA, centerX, centerY, radius int, bodyColor color.RGBA, eyesClosed bool, yOffset int) {
-	unit := max(2, radius*2/7)
-	half := unit / 2
-	originX, originY := centerX, centerY-unit*2+yOffset
-
-	for _, cell := range pixelMascotBody {
-		x := originX + cell[0]*unit - half
-		y := originY + cell[1]*unit - half
-		fillRounded(canvas, image.Rect(x, y, x+unit, y+unit), 0, bodyColor)
-	}
-
-	eyeColor := rgb(32, 22, 16)
-	for _, eye := range pixelMascotEyes {
-		x := originX + eye[0]*unit - half
-		y := originY + eye[1]*unit - half
-		if eyesClosed {
-			lineY := y + half
-			fillRounded(canvas, image.Rect(x+unit/6, lineY-1, x+unit-unit/6, lineY+2), 0, eyeColor)
-			continue
+	icon := r.icons.idle
+	yOffset := 0
+	switch state {
+	case model.ActivityWorking:
+		icon = r.icons.working
+		if visual.bounce {
+			yOffset = int(4 * math.Sin(phase))
 		}
-		inset := max(1, unit/5)
-		fillRounded(canvas, image.Rect(x+inset, y+inset, x+unit-inset, y+unit-inset), 0, eyeColor)
+	case model.ActivityWaitingApproval:
+		icon = r.icons.waitingApproval
 	}
+	drawIconCentered(canvas, icon, centerX, centerY+yOffset)
 }
 
-// drawLogoMark is a small static version of the mascot for the header — a
-// plain brand mark, not an animated status indicator. The rail owns that
-// job; duplicating its motion in the corner would compete for attention.
-func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, radius int) {
-	fillCircle(canvas, centerX, centerY, radius+6, rgb(48, 34, 28))
-	r.drawPixelMascot(canvas, centerX, centerY, radius, claudeOrange, false, 0)
-}
-
-// drawSleepZs floats three "z"s up and out from the mascot in a loop —
-// the classic sleep cue, so idle reads as "asleep" without any text label.
-func (r *Renderer) drawSleepZs(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
-	const period = 1800
-	baseX := centerX + int(float64(radius)*0.5)
-	baseY := centerY - int(float64(radius)*0.65)
-	elapsed := now.UnixMilli()
-	for i := int64(0); i < 3; i++ {
-		phase := float64((elapsed+i*period/3)%period) / period
-		yOffset := int(-30 * phase)
-		xOffset := int(4 * math.Sin(phase*2*math.Pi))
-		alpha := uint8(210 * (1 - phase))
-		if alpha == 0 {
-			continue
-		}
-		r.text(canvas, r.bold13, fadeColor(textSecondary, alpha), baseX+xOffset, baseY+yOffset, "z")
-	}
-}
-
-// fadeColor returns base at the given alpha, premultiplied as color.RGBA
-// requires — unlike withAlpha (which blends toward a fixed card background),
-// this composites correctly over whatever the mascot happens to be sitting
-// on, via the normal draw.Over path font.Drawer already uses.
-func fadeColor(base color.RGBA, alpha uint8) color.RGBA {
-	factor := float64(alpha) / 255
-	return color.RGBA{
-		R: uint8(float64(base.R) * factor),
-		G: uint8(float64(base.G) * factor),
-		B: uint8(float64(base.B) * factor),
-		A: alpha,
-	}
-}
-
-// drawApprovalBadge overlays a pulsing "?" on the mascot so a pending
-// permission prompt is visible at a glance, matching Nielsen's visibility
-// of system status heuristic.
-func (r *Renderer) drawApprovalBadge(canvas *image.RGBA, x, y int, now time.Time) {
-	phase := float64(now.UnixMilli()%1100) / 1100 * 2 * math.Pi
-	radius := int(15 * (1 + 0.12*math.Sin(phase)))
-	fillCircle(canvas, x, y, radius+4, backgroundTop)
-	fillCircle(canvas, x, y, radius, yellow)
-	label := "?"
-	width := font.MeasureString(r.bold16, label).Ceil()
-	r.text(canvas, r.bold16, rgb(46, 36, 8), x-width/2, y+6, label)
+// drawLogoMark is the current Claude starburst, kept static so the rail owns
+// all activity motion.
+func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, _ int) {
+	drawIconCentered(canvas, r.icons.logo, centerX, centerY)
 }
 
 func animationPercent(now time.Time) float64 {

@@ -140,7 +140,7 @@ func TestResolveActivityStates(t *testing.T) {
 	}
 }
 
-func TestRenderShowsApprovalBadgeWhenWaitingForPermission(t *testing.T) {
+func TestRenderUsesContextSpecificClawdIcons(t *testing.T) {
 	renderer, err := NewRenderer()
 	if err != nil {
 		t.Fatal(err)
@@ -151,13 +151,22 @@ func TestRenderShowsApprovalBadgeWhenWaitingForPermission(t *testing.T) {
 
 	idle := baseSnapshot(now)
 	idle.Activity = model.Activity{State: model.ActivityIdle, UpdatedAt: now.Add(-5 * time.Second)}
+	working := baseSnapshot(now)
+	working.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now.Add(-5 * time.Second)}
 
 	waitingFrame := renderer.Render(View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second})
 	idleFrame := renderer.Render(View{Claude: &idle, Now: now, StaleAfter: 15 * time.Second})
+	workingFrame := renderer.Render(View{Claude: &working, Now: now, StaleAfter: 15 * time.Second})
 
-	badgeRegion := image.Rect(railLeft+20, sectionsTop+20, railRight-10, sectionsTop+120)
-	if sameRegion(waitingFrame, idleFrame, badgeRegion) {
-		t.Fatal("approval badge did not change the mascot region")
+	mascotRegion := image.Rect(railLeft+20, sectionsTop+20, railRight-10, sectionsTop+160)
+	if sameRegion(waitingFrame, idleFrame, mascotRegion) {
+		t.Fatal("Clawd Exclamation Mark did not replace Clawd Sleeping")
+	}
+	if sameRegion(workingFrame, idleFrame, mascotRegion) {
+		t.Fatal("Clawd Coding did not replace Clawd Sleeping")
+	}
+	if sameRegion(workingFrame, waitingFrame, mascotRegion) {
+		t.Fatal("working and approval rendered the same Clawd icon")
 	}
 }
 

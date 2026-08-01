@@ -50,15 +50,14 @@ primary display" pattern as `pixelui.resolveActivity`'s fallbacks. The
 `input` (added alongside `video`) or the device open fails with a
 permission error.
 
-The left-hand status rail holds the animated clay starburst mascot and is the
-dashboard's focal point (`internal/pixelui/render.go`'s `renderRail`): its
-motion communicates the source session's activity state at a glance, per
-Nielsen's visibility-of-system-status heuristic, without requiring anyone to
-read text. Three states, each with a distinct speed/color/behavior profile in
-`visualForActivity`: `working` (fast, bright orange, orbiting dot), `idle`
-(slow, dim breathing), and `waiting_approval` (yellow, plus a pulsing "?"
-badge overlaid on the mascot and a yellow glow around the rail card). Activity
-state is independent of the statusLine refresh cycle — see below.
+The header uses the current Claude starburst logo. The left-hand status rail
+holds context-specific Clawd SVG artwork and is the dashboard's focal point
+(`internal/pixelui/render.go`'s `renderRail`): `working` uses Clawd Coding with
+a fast bounce, `idle` uses Clawd Sleeping with a slow breathing halo, and
+`waiting_approval` uses Clawd Exclamation Mark with a yellow pulse and rail
+glow. The embedded SVGs are rasterized once at renderer startup, not on every
+frame. Activity state is independent of the statusLine refresh cycle — see
+below.
 
 ## Provider ingestion and Windows source
 
