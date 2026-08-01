@@ -11,7 +11,7 @@ SupplementaryGroups=video
 WorkingDirectory=/home/pi/.lab
 Environment=HOME=/home/pi
 ExecStartPre=/usr/bin/test -x /home/pi/.local/bin/claude-status
-ExecStart=/home/pi/.local/bin/claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1
+ExecStart=/home/pi/.local/bin/claude-status gfx --refresh 250ms --framebuffer /dev/fb0 --tty /dev/tty1
 Restart=always
 RestartSec=2
 StandardInput=tty

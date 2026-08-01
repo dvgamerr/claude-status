@@ -14,10 +14,12 @@
 The primary UI is the native `gfx` dashboard, rendered at exactly 800x480
 pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. Design and visual
 QA against RGB565 output, not only an RGB PNG preview, because subtle gradients
-band on the physical 16-bit framebuffer. Keep a flat dark background,
-high-contrast type, large context usage, equal 5-hour/7-day quota cards, and
-compact session/Pi/mode cards. The display follows the newest snapshot without
-local keyboard input.
+band on the physical 16-bit framebuffer. Keep the warm Claude-first theme with
+a flat dark background, animated clay starburst mark, high-contrast type, large
+Claude context usage, equal Claude 5-hour/7-day quota cards, and a compact Codex
+card containing only its latest session/model and context. Provider selection is
+independent: a newer Codex event must never displace Claude from the primary UI.
+The display follows the newest snapshot for each provider without local input.
 
 ## Provider ingestion and Windows source
 
@@ -57,7 +59,7 @@ References:
   not change the Raspberry Pi display.
 - The dashboard on `/dev/tty1` is owned by the enabled system service
   `claude-status-tty1.service`. It runs
-  `/home/pi/.local/bin/claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1`
+  `/home/pi/.local/bin/claude-status gfx --refresh 250ms --framebuffer /dev/fb0 --tty /dev/tty1`
   with `Restart=always`.
 - Inspect it with
   `ssh pilab "systemctl --no-pager --full status claude-status-tty1.service"`.

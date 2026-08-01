@@ -298,7 +298,7 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gfx", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
-	refresh := flags.Duration("refresh", time.Second, "frame refresh interval")
+	refresh := flags.Duration("refresh", 250*time.Millisecond, "frame refresh interval")
 	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
 	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
 	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
@@ -384,17 +384,13 @@ func runPreview(args []string, stderr io.Writer) int {
 		return 1
 	}
 	snapshots, loadErr := store.LoadAll()
-	var latest *model.Snapshot
-	if len(snapshots) > 0 {
-		copy := snapshots[0]
-		latest = &copy
-	}
+	claude, codex := pixelui.LatestProviders(snapshots)
 	renderer, err := pixelui.NewRenderer()
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
 		return 1
 	}
-	frame := renderer.Render(pixelui.View{Snapshot: latest, Now: time.Now(), StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
+	frame := renderer.Render(pixelui.View{Claude: claude, Codex: codex, Now: time.Now(), StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
 	file, err := os.Create(*outputPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status preview: create output: %v\n", err)

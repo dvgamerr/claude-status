@@ -6,7 +6,8 @@ Native pixel dashboard สำหรับดู Claude Code และ Codex usag
 
 หน้าหลักวาดลง `/dev/fb0` แบบ RGB565 ที่ 800×480 โดยตรง ไม่ใช้ terminal grid,
 Desktop, Chromium หรือ X/Wayland จึงควบคุม typography, spacing, สี และ rounded cards
-ได้ทุกพิกเซล พร้อม hero context meter, token chips, quota cards และ Pi health
+ได้ทุกพิกเซล พร้อม Claude-first hero context meter, token chips, 5h/7day cards,
+animated Claude mark และ Pi health ส่วน Codex ย่อเหลือ current session/model + context
 
 ## สิ่งที่โปรแกรมทำ
 
@@ -15,8 +16,8 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
-- `claude-status gfx` เปิด native framebuffer dashboard 800×480 และตาม snapshot
-  ล่าสุดอัตโนมัติทุกวินาที
+- `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 250ms
+  และเลือก snapshot ล่าสุดของ Claude/Codex แยกกันเพื่อให้ Claude เป็นหน้าหลักเสมอ
 - `claude-status preview` render frame เดียวกันเป็น PNG สำหรับ visual QA
 - quota ที่ provider ไม่ส่งจะแสดง unavailable; Codex account ที่ระบุ unlimited
   จะแสดง `UNMETERED` แทนการสร้างเปอร์เซ็นต์ขึ้นเอง
@@ -96,7 +97,7 @@ claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1
 
 ```text
 --state-dir DIR       เปลี่ยนที่เก็บ snapshot
---refresh 1s          รอบอ่านข้อมูลและ Pi metrics
+--refresh 250ms       รอบ animation, อ่านข้อมูล และ Pi metrics
 --stale-after 15s     อายุข้อมูลก่อนแสดง STALE
 --framebuffer PATH    framebuffer device; ค่าเริ่มต้น /dev/fb0
 --tty PATH            console ที่สลับเข้า graphics mode; ค่าเริ่มต้น /dev/tty1

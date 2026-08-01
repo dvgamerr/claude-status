@@ -60,3 +60,19 @@ func TestRenderFramePropagatesPresentError(t *testing.T) {
 		t.Fatalf("renderFrame() error = %v", err)
 	}
 }
+
+func TestLatestProvidersKeepsClaudePrimaryWhenCodexIsNewer(t *testing.T) {
+	now := time.Now()
+	snapshots := []model.Snapshot{
+		{Provider: "codex", CapturedAt: now, Session: model.Session{ID: "codex-new"}},
+		{Provider: "claude", CapturedAt: now.Add(-time.Hour), Session: model.Session{ID: "claude-old"}},
+		{Provider: "claude", CapturedAt: now.Add(-time.Minute), Session: model.Session{ID: "claude-current"}},
+	}
+	claude, codex := LatestProviders(snapshots)
+	if claude == nil || claude.Session.ID != "claude-current" {
+		t.Fatalf("Claude selection = %+v", claude)
+	}
+	if codex == nil || codex.Session.ID != "codex-new" {
+		t.Fatalf("Codex selection = %+v", codex)
+	}
+}

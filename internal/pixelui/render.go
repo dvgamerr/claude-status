@@ -25,22 +25,24 @@ const (
 )
 
 var (
-	backgroundTop = rgb(7, 12, 23)
-	cardColor     = rgb(16, 25, 42)
-	cardStrong    = rgb(20, 31, 51)
-	trackColor    = rgb(34, 46, 67)
-	textPrimary   = rgb(241, 245, 249)
-	textSecondary = rgb(148, 163, 184)
-	textFaint     = rgb(87, 104, 130)
+	backgroundTop = rgb(20, 19, 17)
+	cardColor     = rgb(30, 28, 25)
+	cardStrong    = rgb(39, 36, 32)
+	trackColor    = rgb(60, 55, 49)
+	textPrimary   = rgb(246, 242, 234)
+	textSecondary = rgb(188, 178, 164)
+	textFaint     = rgb(126, 117, 105)
+	claudeOrange  = rgb(217, 119, 87)
+	claudePeach   = rgb(235, 166, 135)
 	green         = rgb(52, 211, 153)
-	blue          = rgb(96, 165, 250)
 	purple        = rgb(167, 139, 250)
 	yellow        = rgb(250, 204, 21)
 	red           = rgb(248, 113, 113)
 )
 
 type View struct {
-	Snapshot     *model.Snapshot
+	Claude       *model.Snapshot
+	Codex        *model.Snapshot
 	Stats        systeminfo.Stats
 	Now          time.Time
 	StaleAfter   time.Duration
@@ -101,29 +103,27 @@ func (r *Renderer) Render(view View) *image.RGBA {
 	if view.StaleAfter <= 0 {
 		view.StaleAfter = 15 * time.Second
 	}
-	if view.Snapshot == nil {
+	if view.Claude == nil {
 		r.renderWaiting(canvas, view)
 		return canvas
 	}
-	r.renderDashboard(canvas, view, *view.Snapshot)
+	r.renderDashboard(canvas, view, *view.Claude)
 	return canvas
 }
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot) {
-	accent := providerAccent(snapshot.Provider)
-	provider := providerName(snapshot.Provider)
+	accent := claudeOrange
 	modelName := snapshot.Model.DisplayName
 	if modelName == "" {
 		modelName = snapshot.Model.ID
 	}
 	if modelName == "" {
-		modelName = provider
+		modelName = "Claude"
 	}
 
-	fillRounded(canvas, image.Rect(20, 15, 58, 53), 11, accent)
-	r.text(canvas, r.bold22, backgroundTop, 31, 43, string(provider[0]))
-	r.text(canvas, r.bold18, textPrimary, 72, 31, provider)
-	r.text(canvas, r.regular13, textSecondary, 72, 50, fitText(r.regular13, modelName, 350))
+	r.drawClaudeMark(canvas, 40, 34, 17, view.Now)
+	r.text(canvas, r.bold22, textPrimary, 72, 32, "CLAUDE")
+	r.text(canvas, r.regular13, textSecondary, 72, 52, "PRIMARY STATUS  •  "+strings.ToUpper(fitText(r.regular13, modelName, 245)))
 
 	age := view.Now.Sub(snapshot.CapturedAt)
 	if age < 0 {
@@ -140,7 +140,7 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.text(canvas, r.bold13, liveColor, 668, 37, liveText)
 	r.textRight(canvas, r.bold18, textPrimary, 780, 37, view.Now.Format("15:04"))
 
-	card(canvas, image.Rect(18, 68, 782, 225), 18)
+	card(canvas, image.Rect(18, 68, 782, 220), 19)
 	r.text(canvas, r.bold13, textSecondary, 38, 94, "CONTEXT WINDOW")
 	contextPct := snapshot.Context.UsedPercentage
 	percent := percentValue(contextPct)
@@ -149,27 +149,15 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.text(canvas, r.regular14, textSecondary, 167, 128, contextFraction(snapshot.Context))
 	r.text(canvas, r.regular13, textFaint, 167, 151, "active tokens / model window")
 
-	metricChip(canvas, r, image.Rect(491, 91, 619, 151), "INPUT", tokenLabel(contextInput(snapshot.Context)), blue)
-	metricChip(canvas, r, image.Rect(632, 91, 761, 151), "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
-	progress(canvas, image.Rect(38, 190, 762, 205), percent, accent)
+	metricChip(canvas, r, image.Rect(491, 91, 619, 153), "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
+	metricChip(canvas, r, image.Rect(632, 91, 761, 153), "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
+	progress(canvas, image.Rect(38, 190, 762, 205), percent, thresholdColor(percent, accent))
 
-	r.quotaCard(canvas, image.Rect(18, 239, 393, 349), "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, blue, view.Now)
-	r.quotaCard(canvas, image.Rect(407, 239, 782, 349), "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, purple, view.Now)
+	r.quotaCard(canvas, image.Rect(18, 234, 393, 342), "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, view.Now)
+	r.quotaCard(canvas, image.Rect(407, 234, 782, 342), "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, view.Now)
 
-	miniCard(canvas, image.Rect(18, 363, 263, 442))
-	r.text(canvas, r.bold13, textSecondary, 35, 387, "SESSION")
-	r.text(canvas, r.bold16, textPrimary, 35, 414, fitText(r.bold16, sessionName(snapshot), 211))
-	r.text(canvas, r.regular12, textFaint, 35, 433, ageText(age))
-
-	miniCard(canvas, image.Rect(277, 363, 522, 442))
-	r.text(canvas, r.bold13, textSecondary, 294, 387, "PI HEALTH")
-	r.text(canvas, r.bold16, textPrimary, 294, 414, healthPrimary(view.Stats))
-	r.text(canvas, r.regular12, textFaint, 294, 433, healthSecondary(view.Stats))
-
-	miniCard(canvas, image.Rect(536, 363, 782, 442))
-	r.text(canvas, r.bold13, textSecondary, 553, 387, "RUN MODE")
-	r.text(canvas, r.bold16, textPrimary, 553, 414, fitText(r.bold16, modePrimary(snapshot), 212))
-	r.text(canvas, r.regular12, textFaint, 553, 433, clientLabel(snapshot))
+	r.claudeSessionCard(canvas, image.Rect(18, 356, 526, 446), snapshot, view.Stats, age)
+	r.codexCard(canvas, image.Rect(540, 356, 782, 446), view.Codex)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
 	if view.SessionCount != 1 {
@@ -178,27 +166,54 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	if view.LoadError != nil {
 		footer = "STATE WARNING  •  " + fitText(r.regular12, view.LoadError.Error(), 500)
 	}
-	r.text(canvas, r.bold13, accent, 21, 468, footer)
-	r.textRight(canvas, r.regular12, textFaint, 779, 468, "claude-status  •  framebuffer 800×480")
+	r.text(canvas, r.bold13, accent, 21, 469, footer)
+	r.textRight(canvas, r.regular12, textFaint, 779, 469, "CLAUDE PRIMARY  •  800×480")
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View) {
-	accent := blue
-	fillRounded(canvas, image.Rect(20, 15, 58, 53), 11, accent)
-	r.text(canvas, r.bold22, backgroundTop, 31, 43, "A")
-	r.text(canvas, r.bold18, textPrimary, 72, 31, "AI STATUS")
-	r.text(canvas, r.regular13, textSecondary, 72, 50, "Raspberry Pi display")
+	accent := claudeOrange
+	r.drawClaudeMark(canvas, 40, 34, 17, view.Now)
+	r.text(canvas, r.bold22, textPrimary, 72, 32, "CLAUDE")
+	r.text(canvas, r.regular13, textSecondary, 72, 52, "PRIMARY STATUS")
 	r.textRight(canvas, r.bold18, textPrimary, 780, 37, view.Now.Format("15:04"))
 
-	card(canvas, image.Rect(70, 98, 730, 382), 24)
-	fillCircle(canvas, 400, 171, 34, withAlpha(accent, 36))
-	fillCircle(canvas, 400, 171, 8, accent)
-	r.textCentered(canvas, r.bold30, textPrimary, 400, 247, "WAITING FOR ACTIVITY")
-	r.textCentered(canvas, r.regular16, textSecondary, 400, 279, "Claude Code or Codex will appear after the next response")
-	progress(canvas, image.Rect(240, 317, 560, 326), 28, accent)
-	r.textCentered(canvas, r.regular13, textFaint, 400, 356, "Listening for sanitized snapshots over SSH")
-	r.text(canvas, r.bold13, accent, 21, 468, "AUTO  •  NO ACTIVE SESSION")
-	r.textRight(canvas, r.regular12, textFaint, 779, 468, "claude-status  •  framebuffer 800×480")
+	card(canvas, image.Rect(18, 68, 782, 342), 22)
+	r.drawClaudeMark(canvas, 400, 145, 31, view.Now)
+	r.textCentered(canvas, r.bold30, textPrimary, 400, 220, "WAITING FOR CLAUDE")
+	r.textCentered(canvas, r.regular16, textSecondary, 400, 253, "Start or continue a Claude Code session on the source machine")
+	progress(canvas, image.Rect(244, 289, 556, 299), animationPercent(view.Now), accent)
+	r.textCentered(canvas, r.regular13, textFaint, 400, 325, "The next statusLine event will update this display")
+	r.codexCard(canvas, image.Rect(540, 356, 782, 446), view.Codex)
+	miniCard(canvas, image.Rect(18, 356, 526, 446))
+	r.text(canvas, r.bold13, textSecondary, 36, 381, "PI HEALTH")
+	r.text(canvas, r.bold18, textPrimary, 36, 411, healthPrimary(view.Stats))
+	r.text(canvas, r.regular13, textFaint, 36, 434, healthSecondary(view.Stats))
+	r.text(canvas, r.bold13, accent, 21, 469, "CLAUDE PRIMARY  •  WAITING")
+	r.textRight(canvas, r.regular12, textFaint, 779, 469, "FRAMEBUFFER 800×480")
+}
+
+func (r *Renderer) claudeSessionCard(canvas *image.RGBA, bounds image.Rectangle, snapshot model.Snapshot, stats systeminfo.Stats, age time.Duration) {
+	miniCard(canvas, bounds)
+	r.text(canvas, r.bold13, claudePeach, bounds.Min.X+18, bounds.Min.Y+25, "CURRENT CLAUDE SESSION")
+	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+18, bounds.Min.Y+54, fitText(r.bold18, sessionName(snapshot), bounds.Dx()-36))
+	details := strings.ToUpper(modelLabel(snapshot)) + "  •  " + modePrimary(snapshot) + "  •  " + ageText(age)
+	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+75, fitText(r.regular12, details, bounds.Dx()-36))
+	r.textRight(canvas, r.regular12, textFaint, bounds.Max.X-18, bounds.Min.Y+25, healthCompact(stats))
+}
+
+func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapshot *model.Snapshot) {
+	miniCard(canvas, bounds)
+	r.text(canvas, r.bold13, green, bounds.Min.X+18, bounds.Min.Y+24, "CODEX")
+	r.textRight(canvas, r.regular12, textFaint, bounds.Max.X-17, bounds.Min.Y+24, "CURRENT SESSION")
+	if snapshot == nil {
+		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+53, "NO SESSION")
+		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+75, "context unavailable")
+		return
+	}
+	r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+51, fitText(r.bold16, sessionName(*snapshot), bounds.Dx()-36))
+	label := "CONTEXT  " + percentLabel(snapshot.Context.UsedPercentage)
+	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+75, label)
+	progress(canvas, image.Rect(bounds.Min.X+116, bounds.Min.Y+66, bounds.Max.X-18, bounds.Min.Y+77), percentValue(snapshot.Context.UsedPercentage), green)
 }
 
 func (r *Renderer) quotaCard(canvas *image.RGBA, bounds image.Rectangle, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
@@ -271,6 +286,59 @@ func fillCircle(canvas *image.RGBA, centerX, centerY, radius int, fill color.RGB
 	fillRounded(canvas, image.Rect(centerX-radius, centerY-radius, centerX+radius, centerY+radius), radius, fill)
 }
 
+func (r *Renderer) drawClaudeMark(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
+	fillCircle(canvas, centerX, centerY, radius+8, rgb(48, 34, 28))
+	phase := float64(now.UnixMilli()%2000) / 2000 * 2 * math.Pi
+	for ray := 0; ray < 8; ray++ {
+		angle := float64(ray)*math.Pi/4 + phase/8
+		pulse := (math.Sin(phase+float64(ray)*math.Pi/4) + 1) / 2
+		inner := float64(radius) * 0.28
+		outer := float64(radius) * (0.73 + pulse*0.18)
+		fill := claudeOrange
+		if pulse > 0.72 {
+			fill = claudePeach
+		}
+		drawThickLine(
+			canvas,
+			centerX+int(math.Cos(angle)*inner),
+			centerY+int(math.Sin(angle)*inner),
+			centerX+int(math.Cos(angle)*outer),
+			centerY+int(math.Sin(angle)*outer),
+			max(2, radius/6),
+			fill,
+		)
+	}
+	fillCircle(canvas, centerX, centerY, max(3, radius/5), claudeOrange)
+	orbit := phase * 1.5
+	fillCircle(
+		canvas,
+		centerX+int(math.Cos(orbit)*float64(radius+4)),
+		centerY+int(math.Sin(orbit)*float64(radius+4)),
+		max(2, radius/9),
+		claudePeach,
+	)
+}
+
+func drawThickLine(canvas *image.RGBA, x0, y0, x1, y1, thickness int, fill color.RGBA) {
+	dx := x1 - x0
+	dy := y1 - y0
+	steps := max(max(dx, -dx), max(dy, -dy))
+	if steps == 0 {
+		fillCircle(canvas, x0, y0, thickness, fill)
+		return
+	}
+	for step := 0; step <= steps; step++ {
+		x := x0 + dx*step/steps
+		y := y0 + dy*step/steps
+		fillCircle(canvas, x, y, thickness, fill)
+	}
+}
+
+func animationPercent(now time.Time) float64 {
+	phase := float64(now.UnixMilli()%2000) / 2000 * 2 * math.Pi
+	return 35 + (math.Sin(phase)+1)*15
+}
+
 func (r *Renderer) text(canvas *image.RGBA, face font.Face, fill color.RGBA, x, baseline int, value string) {
 	drawer := font.Drawer{Dst: canvas, Src: image.NewUniform(fill), Face: face, Dot: fixed.P(x, baseline)}
 	drawer.DrawString(value)
@@ -305,13 +373,6 @@ func providerName(provider string) string {
 		return "CODEX"
 	}
 	return "CLAUDE"
-}
-
-func providerAccent(provider string) color.RGBA {
-	if strings.EqualFold(strings.TrimSpace(provider), "codex") {
-		return green
-	}
-	return rgb(245, 158, 114)
 }
 
 func percentValue(value *float64) float64 {
@@ -443,6 +504,16 @@ func sessionName(snapshot model.Snapshot) string {
 	return id
 }
 
+func modelLabel(snapshot model.Snapshot) string {
+	if snapshot.Model.DisplayName != "" {
+		return snapshot.Model.DisplayName
+	}
+	if snapshot.Model.ID != "" {
+		return snapshot.Model.ID
+	}
+	return providerName(snapshot.Provider)
+}
+
 func healthPrimary(stats systeminfo.Stats) string {
 	return "CPU " + floatLabel(stats.CPUPercent, "%.0f%%") + "   RAM " + memoryLabel(stats.MemoryUsedBytes, stats.MemoryTotalBytes)
 }
@@ -453,6 +524,10 @@ func healthSecondary(stats systeminfo.Stats) string {
 		parts = append(parts, fmt.Sprintf("LOAD %.2f", *stats.Load1))
 	}
 	return strings.Join(parts, "   ")
+}
+
+func healthCompact(stats systeminfo.Stats) string {
+	return "PI  " + floatLabel(stats.CPUPercent, "%.0f%%") + "  •  " + floatLabel(stats.TemperatureC, "%.0f°C")
 }
 
 func floatLabel(value *float64, format string) string {
@@ -477,17 +552,6 @@ func modePrimary(snapshot model.Snapshot) string {
 		return "THINKING ON"
 	}
 	return "STANDARD"
-}
-
-func clientLabel(snapshot model.Snapshot) string {
-	version := snapshot.ClientVersion
-	if version == "" {
-		version = snapshot.ClaudeCodeVersion
-	}
-	if version == "" {
-		return providerName(snapshot.Provider) + " CLIENT"
-	}
-	return providerName(snapshot.Provider) + " " + version
 }
 
 func rgb(red, green, blue uint8) color.RGBA {
