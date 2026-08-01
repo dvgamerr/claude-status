@@ -1,7 +1,7 @@
 # Icon sources
 
-- `claude.svg` uses the current Claude starburst mark and Claude brand color
-  from the [Simple Icons Claude entry](https://simpleicons.org/?q=claude).
+- `anthropic.svg` reproduces the white iOS-style Anthropic mark shown in the
+  [Icons8 Claude/Anthropic set](https://icons8.com/icons/set/anthropic-claude-icon).
 - `clawd-coding.svg`, `clawd-sleeping.svg`, and
   `clawd-exclamation-mark.svg` reproduce the pixel geometry of the matching
   100 px Icons8 Color previews as SVG paths for the framebuffer renderer.

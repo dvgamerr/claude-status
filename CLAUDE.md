@@ -50,7 +50,7 @@ primary display" pattern as `pixelui.resolveActivity`'s fallbacks. The
 `input` (added alongside `video`) or the device open fails with a
 permission error.
 
-The header uses the current Claude starburst logo. The left-hand status rail
+The header uses a white Anthropic logo, and nowhere else does. The left-hand status rail
 holds context-specific Clawd SVG artwork and is the dashboard's focal point
 (`internal/pixelui/render.go`'s `renderRail`): `working` uses Clawd Coding with
 a fast bounce, `idle` uses Clawd Sleeping with a slow breathing halo, and

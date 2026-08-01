@@ -246,11 +246,22 @@ func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string)
 // limitLine draws one open (no card) rate-limit indicator — label, big
 // percentage, reset countdown, and a bar — stacked so the same compact
 // shape works whether it's given half the Claude panel's width or more.
+// The reset countdown recomputes from the stored epoch against `now` every
+// frame, so it counts down live without any separate timer state; once
+// that epoch passes, the window has renewed server-side and the last known
+// percentage is no longer true, so this shows unavailable instead of a
+// stale number frozen at whatever it was when it expired.
 func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
 	r.text(canvas, r.bold13, textSecondary, x, top, label+" LIMIT")
 	if window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited {
 		r.text(canvas, r.bold22, green, x, top+30, "UNMETERED")
 		progress(canvas, image.Rect(x, top+58, x+width, top+66), 100, green)
+		return
+	}
+	if window.ResetsAt != nil && *window.ResetsAt > 0 && now.Unix() >= *window.ResetsAt {
+		r.text(canvas, r.bold22, textPrimary, x, top+30, "--")
+		r.text(canvas, r.regular12, textFaint, x, top+48, fitText(r.regular12, "reset — awaiting new data", width))
+		progress(canvas, image.Rect(x, top+58, x+width, top+66), 0, accent)
 		return
 	}
 	pct := percentValue(window.UsedPercentage)
@@ -577,8 +588,8 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 	drawIconCentered(canvas, icon, centerX, centerY+yOffset)
 }
 
-// drawLogoMark is the current Claude starburst, kept static so the rail owns
-// all activity motion.
+// drawLogoMark is the white Anthropic mark, used only in the top-left header;
+// the Clawd artwork remains exclusive to the activity rail.
 func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, _ int) {
 	drawIconCentered(canvas, r.icons.logo, centerX, centerY)
 }

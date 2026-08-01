@@ -55,10 +55,10 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	if frame.Bounds() != image.Rect(0, 0, Width, Height) {
 		t.Fatalf("frame bounds = %v", frame.Bounds())
 	}
-	// Header mascot, rail mascot/health, open Claude panel's limit/context
+	// Header Anthropic mark, rail mascot/health, open Claude panel's limit/context
 	// bars, and the framed Codex card (confined to the middle+bottom, not
 	// the top row).
-	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 151}, {300, 298}, {600, 260}, {600, 400}} {
+	for _, point := range []image.Point{{22, 25}, {80, 150}, {30, 400}, {300, 151}, {300, 298}, {600, 260}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
@@ -235,6 +235,40 @@ func TestLimitLineHandlesUnlimitedAndUnavailableValues(t *testing.T) {
 	// regardless of glyph shapes, unlike checking a single text pixel.
 	if rgba(canvas.At(25, 102)) == (color.RGBA{}) || rgba(canvas.At(265, 102)) == (color.RGBA{}) {
 		t.Fatal("limit lines were not painted")
+	}
+}
+
+func TestLimitLineShowsUnavailableOnceTheStoredResetPasses(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	highPct := 93.0
+
+	pastReset := now.Add(-time.Minute).Unix()
+	expired := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	renderer.limitLine(expired, 20, 40, 200, "5 HOUR", model.RateWindow{UsedPercentage: &highPct, ResetsAt: &pastReset}, model.RateLimits{}, claudeOrange, now)
+
+	futureReset := now.Add(time.Hour).Unix()
+	active := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	renderer.limitLine(active, 20, 40, 200, "5 HOUR", model.RateWindow{UsedPercentage: &highPct, ResetsAt: &futureReset}, model.RateLimits{}, claudeOrange, now)
+
+	// At 93%, the bar reaches well past x=170; once the stored reset has
+	// passed, that percentage is stale (the window renewed server-side) so
+	// the bar should reset to empty instead of staying frozen at 93%.
+	barPoint := image.Point{X: 170, Y: 102}
+	if rgba(expired.At(barPoint.X, barPoint.Y)) == rgba(active.At(barPoint.X, barPoint.Y)) {
+		t.Fatal("expired window's bar should differ from an active window's bar at the same stored percentage")
+	}
+}
+
+func TestResetCountdownRecomputesLiveFromNow(t *testing.T) {
+	epoch := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC).Unix()
+	early := resetLabelShort(&epoch, time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC))
+	later := resetLabelShort(&epoch, time.Date(2026, 8, 1, 11, 0, 0, 0, time.UTC))
+	if early == later {
+		t.Fatalf("resetLabelShort() did not change as time advanced toward the same epoch: %q", early)
 	}
 }
 

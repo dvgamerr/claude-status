@@ -18,8 +18,8 @@ const railIconSize = 120
 // while preserving one scalable source for both the 30 px header mark and
 // the 120 px activity artwork.
 //
-//go:embed assets/claude.svg
-var claudeLogoSVG []byte
+//go:embed assets/anthropic.svg
+var anthropicLogoSVG []byte
 
 //go:embed assets/clawd-coding.svg
 var clawdCodingSVG []byte
@@ -48,7 +48,7 @@ func loadIconSet() (iconSet, error) {
 
 	var set iconSet
 	var err error
-	if set.logo, err = load("Claude logo", claudeLogoSVG, 30, 30); err != nil {
+	if set.logo, err = load("Anthropic logo", anthropicLogoSVG, 30, 30); err != nil {
 		return iconSet{}, err
 	}
 	if set.working, err = load("Clawd Coding", clawdCodingSVG, railIconSize, railIconSize); err != nil {
