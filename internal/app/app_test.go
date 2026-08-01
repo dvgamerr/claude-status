@@ -44,6 +44,39 @@ func TestRunIngestEndToEnd(t *testing.T) {
 	}
 }
 
+func TestRunUsageEndToEnd(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	seed := bytes.NewBufferString(`{"session_id":"cli-test","model":{"display_name":"Sonnet 5"}}`)
+	var seedOut, seedErr bytes.Buffer
+	if exitCode := Run(context.Background(), []string{"ingest", "--state-dir", dir}, seed, &seedOut, &seedErr); exitCode != 0 {
+		t.Fatalf("seed ingest exit = %d, stderr = %s", exitCode, seedErr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"usage", "--state-dir", dir, "--five-hour", "63", "--seven-day", "42"}
+	if exitCode := Run(context.Background(), args, strings.NewReader(""), &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Run() exit = %d, stderr = %s", exitCode, stderr.String())
+	}
+
+	store, err := state.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.LoadLatest()
+	if err != nil {
+		t.Fatalf("LoadLatest() error = %v", err)
+	}
+	if snapshot.Model.DisplayName != "Sonnet 5" {
+		t.Fatalf("usage clobbered model: %+v", snapshot.Model)
+	}
+	if got := *snapshot.RateLimits.FiveHour.UsedPercentage; got != 63 {
+		t.Fatalf("FiveHour.UsedPercentage = %v", got)
+	}
+	if got := *snapshot.RateLimits.SevenDay.UsedPercentage; got != 42 {
+		t.Fatalf("SevenDay.UsedPercentage = %v", got)
+	}
+}
+
 func TestRunRejectsInvalidInput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exitCode := Run(context.Background(), []string{"ingest", "--state-dir", t.TempDir()}, strings.NewReader("not-json"), &stdout, &stderr)
@@ -180,6 +213,10 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "gfx refresh too fast", args: []string{"gfx", "--refresh", "5ms"}, wantExit: 2, wantText: "at least 20ms"},
 		{name: "preview help", args: []string{"preview", "--help"}, wantExit: 0, wantText: "Usage: claude-status preview"},
 		{name: "preview positional", args: []string{"preview", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "usage help", args: []string{"usage", "--help"}, wantExit: 0, wantText: "Usage: claude-status usage"},
+		{name: "usage positional", args: []string{"usage", "--five-hour", "1", "--seven-day", "1", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "usage missing flags", args: []string{"usage"}, wantExit: 2, wantText: "--five-hour and --seven-day are required"},
+		{name: "usage missing snapshot", args: []string{"usage", "--state-dir", t.TempDir(), "--five-hour", "1", "--seven-day", "1"}, wantExit: 1, wantText: "load existing snapshot"},
 	}
 
 	for _, tt := range tests {

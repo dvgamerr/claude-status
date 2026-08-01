@@ -17,6 +17,10 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
   `PreToolUse`, `Stop`, `Notification`) จาก stdin แล้วอัปเดตแค่สถานะ
   working/idle/waiting-approval ของ session นั้น โดยไม่แตะ field อื่นและไม่เก็บ
   ข้อความ hook ดิบไว้เลย ใช้ขับ animation ของ mascot บนหน้าจอ
+- `claude-status usage --five-hour PCT --seven-day PCT` เขียนแค่ 5h/7d limit
+  ทับ session ล่าสุด (หรือ `--session ID` เจาะจง) โดยไม่แตะ field อื่น — ใช้ตอน
+  `statusLine` ไม่ยิงจริง (เท่าที่เจอ ยิงได้แค่จาก CLI terminal ไม่ยิงจาก
+  Claude Code แบบ VS Code extension) เอาไว้กรอกเลขจากหน้า Account & Usage มือ
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi

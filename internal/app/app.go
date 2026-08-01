@@ -24,6 +24,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/state"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 	"github.com/dvgamerr/claude-status/internal/touch"
+	"github.com/dvgamerr/claude-status/internal/usage"
 )
 
 var (
@@ -43,6 +44,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runIngest(ctx, args[1:], stdin, stdout, stderr)
 	case "activity":
 		return runActivity(ctx, args[1:], stdin, stderr)
+	case "usage":
+		return runUsage(ctx, args[1:], stderr)
 	case "codex-notify":
 		return runCodexNotify(ctx, args[1:], stderr)
 	case "import":
@@ -149,6 +152,59 @@ func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.
 	}
 	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
 		fmt.Fprintf(stderr, "claude-status activity: warning: %v\n", err)
+	}
+	return 0
+}
+
+// runUsage manually merges the two rate-limit percentages into the target
+// session's stored snapshot, for interfaces (this project has only ever
+// seen the VS Code extension chat panel) where statusLine never fires so
+// claude-status never sees real numbers on its own.
+func runUsage(ctx context.Context, args []string, stderr io.Writer) int {
+	defaultDir, err := state.DefaultDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		return 1
+	}
+	flags := flag.NewFlagSet("usage", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	fiveHour := flags.Float64("five-hour", -1, "5-hour rate limit used percentage (0-100), required")
+	sevenDay := flags.Float64("seven-day", -1, "7-day rate limit used percentage (0-100), required")
+	fiveHourReset := flags.Duration("five-hour-reset", 5*time.Hour, "time until the 5-hour window resets")
+	sevenDayReset := flags.Duration("seven-day-reset", 7*24*time.Hour, "time until the 7-day window resets")
+	sessionID := flags.String("session", "", "session ID to update (defaults to the most recently updated session)")
+	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
+	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
+	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: claude-status usage --five-hour PCT --seven-day PCT [--five-hour-reset 5h] [--seven-day-reset 168h] [--session ID] [--state-dir DIR] [--mirror-ssh HOST]")
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "claude-status usage: unexpected positional arguments")
+		return 2
+	}
+	if *fiveHour < 0 || *sevenDay < 0 {
+		fmt.Fprintln(stderr, "claude-status usage: --five-hour and --seven-day are required")
+		return 2
+	}
+	store, err := state.New(*stateDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		return 1
+	}
+	snapshot, err := usage.Run(store, *sessionID, *fiveHour, *sevenDay, *fiveHourReset, *sevenDayReset, time.Now())
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		return 1
+	}
+	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
+		fmt.Fprintf(stderr, "claude-status usage: warning: %v\n", err)
 	}
 	return 0
 }
@@ -478,6 +534,7 @@ func printUsage(w io.Writer) {
 Usage:
   claude-status ingest [flags]       Read Claude Code statusLine JSON from stdin
   claude-status activity [flags]     Read a Claude Code hook event from stdin
+  claude-status usage [flags]        Manually set 5h/7d rate-limit percentages
   claude-status codex-notify [flags] Read a Codex turn-complete notification
   claude-status import [flags]       Import one sanitized snapshot
   claude-status gfx [flags]          Render the 800x480 framebuffer dashboard
