@@ -75,8 +75,11 @@ drawing a row of unmapped glyph boxes.
 - Codex calls `codex-notify` through the external `notify` array in
   `%USERPROFILE%\.codex\config.toml`. Preserve and forward any notifier that
   was configured before claude-status is installed.
-- Both source adapters may mirror to `pilab`, but only by serializing the
-  allowlisted `model.Snapshot` and piping it over SSH to
+- Source adapters only persist sanitized local state; they never open the
+  network. The long-lived `claude-status relay` process is the sole owner of
+  SSH transport. On Windows, `scripts/install-windows.ps1` runs one relay via
+  the `claude-status-relay` Scheduled Task. It retries changed snapshots and
+  pipes only the allowlisted `model.Snapshot` to
   `/home/pi/.local/bin/claude-status import`.
 - Never mirror raw Claude statusLine JSON, a raw Codex notify payload, rollout
   lines, prompts, responses, transcripts, credentials, OAuth tokens, or
@@ -146,20 +149,18 @@ drawing a row of unmapped glyph boxes.
   Their `ingest` writes a real snapshot under
   `%LOCALAPPDATA%\claude-status\sessions\*.json` with genuine
   `rate_limits` (account-wide, so any fresh one is valid regardless of
-  which session produced it) — but that `ingest` call's `--mirror-ssh`
-  step does not reliably reach `pilab` from inside that spawned process
-  (cause unconfirmed; possibly no SSH/network context there). So the real
-  numbers exist locally moments after any subagent or `/usage` run, but
-  don't show up on the Pi on their own.
-- Two ways to get real numbers onto `pilab` from a VS Code extension
-  session: (a) `claude-status usage --five-hour PCT --seven-day PCT`
-  (merges just the two percentages into the latest session, mirrors it —
+  which session produced it). The independent relay notices that atomic
+  local write and delivers it to `pilab`; the short-lived source process
+  never waits for or launches SSH.
+- Two sources can provide real numbers for a VS Code extension session:
+  (a) `claude-status usage --five-hour PCT --seven-day PCT`
+  (merges just the two percentages into the latest local session; the relay
+  delivers the change —
   see "Activity state" above for the shape it preserves), fed from numbers
-  read off `/usage`'s own output or the Account & Usage panel; or (b) find
-  the freshest real snapshot under `sessions\*.json` (matching `/usage`'s
-  numbers) and pipe it straight into
-  `ssh pilab "/home/pi/.local/bin/claude-status import"` to mirror that
-  exact snapshot.
+  read off `/usage`'s own output or the Account & Usage panel; or (b) a
+  short-lived `/usage` or subagent CLI process writes a fresh real snapshot
+  under `sessions\*.json`. In both cases the relay automatically selects and
+  delivers the freshest Claude snapshot to `pilab`.
 
 References:
 

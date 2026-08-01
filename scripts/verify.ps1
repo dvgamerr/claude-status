@@ -18,19 +18,34 @@ Start-Transcript -Path $TranscriptPath -Force
 try {
     Set-Location $RepoDir
 
-    Write-Host "[1/11] gofmt"
+    Write-Host "[1/12] gofmt"
     $GoFiles = rg --files -g "*.go"
     if ($GoFiles) {
         gofmt -w $GoFiles
     }
 
-    Write-Host "[2/11] go mod tidy"
+    Write-Host "[2/12] PowerShell syntax"
+    $PowerShellScripts = rg --files -g "*.ps1"
+    foreach ($PowerShellScript in $PowerShellScripts) {
+        $Tokens = $null
+        $ParseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $RepoDir $PowerShellScript),
+            [ref]$Tokens,
+            [ref]$ParseErrors
+        ) | Out-Null
+        if ($ParseErrors.Count -gt 0) {
+            throw "PowerShell syntax error in $PowerShellScript`: $($ParseErrors[0].Message)"
+        }
+    }
+
+    Write-Host "[3/12] go mod tidy"
     go mod tidy
 
-    Write-Host "[3/11] repeated shuffled tests"
+    Write-Host "[4/12] repeated shuffled tests"
     go test -shuffle=on -count=3 ./...
 
-    Write-Host "[4/11] coverage floor"
+    Write-Host "[5/12] coverage floor"
     $CoveragePath = Join-Path $RepoDir "artifacts\coverage.out"
     go test "-coverprofile=$CoveragePath" ./...
     $CoverageSummary = go tool cover "-func=$CoveragePath"
@@ -43,26 +58,26 @@ try {
         throw "total Go test coverage $($Matches[1])% is below the 80% floor"
     }
 
-    Write-Host "[5/11] go vet"
+    Write-Host "[6/12] go vet"
     go vet ./...
 
-    Write-Host "[6/11] Windows build"
+    Write-Host "[7/12] Windows build"
     New-Item -ItemType Directory -Force -Path (Join-Path $RepoDir "bin") | Out-Null
     go build -trimpath -o (Join-Path $RepoDir "bin\claude-status.exe") ./cmd/claude-status
 
-    Write-Host "[7/11] Raspberry Pi 4 linux/arm64 build"
+    Write-Host "[8/12] Raspberry Pi 4 linux/arm64 build"
     $env:CGO_ENABLED = "0"
     $env:GOOS = "linux"
     $env:GOARCH = "arm64"
     go build -trimpath -o (Join-Path $RepoDir "bin\claude-status-linux-arm64") ./cmd/claude-status
 
-    Write-Host "[8/11] Verify ARM64 build metadata"
+    Write-Host "[9/12] Verify ARM64 build metadata"
     $ArmMetadata = go version -m (Join-Path $RepoDir "bin\claude-status-linux-arm64")
     if (($ArmMetadata -join "`n") -notmatch "GOOS=linux" -or ($ArmMetadata -join "`n") -notmatch "GOARCH=arm64") {
         throw "cross-built binary is not linux/arm64"
     }
 
-    Write-Host "[9/11] Binary ingest smoke test"
+    Write-Host "[10/12] Binary ingest smoke test"
     $SmokeDir = Join-Path $RepoDir ("artifacts\smoke-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $SmokeDir | Out-Null
     try {
@@ -91,7 +106,7 @@ try {
         }
     }
 
-    Write-Host "[10/11] Linux package smoke test"
+    Write-Host "[11/12] Linux package smoke test"
     $GitCommand = Get-Command git
     $GitRoot = (Resolve-Path (Join-Path (Split-Path -Parent $GitCommand.Source) "..")).Path
     $GitBash = Join-Path $GitRoot "bin\bash.exe"
@@ -109,7 +124,7 @@ try {
         throw "SHA256SUMS does not contain both verification packages"
     }
 
-    Write-Host "[11/11] SHA256 verification"
+    Write-Host "[12/12] SHA256 verification"
     foreach ($Checksum in $Checksums) {
         if ($Checksum -notmatch '^([0-9a-fA-F]{64})\s+\*?\.?/?(.+)$') {
             throw "invalid checksum line: $Checksum"

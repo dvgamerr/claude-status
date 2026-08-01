@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/mirror"
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/pixelui"
+	"github.com/dvgamerr/claude-status/internal/relay"
 	"github.com/dvgamerr/claude-status/internal/state"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 	"github.com/dvgamerr/claude-status/internal/touch"
@@ -41,15 +44,17 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 	switch args[0] {
 	case "ingest":
-		return runIngest(ctx, args[1:], stdin, stdout, stderr)
+		return runIngest(args[1:], stdin, stdout, stderr)
 	case "activity":
-		return runActivity(ctx, args[1:], stdin, stderr)
+		return runActivity(args[1:], stdin, stderr)
 	case "usage":
-		return runUsage(ctx, args[1:], stderr)
+		return runUsage(args[1:], stderr)
 	case "codex-notify":
 		return runCodexNotify(ctx, args[1:], stderr)
 	case "import":
 		return runImport(args[1:], stdin, stderr)
+	case "relay":
+		return runRelay(ctx, args[1:], stderr)
 	case "tui":
 		return runTUI(ctx, args[1:], stdin, stdout, stderr)
 	case "gfx":
@@ -69,7 +74,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 }
 
-func runIngest(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func runIngest(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
@@ -78,10 +83,8 @@ func runIngest(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	flags := flag.NewFlagSet("ingest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
-	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status ingest [--state-dir DIR] [--mirror-ssh HOST]")
+		fmt.Fprintln(stderr, "Usage: claude-status ingest [--state-dir DIR]")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -98,13 +101,10 @@ func runIngest(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
 		return 1
 	}
-	snapshot, err := ingest.Run(stdin, stdout, store, time.Now())
+	_, err = ingest.Run(stdin, stdout, store, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
 		return 1
-	}
-	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status ingest: warning: %v\n", err)
 	}
 	return 0
 }
@@ -113,7 +113,7 @@ func runIngest(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 // Stop, UserPromptSubmit) as a working/idle/waiting-approval indicator. It
 // always exits 0: some of these hook events (PreToolUse) can block the tool
 // call if the hook exits non-zero, and this side channel must never do that.
-func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.Writer) int {
+func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
@@ -122,10 +122,8 @@ func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.
 	flags := flag.NewFlagSet("activity", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
-	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status activity [--state-dir DIR] [--mirror-ssh HOST]")
+		fmt.Fprintln(stderr, "Usage: claude-status activity [--state-dir DIR]")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -142,16 +140,10 @@ func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.
 		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
 		return 0
 	}
-	snapshot, matched, err := activity.Run(stdin, store, time.Now())
+	_, _, err = activity.Run(stdin, store, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
 		return 0
-	}
-	if !matched {
-		return 0
-	}
-	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status activity: warning: %v\n", err)
 	}
 	return 0
 }
@@ -160,7 +152,7 @@ func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.
 // session's stored snapshot, for interfaces (this project has only ever
 // seen the VS Code extension chat panel) where statusLine never fires so
 // claude-status never sees real numbers on its own.
-func runUsage(ctx context.Context, args []string, stderr io.Writer) int {
+func runUsage(args []string, stderr io.Writer) int {
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
@@ -174,10 +166,8 @@ func runUsage(ctx context.Context, args []string, stderr io.Writer) int {
 	sevenDayReset := flags.Duration("seven-day-reset", 7*24*time.Hour, "time until the 7-day window resets")
 	sessionID := flags.String("session", "", "session ID to update (defaults to the most recently updated session)")
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
-	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status usage --five-hour PCT --seven-day PCT [--five-hour-reset 5h] [--seven-day-reset 168h] [--session ID] [--state-dir DIR] [--mirror-ssh HOST]")
+		fmt.Fprintln(stderr, "Usage: claude-status usage --five-hour PCT --seven-day PCT [--five-hour-reset 5h] [--seven-day-reset 168h] [--session ID] [--state-dir DIR]")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -198,13 +188,10 @@ func runUsage(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
 		return 1
 	}
-	snapshot, err := usage.Run(store, *sessionID, *fiveHour, *sevenDay, *fiveHourReset, *sevenDayReset, time.Now())
+	_, err = usage.Run(store, *sessionID, *fiveHour, *sevenDay, *fiveHourReset, *sevenDayReset, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
 		return 1
-	}
-	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status usage: warning: %v\n", err)
 	}
 	return 0
 }
@@ -271,8 +258,6 @@ func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
 	codexHome := flags.String("codex-home", defaultCodexHome, "Codex home containing session rollouts")
-	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
-	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	forward := flags.String("forward", "", "existing notifier executable to preserve")
 	var forwardArgs stringList
 	flags.Var(&forwardArgs, "forward-arg", "argument for the existing notifier (repeatable)")
@@ -314,17 +299,90 @@ func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
 		return 1
 	}
-	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: warning: %v\n", err)
-	}
 	return 0
 }
 
-func mirrorIfConfigured(ctx context.Context, host, remoteBinary string, snapshot model.Snapshot) error {
-	if strings.TrimSpace(host) == "" {
-		return nil
+func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
+	defaultDir, err := state.DefaultDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status relay: %v\n", err)
+		return 1
 	}
-	return mirror.SSH(ctx, host, remoteBinary, snapshot)
+	flags := flag.NewFlagSet("relay", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
+	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives sanitized snapshots")
+	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
+	refresh := flags.Duration("refresh", time.Second, "interval between local snapshot checks")
+	once := flags.Bool("once", false, "send pending snapshots once and exit")
+	logFile := flags.String("log-file", "", "append relay diagnostics to this file")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: claude-status relay --mirror-ssh HOST [--refresh 1s] [--once] [--log-file FILE]")
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "claude-status relay: unexpected positional arguments")
+		return 2
+	}
+	if strings.TrimSpace(*mirrorSSH) == "" {
+		fmt.Fprintln(stderr, "claude-status relay: --mirror-ssh is required")
+		return 2
+	}
+	if *refresh < 100*time.Millisecond {
+		fmt.Fprintln(stderr, "claude-status relay: --refresh must be at least 100ms")
+		return 2
+	}
+
+	store, err := state.New(*stateDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status relay: %v\n", err)
+		return 1
+	}
+	logOutput := stderr
+	var file *os.File
+	if strings.TrimSpace(*logFile) != "" {
+		if err := os.MkdirAll(filepath.Dir(*logFile), 0o700); err != nil {
+			fmt.Fprintf(stderr, "claude-status relay: create log directory: %v\n", err)
+			return 1
+		}
+		file, err = os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			fmt.Fprintf(stderr, "claude-status relay: open log file: %v\n", err)
+			return 1
+		}
+		defer file.Close()
+		logOutput = io.MultiWriter(stderr, file)
+	}
+	logger := log.New(logOutput, "claude-status relay: ", log.LstdFlags|log.Lmicroseconds)
+	worker, err := relay.New(store, func(sendCtx context.Context, snapshot model.Snapshot) error {
+		return mirror.SSH(sendCtx, *mirrorSSH, *remoteBinary, snapshot)
+	}, logger.Printf)
+	if err != nil {
+		logger.Printf("%v", err)
+		return 1
+	}
+
+	ticker := time.NewTicker(*refresh)
+	defer ticker.Stop()
+	for {
+		syncErr := worker.Sync(ctx)
+		if *once {
+			if syncErr != nil {
+				return 1
+			}
+			return 0
+		}
+		select {
+		case <-ctx.Done():
+			return 0
+		case <-ticker.C:
+		}
+	}
 }
 
 func forwardNotification(ctx context.Context, program string, args []string, payload string) error {
@@ -537,6 +595,7 @@ Usage:
   claude-status usage [flags]        Manually set 5h/7d rate-limit percentages
   claude-status codex-notify [flags] Read a Codex turn-complete notification
   claude-status import [flags]       Import one sanitized snapshot
+  claude-status relay [flags]        Retry local snapshot delivery over SSH
   claude-status gfx [flags]          Render the 800x480 framebuffer dashboard
   claude-status preview [flags]      Save one framebuffer dashboard frame as PNG
   claude-status tui [flags]          Open the full-screen dashboard

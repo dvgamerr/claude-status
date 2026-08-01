@@ -24,6 +24,8 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
+- `claude-status relay` เป็น process แยกที่อ่าน snapshot ล่าสุดจาก local state,
+  ส่งไป Pi ผ่าน SSH และ retry อัตโนมัติเมื่อเครือข่ายขาด
 - `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 66ms (~15fps)
   และเลือก snapshot ล่าสุดของ Claude/Codex แยกกันเพื่อให้ Claude เป็นหน้าหลักเสมอ
   จอเป็น touchscreen จริง แตะแล้วจะเห็น ripple จาง ๆ ตรงจุดที่แตะ (`--touch-device`
@@ -98,10 +100,14 @@ installer จะสำรองและแก้สองไฟล์โดย�
   และเพิ่ม hook สี่ตัวให้เรียก `activity` (merge เข้าไปแบบไม่ลบ hook อื่นที่มีอยู่)
 - `%USERPROFILE%\.codex\config.toml`: ห่อ `notify` เดิมด้วย `codex-notify`
   และ forward event กลับไป notifier เดิมด้วย จึงไม่ทำ Computer Use เดิมหาย
+- Windows Scheduled Task `claude-status-relay`: รัน relay หนึ่ง instance หลัง login,
+  retry ข้อมูลที่ยังส่งไม่สำเร็จ และเก็บ error/recovery log ไว้ที่
+  `%LOCALAPPDATA%\claude-status\relay.log`
 
-ทั้งสองทางส่งไป Pi ด้วย SSH เฉพาะ snapshot ที่ผ่าน allowlist แล้ว ปลายทางเรียก
-`/home/pi/.local/bin/claude-status import`; ไม่ส่ง statusLine JSON ดิบ, prompt,
-response, transcript, OAuth token หรือ session auth ไป Pi
+`ingest`, `activity`, `usage` และ `codex-notify` เขียน local state เท่านั้นและไม่เปิด
+network เอง ตัว relay เป็นเจ้าของ SSH transport เพียงจุดเดียว โดยส่งเฉพาะ snapshot
+ที่ผ่าน allowlist ไปเรียก `/home/pi/.local/bin/claude-status import`; ไม่ส่ง
+statusLine JSON ดิบ, prompt, response, transcript, OAuth token หรือ session auth ไป Pi
 
 Claude Code ต้องได้รับ trust สำหรับ project ก่อนจึงจะเรียก command status line ได้
 ค่า `rate_limits` จะปรากฏเฉพาะบัญชี Claude.ai Pro/Max และหลัง API response แรกของ
@@ -180,8 +186,15 @@ directory listing ข้อมูล cost เป็นค่าประมา�
 
 ## Claude/Codex อยู่บน PC/Mac แต่ใช้ Pi เป็นจอ
 
-ให้ `ingest`/`codex-notify` ทำงานที่เครื่องต้นทาง แล้วส่งเฉพาะ snapshot ที่ sanitize
-แล้วไปยัง Pi ผ่าน SSH ห้าม copy credential หรือส่ง JSON ดิบจาก provider ไปยัง Pi
+ให้ `ingest`/`codex-notify` ทำงานที่เครื่องต้นทาง แล้วเปิด relay ระยะยาวเพียงตัวเดียว:
+
+```bash
+claude-status relay --mirror-ssh pilab
+```
+
+relay จะส่งเฉพาะ snapshot ที่ sanitize แล้วไปยัง Pi ผ่าน SSH; ห้าม copy credential
+หรือส่ง JSON ดิบจาก provider ไปยัง Pi บน Windows installer จะสร้าง Scheduled Task นี้ให้
+อัตโนมัติ
 
 โปรเจกต์ยังไม่เปิด HTTP collector โดยตั้งใจ เพราะการเปิด network endpoint เพิ่มภาระเรื่อง
 authentication/TLS โดยไม่จำเป็นสำหรับ MVP; SSH transport ปลอดภัยและดูแลง่ายกว่า

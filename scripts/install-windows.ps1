@@ -8,6 +8,18 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$RelayTaskName = "claude-status-relay"
+
+$ExistingRelayTask = Get-ScheduledTask -TaskName $RelayTaskName -ErrorAction SilentlyContinue
+if ($ExistingRelayTask -and $ExistingRelayTask.State -eq "Running") {
+    Stop-ScheduledTask -TaskName $RelayTaskName
+    for ($Attempt = 0; $Attempt -lt 50; $Attempt++) {
+        Start-Sleep -Milliseconds 100
+        if ((Get-ScheduledTask -TaskName $RelayTaskName).State -ne "Running") {
+            break
+        }
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = Join-Path $RepoDir "bin\claude-status.exe"
@@ -15,7 +27,32 @@ if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
 $BinaryPath = (Resolve-Path -LiteralPath $BinaryPath).Path
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $InstalledBinary = Join-Path $InstallDir "claude-status.exe"
-Copy-Item -LiteralPath $BinaryPath -Destination $InstalledBinary -Force
+$StagedBinary = Join-Path $InstallDir ("claude-status." + [guid]::NewGuid().ToString("N") + ".exe")
+Copy-Item -LiteralPath $BinaryPath -Destination $StagedBinary
+try {
+    $BinaryInstalled = $false
+    for ($Attempt = 0; $Attempt -lt 100; $Attempt++) {
+        try {
+            Move-Item -LiteralPath $StagedBinary -Destination $InstalledBinary -Force
+            $BinaryInstalled = $true
+            break
+        }
+        catch {
+            if ($Attempt -eq 99) {
+                throw
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    if (-not $BinaryInstalled) {
+        throw "failed to install $InstalledBinary"
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $StagedBinary) {
+        Remove-Item -LiteralPath $StagedBinary -Force
+    }
+}
 
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
@@ -56,7 +93,7 @@ if (Test-Path -LiteralPath $ClaudeSettingsPath) {
 else {
     $ClaudeSettings = [ordered]@{}
 }
-$ClaudeCommand = '"' + $InstalledBinary + '" ingest --mirror-ssh ' + $MirrorHost + ' --remote-bin ' + $RemoteBinary
+$ClaudeCommand = '"' + $InstalledBinary + '" ingest'
 $ClaudeSettings["statusLine"] = [ordered]@{
     type = "command"
     command = $ClaudeCommand
@@ -67,7 +104,7 @@ $ClaudeSettings["statusLine"] = [ordered]@{
 # The activity command turns hook events into the dashboard's working / idle /
 # needs-approval mascot state. It is registered on four hooks and is additive:
 # any other hook already configured on the same event is left in place.
-$ActivityCommand = '"' + $InstalledBinary + '" activity --mirror-ssh ' + $MirrorHost + ' --remote-bin ' + $RemoteBinary
+$ActivityCommand = '"' + $InstalledBinary + '" activity'
 
 function Set-ClaudeStatusHook {
     param($Settings, [string]$EventName, [string]$Command, [string]$Matcher)
@@ -140,9 +177,7 @@ elseif ($ExistingNotify.Count -gt 0) {
 
 $NewNotify = @(
     $InstalledBinary,
-    "codex-notify",
-    "--mirror-ssh", $MirrorHost,
-    "--remote-bin", $RemoteBinary
+    "codex-notify"
 )
 if (-not [string]::IsNullOrWhiteSpace($ForwardProgram)) {
     $NewNotify += @("--forward", $ForwardProgram)
@@ -159,8 +194,20 @@ else {
 }
 Write-Utf8Atomic -Path $CodexConfigPath -Content $CodexConfig
 
+$StateDir = Join-Path $env:LOCALAPPDATA "claude-status"
+$RelayLog = Join-Path $StateDir "relay.log"
+$RelayArguments = 'relay --state-dir "' + $StateDir + '" --mirror-ssh ' + $MirrorHost + ' --remote-bin ' + $RemoteBinary + ' --refresh 1s --log-file "' + $RelayLog + '"'
+$RelayAction = New-ScheduledTaskAction -Execute $InstalledBinary -Argument $RelayArguments
+$RelayTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$RelaySettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
+$RelayPrincipal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName $RelayTaskName -Action $RelayAction -Trigger $RelayTrigger -Settings $RelaySettings -Principal $RelayPrincipal -Description "Reliably mirrors sanitized Claude/Codex snapshots to the Raspberry Pi dashboard" -Force | Out-Null
+Start-ScheduledTask -TaskName $RelayTaskName
+
 Write-Host "installed binary: $InstalledBinary"
 Write-Host "configured Claude statusLine: $ClaudeSettingsPath"
 Write-Host "configured Codex notify: $CodexConfigPath"
+Write-Host "started snapshot relay task: $RelayTaskName"
+Write-Host "relay log: $RelayLog"
 if ($ClaudeBackup) { Write-Host "Claude backup: $ClaudeBackup" }
 if ($CodexBackup) { Write-Host "Codex backup: $CodexBackup" }

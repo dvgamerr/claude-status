@@ -217,6 +217,14 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "usage positional", args: []string{"usage", "--five-hour", "1", "--seven-day", "1", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 		{name: "usage missing flags", args: []string{"usage"}, wantExit: 2, wantText: "--five-hour and --seven-day are required"},
 		{name: "usage missing snapshot", args: []string{"usage", "--state-dir", t.TempDir(), "--five-hour", "1", "--seven-day", "1"}, wantExit: 1, wantText: "load existing snapshot"},
+		{name: "relay help", args: []string{"relay", "--help"}, wantExit: 0, wantText: "Usage: claude-status relay"},
+		{name: "relay missing host", args: []string{"relay", "--once"}, wantExit: 2, wantText: "--mirror-ssh is required"},
+		{name: "relay positional", args: []string{"relay", "--mirror-ssh", "pilab", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "relay refresh too fast", args: []string{"relay", "--mirror-ssh", "pilab", "--refresh", "10ms"}, wantExit: 2, wantText: "at least 100ms"},
+		{name: "ingest legacy mirror removed", args: []string{"ingest", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
+		{name: "activity legacy mirror removed", args: []string{"activity", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
+		{name: "usage legacy mirror removed", args: []string{"usage", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
+		{name: "codex legacy mirror removed", args: []string{"codex-notify", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
 	}
 
 	for _, tt := range tests {
