@@ -54,11 +54,16 @@ The header uses a bare white Anthropic logo with no background or frame, and
 deliberately omits Claude model and session identity. The left-hand status rail
 holds context-specific Clawd SVG artwork and is the dashboard's focal point
 (`internal/pixelui/render.go`'s `renderRail`): `working` uses Clawd Coding with
-a fast bounce, `idle` uses Clawd Sleeping with a slow breathing halo, and
-`waiting_approval` uses Clawd Exclamation Mark with a yellow pulse and rail
-glow. The embedded SVGs are rasterized once at renderer startup, not on every
-frame. Activity state is independent of the statusLine refresh cycle — see
-below.
+a fast typing bob, `idle` uses Clawd Sleeping with a slow inhale/exhale scale,
+and `waiting_approval` uses Clawd Exclamation Mark with a tight urgent shake.
+The rail, card, and halo stay completely still in every state; only the mascot
+artwork moves. The embedded SVGs are rasterized once at renderer startup, not
+on every frame. Activity state is independent of the statusLine refresh cycle
+— see below. The rail caption's session name is drawn with the bundled UI
+font (Go's core "gofont" set, Latin-only) — a name in Thai or another
+non-Latin script has no glyphs in that font, so `pixelui.sessionName` checks
+glyph coverage first and falls back to the truncated session ID rather than
+drawing a row of unmapped glyph boxes.
 
 ## Provider ingestion and Windows source
 

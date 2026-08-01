@@ -58,7 +58,7 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	// Header Anthropic mark, rail mascot/health, open Claude panel's limit/context
 	// bars, and the framed Codex card (confined to the middle+bottom, not
 	// the top row).
-	for _, point := range []image.Point{{37, 27}, {80, 150}, {30, 400}, {300, 151}, {300, 298}, {600, 260}, {600, 400}} {
+	for _, point := range []image.Point{{37, 27}, {80, 150}, {30, 400}, {300, 102}, {300, 358}, {600, 260}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
@@ -66,7 +66,7 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	if got := rgba(frame.At(19, 22)); got != backgroundTop {
 		t.Fatalf("Anthropic mark has a background or frame at its corner: %v", got)
 	}
-	if rgba(frame.At(600, 100)) != backgroundTop {
+	if rgba(frame.At(600, 60)) != backgroundTop {
 		t.Fatal("Codex card should not extend into the top row")
 	}
 	waiting := renderer.Render(View{Now: now, LoadError: errors.New("waiting")})
@@ -91,6 +91,25 @@ func TestHeaderOmitsModelAndSessionIdentity(t *testing.T) {
 	secondFrame := renderer.Render(View{Claude: &second, Now: now, StaleAfter: 15 * time.Second})
 	if !sameRegion(firstFrame, secondFrame, image.Rect(0, 0, Width, sectionsTop)) {
 		t.Fatal("header still changes with model or session identity")
+	}
+}
+
+func TestSessionNameFallsBackToIDWhenFaceCannotDrawIt(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	latin := model.Snapshot{Session: model.Session{ID: "session-123", Name: "Pi dashboard demo"}}
+	if got := sessionName(renderer.regular13, latin); got != "Pi dashboard demo" {
+		t.Fatalf("sessionName() = %q, want the Latin name unchanged", got)
+	}
+
+	// The bundled UI font (Go's core "gofont" set) has no Thai glyphs, so a
+	// Thai session name must fall back to the ID instead of drawing as a row
+	// of unmapped glyph boxes.
+	thai := model.Snapshot{Session: model.Session{ID: "9ea96c33-71f0-4a93-9e65-448ce6249f26", Name: "ลบการแสดงผลซ้ำซ้อน"}}
+	if got := sessionName(renderer.regular13, thai); got != "9ea96c33-71f0-4a93…" {
+		t.Fatalf("sessionName() = %q, want the truncated ID fallback", got)
 	}
 }
 
@@ -125,13 +144,55 @@ func TestRailMascotAnimatesOverTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	now := time.Unix(0, 0)
 	snapshot := baseSnapshot(now)
+	snapshot.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now}
 	frame := renderer.Render(View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second})
-	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(250 * time.Millisecond), StaleAfter: 15 * time.Second})
+	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(120 * time.Millisecond), StaleAfter: 15 * time.Second})
 	mascotRegion := image.Rect(railLeft+20, sectionsTop+20, railRight-20, sectionsTop+180)
 	if sameRegion(frame, later, mascotRegion) {
 		t.Fatal("mascot did not animate between frames")
+	}
+}
+
+func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	centerX, centerY, radius := 100, 100, 54
+	start := time.Unix(0, 0)
+	tests := []struct {
+		name  string
+		state string
+		later time.Time
+	}{
+		{name: "coding bob", state: model.ActivityWorking, later: start.Add(120 * time.Millisecond)},
+		{name: "sleeping breath", state: model.ActivityIdle, later: start.Add(700 * time.Millisecond)},
+		{name: "approval shake", state: model.ActivityWaitingApproval, later: start.Add(65 * time.Millisecond)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first := image.NewRGBA(image.Rect(0, 0, 200, 200))
+			second := image.NewRGBA(first.Bounds())
+			renderer.drawMascot(first, centerX, centerY, radius, start, tt.state)
+			renderer.drawMascot(second, centerX, centerY, radius, tt.later, tt.state)
+			if sameRegion(first, second, first.Bounds()) {
+				t.Fatal("mascot artwork did not move")
+			}
+
+			firstPose := mascotPoseForActivity(tt.state, start)
+			secondPose := mascotPoseForActivity(tt.state, tt.later)
+			movingBounds := iconDestination(
+				centerX+firstPose.xOffset, centerY+firstPose.yOffset, firstPose.width, firstPose.height,
+			).Union(iconDestination(
+				centerX+secondPose.xOffset, centerY+secondPose.yOffset, secondPose.width, secondPose.height,
+			))
+			if !sameOutsideRegion(first, second, movingBounds) {
+				t.Fatal("mascot animation changed the static backdrop")
+			}
+		})
 	}
 }
 
@@ -255,7 +316,7 @@ func TestLimitLineHandlesUnlimitedAndUnavailableValues(t *testing.T) {
 	renderer.limitLine(canvas, 260, 40, 200, "7 DAY", model.RateWindow{}, model.RateLimits{}, claudePeach, time.Now())
 	// The progress bar (drawn even for "no data") is a reliable filled region
 	// regardless of glyph shapes, unlike checking a single text pixel.
-	if rgba(canvas.At(25, 102)) == (color.RGBA{}) || rgba(canvas.At(265, 102)) == (color.RGBA{}) {
+	if rgba(canvas.At(25, 58)) == (color.RGBA{}) || rgba(canvas.At(265, 58)) == (color.RGBA{}) {
 		t.Fatal("limit lines were not painted")
 	}
 }
@@ -279,7 +340,7 @@ func TestLimitLineShowsUnavailableOnceTheStoredResetPasses(t *testing.T) {
 	// At 93%, the bar reaches well past x=170; once the stored reset has
 	// passed, that percentage is stale (the window renewed server-side) so
 	// the bar should reset to empty instead of staying frozen at 93%.
-	barPoint := image.Point{X: 170, Y: 102}
+	barPoint := image.Point{X: 170, Y: 58}
 	if rgba(expired.At(barPoint.X, barPoint.Y)) == rgba(active.At(barPoint.X, barPoint.Y)) {
 		t.Fatal("expired window's bar should differ from an active window's bar at the same stored percentage")
 	}
@@ -302,6 +363,20 @@ func rgba(value color.Color) color.RGBA {
 func sameRegion(left, right *image.RGBA, bounds image.Rectangle) bool {
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if rgba(left.At(x, y)) != rgba(right.At(x, y)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func sameOutsideRegion(left, right *image.RGBA, excluded image.Rectangle) bool {
+	for y := left.Bounds().Min.Y; y < left.Bounds().Max.Y; y++ {
+		for x := left.Bounds().Min.X; x < left.Bounds().Max.X; x++ {
+			if image.Pt(x, y).In(excluded) {
+				continue
+			}
 			if rgba(left.At(x, y)) != rgba(right.At(x, y)) {
 				return false
 			}

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  <title>Clawd Coding (blink)</title>
+  <g fill="#D77757">
+    <path d="M13 37h74v1h1v31h12v12H88v7H81v12H75V88H69v12h-7V88H38v12h-7V88h-6v12h-6V88h-7v-7H0V69h12V38h1Z"/>
+  </g>
+  <g fill="#000">
+    <path d="M25 50h6v6h-6ZM69 50h6v6h-6ZM19 56h6v6h-6ZM41 58h6v2h-6ZM53 58h6v2h-6ZM75 56h6v6h-6ZM25 62h6v7h-6ZM69 62h6v7h-6Z"/>
+  </g>
+</svg>

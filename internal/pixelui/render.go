@@ -167,10 +167,14 @@ func renderTouchRipples(canvas *image.RGBA, points []touch.Point, now time.Time)
 // begins. Both the rate-limit row above and the Codex card below start
 // right after the header, full width, so neither side leaves a dead gap —
 // codexTop is shared by both the dashboard and waiting screens so the card
-// always starts exactly where the limit row ends.
+// always starts exactly where the limit row ends. codexBottom is well short
+// of sectionsBottom: codexCard's own content (label, model, mode, CONTEXT
+// label, percent block) only runs ~176px tall, so stretching the card all
+// the way to sectionsBottom just left dead card background at the bottom.
 const (
 	contentSplit = contentLeft + 260
-	codexTop     = 170
+	codexTop     = 210
+	codexBottom  = 405
 )
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
@@ -178,7 +182,7 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
 	r.renderLimitsRow(canvas, snapshot, view.Now)
 	r.renderClaudePanel(canvas, snapshot)
-	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
+	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, codexBottom), view.Codex)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
 	if view.SessionCount != 1 {
@@ -188,34 +192,60 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 		footer = "STATE WARNING  •  " + fitText(r.regular12, view.LoadError.Error(), 500)
 	}
 	r.text(canvas, r.bold13, claudeOrange, 21, footerBaseline, footer)
-	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "CLAUDE PRIMARY  •  800×480")
 }
 
 // renderLimitsRow spans the full content width (not just the Claude panel)
 // so the space above the Codex card — which deliberately starts lower,
-// below this row — is never a dead gap.
+// below this row — is never a dead gap. "5 HOUR" and "7 DAY" are stacked as
+// two full-width rows (not two half-width columns): each reset countdown
+// needs to sit next to its own label, and a shared row would either crowd
+// the countdown against the percentage or make it ambiguous which window
+// it belongs to.
+// Each row spans label(top) -> bar(top+14..22) -> percent+reset(top+46); the
+// 72px gap between the two rows' tops leaves a relaxed gap after row one's
+// percent+reset baseline before row two's label starts.
 func (r *Renderer) renderLimitsRow(canvas *image.RGBA, snapshot model.Snapshot, now time.Time) {
 	fullWidth := contentRight - contentLeft
-	halfWidth := (fullWidth - 14) / 2
-	r.limitLine(canvas, contentLeft, 90, halfWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, now)
-	r.limitLine(canvas, contentLeft+halfWidth+14, 90, halfWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, now)
+	r.limitLine(canvas, contentLeft, 84, fullWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, now)
+	r.limitLine(canvas, contentLeft, 156, fullWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, now)
 }
 
 // renderClaudePanel is deliberately card-less (open on the base background):
 // the rail already frames "you", the Codex card already frames "the other
 // tool", so this middle panel reads as this session's own numbers rather
-// than another boxed widget competing for attention. The header deliberately
-// omits session/model identity, so this panel stays focused on context only.
+// than another boxed widget competing for attention. The header still
+// deliberately omits session/model identity (see CLAUDE.md); this panel is
+// where that identity — model name and reasoning level — actually lives.
 func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot) {
 	panelWidth := contentSplit - contentLeft
 
-	r.text(canvas, r.bold13, textSecondary, contentLeft, 192, "CONTEXT WINDOW")
-	r.contextBlock(canvas, contentLeft, 232, panelWidth, snapshot.Context, claudeOrange, r.bold44)
+	// Model + reasoning level get their own small header, styled exactly
+	// like the Codex card's own model/mode block (bold16 name over a
+	// regular12 secondary line) so the two halves of the screen read as
+	// the same kind of "who's running this" identity, just without a card
+	// frame — this panel stays deliberately card-less (see below). It sits
+	// right after the rate-limit rows and before "CONTEXT WINDOW", which is
+	// where the reference layout places the model name.
+	r.text(canvas, r.bold16, textPrimary, contentLeft, 238, fitText(r.bold16, strings.ToUpper(modelLabel(snapshot)), panelWidth))
+	r.text(canvas, r.regular12, textSecondary, contentLeft, 256, modePrimary(snapshot))
+
+	// Extra breathing room between the reasoning-level line and "CONTEXT
+	// WINDOW" — a wider gap than the rest of this panel's rhythm on purpose,
+	// so the two identity lines above read as their own group.
+	r.text(canvas, r.bold13, textSecondary, contentLeft, 290, "CONTEXT WINDOW")
+
+	percentText := percentLabel(snapshot.Context.UsedPercentage)
+	r.text(canvas, r.bold44, textPrimary, contentLeft, 328, percentText)
+	usedX := contentLeft + font.MeasureString(r.bold44, percentText).Ceil() + 10
+	r.text(canvas, r.bold13, claudeOrange, usedX, centeredBaseline(328, r.bold44, r.bold13), "USED")
+
+	r.text(canvas, r.regular12, textFaint, contentLeft, 346, fitText(r.regular12, contextFraction(snapshot.Context), panelWidth))
+	progress(canvas, image.Rect(contentLeft, 354, contentSplit, 362), percentValue(snapshot.Context.UsedPercentage), claudeOrange)
 
 	chipWidth := (panelWidth - 14) / 2
-	chipBounds := image.Rect(contentLeft, 294, contentLeft+chipWidth, 354)
+	chipBounds := image.Rect(contentLeft, 376, contentLeft+chipWidth, 434)
 	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
-	chipBounds = image.Rect(contentLeft+chipWidth+14, 294, contentSplit, 354)
+	chipBounds = image.Rect(contentLeft+chipWidth+14, 376, contentSplit, 434)
 	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
 }
 
@@ -230,15 +260,18 @@ func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string)
 	progress(canvas, image.Rect(contentLeft+20, 202, contentSplit-20, 212), animationPercent(view.Now), claudeOrange)
 	r.textCentered(canvas, r.regular12, textFaint, center, 280, fitText(r.regular12, "start a session on the source machine", panelWidth-20))
 
-	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
+	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, codexBottom), view.Codex)
 
 	r.text(canvas, r.bold13, claudeOrange, 21, footerBaseline, "CLAUDE PRIMARY  •  WAITING")
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "FRAMEBUFFER 800×480")
 }
 
-// limitLine draws one open (no card) rate-limit indicator — label, big
-// percentage, reset countdown, and a bar — stacked so the same compact
-// shape works whether it's given half the Claude panel's width or more.
+// limitLine draws one open (no card) rate-limit indicator as a full-width
+// row: the label alone, then the bar, then the big percentage with its
+// reset countdown on the same baseline (percent left, countdown right) —
+// the bar reads as an at-a-glance gauge right under the label, with the
+// exact numbers as supporting detail below it, rather than the numbers
+// appearing before the gauge they describe.
 // The reset countdown recomputes from the stored epoch against `now` every
 // frame, so it counts down live without any separate timer state; once
 // that epoch passes, the window has renewed server-side and the last known
@@ -246,21 +279,27 @@ func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string)
 // stale number frozen at whatever it was when it expired.
 func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
 	r.text(canvas, r.bold13, textSecondary, x, top, label+" LIMIT")
-	if window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited {
-		r.text(canvas, r.bold22, green, x, top+30, "UNMETERED")
-		progress(canvas, image.Rect(x, top+58, x+width, top+66), 100, green)
-		return
+
+	resetText := resetLabelShort(window.ResetsAt, now)
+	expired := window.ResetsAt != nil && *window.ResetsAt > 0 && now.Unix() >= *window.ResetsAt
+	if expired {
+		resetText = "reset — awaiting new data"
 	}
-	if window.ResetsAt != nil && *window.ResetsAt > 0 && now.Unix() >= *window.ResetsAt {
-		r.text(canvas, r.bold22, textPrimary, x, top+30, "--")
-		r.text(canvas, r.regular12, textFaint, x, top+48, fitText(r.regular12, "reset — awaiting new data", width))
-		progress(canvas, image.Rect(x, top+58, x+width, top+66), 0, accent)
-		return
+	percentBaseline := top + 46
+	r.textRight(canvas, r.regular12, textFaint, x+width, centeredBaseline(percentBaseline, r.bold22, r.regular12), fitText(r.regular12, resetText, width/2))
+
+	switch {
+	case window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited:
+		progress(canvas, image.Rect(x, top+14, x+width, top+22), 100, green)
+		r.text(canvas, r.bold22, green, x, percentBaseline, "UNMETERED")
+	case expired:
+		progress(canvas, image.Rect(x, top+14, x+width, top+22), 0, accent)
+		r.text(canvas, r.bold22, textPrimary, x, percentBaseline, "--")
+	default:
+		pct := percentValue(window.UsedPercentage)
+		progress(canvas, image.Rect(x, top+14, x+width, top+22), pct, thresholdColor(pct, accent))
+		r.text(canvas, r.bold22, textPrimary, x, percentBaseline, percentLabel(window.UsedPercentage))
 	}
-	pct := percentValue(window.UsedPercentage)
-	r.text(canvas, r.bold22, textPrimary, x, top+30, percentLabel(window.UsedPercentage))
-	r.text(canvas, r.regular12, textFaint, x, top+48, fitText(r.regular12, resetLabelShort(window.ResetsAt, now), width))
-	progress(canvas, image.Rect(x, top+58, x+width, top+66), pct, thresholdColor(pct, accent))
 }
 
 // contextBlock draws percent+USED, the token fraction, and a bar with no
@@ -270,7 +309,7 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 	percentText := percentLabel(context.UsedPercentage)
 	r.text(canvas, percentFace, textPrimary, x, top, percentText)
 	usedX := x + font.MeasureString(percentFace, percentText).Ceil() + 10
-	r.text(canvas, r.bold13, accent, usedX, top, "USED")
+	r.text(canvas, r.bold13, accent, usedX, centeredBaseline(top, percentFace, r.bold13), "USED")
 	r.text(canvas, r.regular12, textFaint, x, top+22, fitText(r.regular12, contextFraction(context), width))
 	progress(canvas, image.Rect(x, top+34, x+width, top+42), percentValue(context.UsedPercentage), accent)
 }
@@ -278,8 +317,13 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 // renderHeader intentionally contains no model, session ID/name, or effort:
 // its top-left identity is only the bare Anthropic mark and CLAUDE label.
 func (r *Renderer) renderHeader(canvas *image.RGBA, view View) {
-	r.drawLogoMark(canvas, 33, 36, 9)
-	r.text(canvas, r.bold22, textPrimary, 54, 37, "CLAUDE")
+	const logoCenterY = 36
+	r.drawLogoMark(canvas, 33, logoCenterY, 9)
+	// "CLAUDE" is centered on the logo mark's own vertical center rather than
+	// a hardcoded baseline — the logo is a fixed-size icon, not text, so its
+	// visual middle doesn't move with font metrics the way a same-baseline
+	// text pairing would (see centeredBaseline for that case).
+	r.text(canvas, r.bold22, textPrimary, 54, logoCenterY+r.bold22.Metrics().Ascent.Ceil()/2, "CLAUDE")
 
 	if view.Claude != nil {
 		age := view.Now.Sub(view.Claude.CapturedAt)
@@ -291,16 +335,14 @@ func (r *Renderer) renderHeader(canvas *image.RGBA, view View) {
 			liveText, liveColor = "STALE", red
 		}
 		// Size the pill to the label instead of a fixed width: "STALE" is
-		// wider than "LIVE" and was overflowing its pill into the clock.
-		clockZoneLeft := contentRight - 80
+		// wider than "LIVE".
 		textWidth := font.MeasureString(r.bold13, liveText).Ceil()
 		pillWidth := textWidth + 34
-		pillLeft := clockZoneLeft - 20 - pillWidth
+		pillLeft := contentRight - pillWidth
 		fillRounded(canvas, image.Rect(pillLeft, 18, pillLeft+pillWidth, 46), 14, withAlpha(liveColor, 36))
 		fillCircle(canvas, pillLeft+15, 32, 4, liveColor)
 		r.text(canvas, r.bold13, liveColor, pillLeft+26, 37, liveText)
 	}
-	r.textRight(canvas, r.bold18, textPrimary, contentRight, 37, view.Now.Format("15:04"))
 }
 
 // renderRail is the dashboard's focal point: a large animated mascot whose
@@ -327,7 +369,7 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 
 	captionTop := pillBounds.Max.Y + 20
 	if snapshot != nil {
-		r.textCentered(canvas, r.regular13, textSecondary, centerX, captionTop, fitText(r.regular13, sessionName(*snapshot), bounds.Dx()-24))
+		r.textCentered(canvas, r.regular13, textSecondary, centerX, captionTop, fitText(r.regular13, sessionName(r.regular13, *snapshot), bounds.Dx()-24))
 		r.textCentered(canvas, r.regular12, textFaint, centerX, captionTop+19, activityCaption(*snapshot, activityState, now))
 	} else {
 		r.textCentered(canvas, r.regular13, textFaint, centerX, captionTop, "no active session")
@@ -472,25 +514,62 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 	}
 }
 
-// activityVisual is the animation "voice" around each context-specific
-// Clawd SVG: working bounces, while idle and approval breathe at different
-// speeds and colors.
+// activityVisual gives each context-specific Clawd SVG its own tempo and a
+// fixed backdrop color. The backdrop never animates: motion belongs to the
+// mascot artwork, not to the rail behind it.
 type activityVisual struct {
-	period  time.Duration
-	halo    color.RGBA
-	bounce  bool
-	breathe bool
+	period time.Duration
+	halo   color.RGBA
 }
 
 func visualForActivity(state string) activityVisual {
 	switch state {
 	case model.ActivityWorking:
-		return activityVisual{period: 900 * time.Millisecond, halo: rgb(58, 40, 32), bounce: true}
+		return activityVisual{period: 720 * time.Millisecond, halo: rgb(58, 40, 32)}
 	case model.ActivityWaitingApproval:
-		return activityVisual{period: 1100 * time.Millisecond, halo: rgb(58, 49, 24), breathe: true}
+		return activityVisual{period: 780 * time.Millisecond, halo: rgb(58, 49, 24)}
 	default:
-		return activityVisual{period: 2400 * time.Millisecond, halo: rgb(42, 34, 30), breathe: true}
+		return activityVisual{period: 2800 * time.Millisecond, halo: rgb(42, 34, 30)}
 	}
+}
+
+// mascotPose is a nearest-neighbor transform applied to the rasterized SVG.
+// Keeping it separate from the backdrop makes the invariant explicit: only
+// this pose changes from frame to frame.
+type mascotPose struct {
+	xOffset int
+	yOffset int
+	width   int
+	height  int
+}
+
+func mascotPoseForActivity(state string, now time.Time) mascotPose {
+	visual := visualForActivity(state)
+	periodMS := max(int64(1), visual.period.Milliseconds())
+	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
+	pose := mascotPose{width: railIconSize, height: railIconSize}
+
+	switch state {
+	case model.ActivityWorking:
+		// Two quick taps per cycle make Clawd Coding feel busy without moving
+		// the card or halo. The upward bob lands on each typing beat.
+		pose.xOffset = int(math.Round(2 * math.Sin(2*phase)))
+		pose.yOffset = -int(math.Round(3 * math.Abs(math.Sin(phase))))
+	case model.ActivityWaitingApproval:
+		// A tight three-beat shake matches the exclamation artwork and reads
+		// as urgent even from across the room.
+		shake := 3 * phase
+		pose.xOffset = int(math.Round(4 * math.Sin(shake)))
+		pose.yOffset = -int(math.Round(2 * math.Abs(math.Sin(shake))))
+	default:
+		// Sleeping Clawd expands slowly around a fixed baseline, like a calm
+		// breath. Nearest-neighbor scaling keeps its pixel edges crisp.
+		breath := (math.Sin(phase) + 1) / 2
+		pose.width = railIconSize - 2 + int(math.Round(4*breath))
+		pose.height = railIconSize - 2 + int(math.Round(4*breath))
+		pose.yOffset = railIconSize/2 - pose.height/2
+	}
+	return pose
 }
 
 func activityLabel(state string) (string, color.RGBA) {
@@ -546,33 +625,31 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 
 func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, state string) {
 	visual := visualForActivity(state)
-	periodMS := max(int64(1), visual.period.Milliseconds())
-	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
-	haloRadius := radius + 10
-	halo := visual.halo
-	if visual.breathe {
-		haloRadius += int(2 * (math.Sin(phase) + 1))
-		alpha := uint8(58 + 24*((math.Sin(phase)+1)/2))
-		tint := claudePeach
-		if state == model.ActivityWaitingApproval {
-			tint = yellow
-		}
-		halo = withAlpha(tint, alpha)
-	}
-	fillCircle(canvas, centerX, centerY, haloRadius, halo)
+	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
 
-	icon := r.icons.idle
-	yOffset := 0
+	frames := r.icons.idle
 	switch state {
 	case model.ActivityWorking:
-		icon = r.icons.working
-		if visual.bounce {
-			yOffset = int(4 * math.Sin(phase))
-		}
+		frames = r.icons.working
 	case model.ActivityWaitingApproval:
-		icon = r.icons.waitingApproval
+		frames = r.icons.waitingApproval
 	}
-	drawIconCentered(canvas, icon, centerX, centerY+yOffset)
+	icon := frames[mascotFrameForActivity(state, now)]
+	pose := mascotPoseForActivity(state, now)
+	drawIconScaledCentered(canvas, icon, centerX+pose.xOffset, centerY+pose.yOffset, pose.width, pose.height)
+}
+
+// mascotFrameForActivity picks between the two rasterized SVG poses for the
+// current state: a plain square-wave alternation on each state's own period,
+// so the second pose (typing hands, drifted Zzz, pulsing alert dot) reads as
+// a deliberate beat rather than a stray flicker.
+func mascotFrameForActivity(state string, now time.Time) int {
+	visual := visualForActivity(state)
+	periodMS := max(int64(1), visual.period.Milliseconds())
+	if (now.UnixMilli()%periodMS)*2 >= periodMS {
+		return 1
+	}
+	return 0
 }
 
 // drawLogoMark is the white Anthropic mark, used only in the top-left header;
@@ -597,6 +674,16 @@ func (r *Renderer) textRight(canvas *image.RGBA, face font.Face, fill color.RGBA
 
 func (r *Renderer) textCentered(canvas *image.RGBA, face font.Face, fill color.RGBA, center, baseline int, value string) {
 	r.text(canvas, face, fill, center-font.MeasureString(face, value).Ceil()/2, baseline, value)
+}
+
+// centeredBaseline returns the baseline for smallFace text that shares a
+// visual row with bigFace text at bigBaseline, so the two are centered on
+// each other's vertical middle instead of sharing a literal baseline — two
+// different-sized faces on one baseline reads as the small text pinned to
+// the big glyph's bottom edge (e.g. "USED" glued to the foot of a 44pt "%"),
+// not sitting beside its center.
+func centeredBaseline(bigBaseline int, bigFace, smallFace font.Face) int {
+	return bigBaseline - (bigFace.Metrics().Ascent.Ceil()-smallFace.Metrics().Ascent.Ceil())/2
 }
 
 func fitText(face font.Face, value string, maxWidth int) string {
@@ -742,15 +829,28 @@ func ageText(value time.Duration) string {
 	return durationLabel(value) + " ago"
 }
 
-func sessionName(snapshot model.Snapshot) string {
-	if snapshot.Session.Name != "" {
-		return snapshot.Session.Name
+// sessionName falls back to the session ID whenever the stored name has a
+// rune the given face can't draw — the bundled UI font is Latin-only, so a
+// name in Thai or another non-Latin script would otherwise render as a row
+// of tofu boxes instead of degrading to something legible.
+func sessionName(face font.Face, snapshot model.Snapshot) string {
+	if name := snapshot.Session.Name; name != "" && faceHasGlyphsFor(face, name) {
+		return name
 	}
 	id := snapshot.Session.ID
 	if len(id) > 18 {
 		id = id[:18] + "…"
 	}
 	return id
+}
+
+func faceHasGlyphsFor(face font.Face, text string) bool {
+	for _, r := range text {
+		if _, ok := face.GlyphAdvance(r); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func modelLabel(snapshot model.Snapshot) string {

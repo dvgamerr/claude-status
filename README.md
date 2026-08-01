@@ -78,10 +78,11 @@ bash scripts/install.sh ./claude-status
 ```
 
 hook ทั้งสี่ทำให้ mascot บนจอรู้สถานะจริงของ session: `UserPromptSubmit`/
-`PreToolUse` → กำลังทำงาน (animation เร็ว สีส้มสด), `Stop` → idle (animation
-ช้า สีจาง), `Notification` ที่มีคำว่า permission → รอ approval (สีเหลือง
-พร้อม badge "?" กระพริบบน mascot) ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยัง
-ทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
+`PreToolUse` → กำลังทำงาน (Clawd Coding ขยับเหมือนกำลังพิมพ์), `Stop` → idle
+(Clawd Sleeping หายใจช้า ๆ), `Notification` ที่มีคำว่า permission → รอ
+approval (Clawd Exclamation Mark สั่นเตือน) โดย rail, card และ halo ด้านหลัง
+อยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยังทำงานได้ปกติ แต่จะเดา
+สถานะจาก statusLine freshness แทน
 
 ถ้า Claude/Codex รันบน Windows และ Pi ใช้ SSH alias `pilab` ให้ build Windows กับ
 ARM64 binary ก่อน จากนั้นติดตั้ง integration ฝั่ง Windows:
