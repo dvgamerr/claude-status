@@ -9,6 +9,7 @@ import (
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
+	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 type SnapshotLoader interface {
@@ -28,14 +29,20 @@ type RunConfig struct {
 	StaleAfter      time.Duration
 }
 
-func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig) error {
+// Run renders frames on config.RefreshInterval. touches may be nil (no
+// touch input available, e.g. the device failed to open) — a nil channel
+// always blocks in a select with a default case, so touch feedback is
+// simply absent rather than a special case to handle.
+func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig, touches <-chan touch.Point) error {
 	if config.RefreshInterval <= 0 {
 		config.RefreshInterval = time.Second
 	}
 	if config.StaleAfter <= 0 {
 		config.StaleAfter = 15 * time.Second
 	}
-	if err := renderFrame(loader, metrics, screen, renderer, config, time.Now()); err != nil {
+	var active []touch.Point
+	active = drainTouches(touches, active, time.Now())
+	if err := renderFrame(loader, metrics, screen, renderer, config, time.Now(), active); err != nil {
 		return err
 	}
 	ticker := time.NewTicker(config.RefreshInterval)
@@ -45,14 +52,34 @@ func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, scre
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			if err := renderFrame(loader, metrics, screen, renderer, config, now); err != nil {
+			active = drainTouches(touches, active, now)
+			if err := renderFrame(loader, metrics, screen, renderer, config, now, active); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func renderFrame(loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig, now time.Time) error {
+// drainTouches collects any newly arrived touch points without blocking,
+// then drops points too old for the ripple effect to still be visible.
+func drainTouches(touches <-chan touch.Point, active []touch.Point, now time.Time) []touch.Point {
+	for {
+		select {
+		case point := <-touches:
+			active = append(active, point)
+		default:
+			kept := active[:0]
+			for _, point := range active {
+				if now.Sub(point.At) <= touchRippleLifetime {
+					kept = append(kept, point)
+				}
+			}
+			return kept
+		}
+	}
+}
+
+func renderFrame(loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig, now time.Time, touches []touch.Point) error {
 	snapshots, loadErr := loader.LoadAll()
 	claude, codex := LatestProviders(snapshots)
 	frame := renderer.Render(View{
@@ -63,6 +90,7 @@ func renderFrame(loader SnapshotLoader, metrics MetricsReader, screen Screen, re
 		StaleAfter:   config.StaleAfter,
 		SessionCount: len(snapshots),
 		LoadError:    loadErr,
+		Touches:      touches,
 	})
 	if err := screen.Present(frame); err != nil {
 		return fmt.Errorf("present pixel dashboard: %w", err)

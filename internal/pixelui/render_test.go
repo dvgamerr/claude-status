@@ -10,6 +10,7 @@ import (
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
+	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 func baseSnapshot(now time.Time) model.Snapshot {
@@ -55,16 +56,45 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 		t.Fatalf("frame bounds = %v", frame.Bounds())
 	}
 	// Header mascot, rail mascot/health, open Claude panel's limit/context
-	// bars, and the framed Codex card (top and bottom, to confirm it spans
-	// the full rail height).
-	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 151}, {300, 272}, {600, 100}, {600, 400}} {
+	// bars, and the framed Codex card (confined to the middle+bottom, not
+	// the top row).
+	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 151}, {300, 272}, {600, 260}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
 	}
+	if rgba(frame.At(600, 100)) != backgroundTop {
+		t.Fatal("Codex card should not extend into the top row")
+	}
 	waiting := renderer.Render(View{Now: now, LoadError: errors.New("waiting")})
-	if waiting.Bounds() != frame.Bounds() || rgba(waiting.At(600, 100)) == backgroundTop {
+	if waiting.Bounds() != frame.Bounds() || rgba(waiting.At(600, 260)) == backgroundTop {
 		t.Fatalf("waiting frame was not rendered")
+	}
+}
+
+func TestRenderDrawsFreshTouchRippleAndSkipsStaleOnes(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	snapshot := baseSnapshot(now)
+	baseView := View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second}
+
+	without := renderer.Render(baseView)
+
+	fresh := baseView
+	fresh.Touches = []touch.Point{{X: 400, Y: 300, At: now}}
+	withFresh := renderer.Render(fresh)
+	if sameRegion(without, withFresh, image.Rect(380, 280, 420, 320)) {
+		t.Fatal("a fresh touch point did not draw a ripple")
+	}
+
+	stale := baseView
+	stale.Touches = []touch.Point{{X: 400, Y: 300, At: now.Add(-touchRippleLifetime - time.Millisecond)}}
+	withStale := renderer.Render(stale)
+	if !sameRegion(without, withStale, image.Rect(380, 280, 420, 320)) {
+		t.Fatal("an expired touch point still drew a ripple")
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/pixelui"
 	"github.com/dvgamerr/claude-status/internal/state"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
+	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 var (
@@ -352,8 +353,9 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
 	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
 	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
+	touchDevice := flags.String("touch-device", "/dev/input/event0", "evdev device for the touchscreen (empty disables touch feedback)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 1s] [--framebuffer /dev/fb0] [--tty /dev/tty1]")
+		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 1s] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -397,8 +399,20 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "claude-status gfx: display is %dx%d; expected %dx%d\n", size.X, size.Y, pixelui.Width, pixelui.Height)
 		return 1
 	}
+	var touches <-chan touch.Point
+	if strings.TrimSpace(*touchDevice) != "" {
+		opened, err := touch.Watch(ctx, *touchDevice)
+		if err != nil {
+			// Touch feedback is a nice-to-have; the dashboard's real job
+			// (showing usage) must keep working without it.
+			fmt.Fprintf(stderr, "claude-status gfx: warning: touch input disabled: %v\n", err)
+		} else {
+			touches = opened
+		}
+	}
+
 	config := pixelui.RunConfig{RefreshInterval: *refresh, StaleAfter: *staleAfter}
-	if err := pixelui.Run(ctx, store, systeminfo.NewReader("/"), screen, renderer, config); err != nil {
+	if err := pixelui.Run(ctx, store, systeminfo.NewReader("/"), screen, renderer, config, touches); err != nil {
 		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
 		return 1
 	}

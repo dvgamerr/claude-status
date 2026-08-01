@@ -10,6 +10,12 @@
 - Installed/supported TerminusBold sizes: 10x20, 12x24, 14x28, and 16x32
 - Previous console configuration backup:
   `/etc/default/console-setup.codex-backup-20260731`
+- Touch controller: `10-0038 generic ft5x06` at `/dev/input/event0`
+  (`ID_INPUT_TOUCHSCREEN=1`, `INPUT_PROP_DIRECT`). Confirmed by raw capture
+  that `ABS_MT_POSITION_X/Y` and the legacy `ABS_X/Y` mirror already report
+  in panel pixels (0-799, 0-479) — no scaling needed. `input_event` on this
+  64-bit kernel is 24 bytes (8+8+2+2+4), also confirmed by capture rather
+  than assumed from headers.
 
 The primary UI is the native `gfx` dashboard, rendered at exactly 800x480
 pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. Design and visual
@@ -19,7 +25,22 @@ flat dark background, high-contrast type, equal Claude 5-hour/7-day quota cards,
 and a compact Codex card containing only its latest session/model and context.
 Provider selection is independent: a newer Codex event must never displace
 Claude from the primary UI. The display follows the newest snapshot for each
-provider without local input.
+provider without local input, except for the touch ripple below — touch
+never changes what data is shown, only a purely visual acknowledgment that
+the screen was tapped.
+
+The panel is a touchscreen, so `internal/touch` (Linux-only; a `!linux` stub
+elsewhere) reads `/dev/input/event0` directly and `internal/pixelui/render.go`
+draws a fading ring at each tap (`renderTouchRipples`/`blendRing`,
+`touchRippleLifetime`). This is feedback only, not a control surface — the
+dashboard has no buttons to press. `claude-status gfx --touch-device` can
+point at a different evdev node or be set to `""` to disable it; a failure
+to open the device is logged as a warning and the dashboard keeps running
+without touch feedback, the same "secondary feature must never break the
+primary display" pattern as `pixelui.resolveActivity`'s fallbacks. The
+`claude-status-tty1.service` unit's `SupplementaryGroups=` must include
+`input` (added alongside `video`) or the device open fails with a
+permission error.
 
 The left-hand status rail holds the animated clay starburst mascot and is the
 dashboard's focal point (`internal/pixelui/render.go`'s `renderRail`): its

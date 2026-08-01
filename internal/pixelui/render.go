@@ -17,6 +17,7 @@ import (
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
+	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 const (
@@ -28,6 +29,11 @@ const (
 // trusted. If the source machine crashes or a Stop hook is missed, the
 // mascot falls back to idle instead of animating "working" forever.
 const activityStaleAfter = 10 * time.Minute
+
+// touchRippleLifetime is how long a tap's ripple stays visible — this is
+// the official Raspberry Pi touch display, so a tap should visibly answer
+// back even though the dashboard has no other interactive controls.
+const touchRippleLifetime = 500 * time.Millisecond
 
 var (
 	backgroundTop = rgb(20, 19, 17)
@@ -69,6 +75,7 @@ type View struct {
 	StaleAfter   time.Duration
 	SessionCount int
 	LoadError    error
+	Touches      []touch.Point
 }
 
 type Renderer struct {
@@ -127,16 +134,38 @@ func (r *Renderer) Render(view View) *image.RGBA {
 	activity := resolveActivity(view.Claude, view.Now)
 	if view.Claude == nil {
 		r.renderWaiting(canvas, view, activity)
-		return canvas
+	} else {
+		r.renderDashboard(canvas, view, *view.Claude, activity)
 	}
-	r.renderDashboard(canvas, view, *view.Claude, activity)
+	renderTouchRipples(canvas, view.Touches, view.Now)
 	return canvas
 }
 
+// renderTouchRipples draws a fading, expanding ring at each recent tap so
+// the touchscreen visibly answers back even though nothing on this
+// dashboard is otherwise interactive. Drawn last so it's never hidden
+// under a card.
+func renderTouchRipples(canvas *image.RGBA, points []touch.Point, now time.Time) {
+	for _, point := range points {
+		elapsed := now.Sub(point.At)
+		if elapsed < 0 || elapsed > touchRippleLifetime {
+			continue
+		}
+		progress := float64(elapsed) / float64(touchRippleLifetime)
+		radius := 6 + int(46*progress)
+		alpha := uint8(180 * (1 - progress))
+		blendRing(canvas, point.X, point.Y, radius, max(2, 10-int(8*progress)), claudePeach, alpha)
+	}
+}
+
 // contentSplit is where the open left panel ends and the framed Codex card
-// begins. The Codex card gets the taller share since it now carries its own
-// context + two rate-limit rows instead of a one-line summary.
-const contentSplit = contentLeft + 260
+// begins. codexTop keeps the Codex card confined to the middle+bottom of
+// the content area — it does not climb up into the top row, which is the
+// Claude panel's rate-limit line.
+const (
+	contentSplit = contentLeft + 260
+	codexTop     = 234
+)
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
 	modelName := snapshot.Model.DisplayName
@@ -147,7 +176,7 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.renderHeader(canvas, view, activity, modelName)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
 	r.renderClaudePanel(canvas, snapshot, view.Now)
-	r.codexCard(canvas, image.Rect(contentSplit+14, sectionsTop, contentRight, sectionsBottom), view.Codex, view.Now)
+	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
 	if view.SessionCount != 1 {
@@ -190,7 +219,7 @@ func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string)
 	progress(canvas, image.Rect(contentLeft+20, 262, contentSplit-20, 272), animationPercent(view.Now), claudeOrange)
 	r.textCentered(canvas, r.regular12, textFaint, center, 360, fitText(r.regular12, "start a session on the source machine", panelWidth-20))
 
-	r.codexCard(canvas, image.Rect(contentSplit+14, sectionsTop, contentRight, sectionsBottom), view.Codex, view.Now)
+	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
 
 	r.text(canvas, r.bold13, claudeOrange, 21, footerBaseline, "CLAUDE PRIMARY  •  WAITING")
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "FRAMEBUFFER 800×480")
@@ -300,16 +329,16 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 }
 
 // codexCard is the one framed card on screen: it deliberately looks like a
-// boxed "other tool" widget next to the Claude panel's open background, and
-// now spans the full rail height so it can show the same context+limits
-// shape as the Claude panel instead of a one-line summary.
-func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapshot *model.Snapshot, now time.Time) {
+// boxed "other tool" widget next to the Claude panel's open background. It
+// stays confined to the middle+bottom of the content area — session/model
+// and context only, no rate-limit rows of its own.
+func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapshot *model.Snapshot) {
 	card(canvas, bounds, 19)
 	r.text(canvas, r.bold13, green, bounds.Min.X+18, bounds.Min.Y+24, "CODEX")
 	r.textRight(canvas, r.regular12, textFaint, bounds.Max.X-17, bounds.Min.Y+24, "SESSION")
 	if snapshot == nil {
-		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+50, "NO SESSION")
-		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+74, "context unavailable")
+		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+52, "NO SESSION")
+		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+76, "context unavailable")
 		return
 	}
 
@@ -319,9 +348,6 @@ func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapsho
 
 	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "CONTEXT")
 	r.contextBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, snapshot.Context, green, r.bold22)
-
-	r.limitLine(canvas, bounds.Min.X+18, bounds.Min.Y+198, innerWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, green, now)
-	r.limitLine(canvas, bounds.Min.X+18, bounds.Min.Y+284, innerWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, green, now)
 }
 
 func card(canvas *image.RGBA, bounds image.Rectangle, radius int) {
@@ -367,6 +393,35 @@ func fillRounded(canvas *image.RGBA, bounds image.Rectangle, radius int, fill co
 
 func fillCircle(canvas *image.RGBA, centerX, centerY, radius int, fill color.RGBA) {
 	fillRounded(canvas, image.Rect(centerX-radius, centerY-radius, centerX+radius, centerY+radius), radius, fill)
+}
+
+// blendRing alpha-blends a ring (annulus) of the given color and alpha over
+// whatever is already on canvas, unlike withAlpha which only blends toward
+// a fixed card background. Used for the touch ripple, which can appear over
+// the rail, the open panel, or the Codex card.
+func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint color.RGBA, alpha uint8) {
+	if alpha == 0 || radius <= 0 {
+		return
+	}
+	inner := radius - thickness
+	bounds := image.Rect(centerX-radius, centerY-radius, centerX+radius+1, centerY+radius+1).Intersect(canvas.Bounds())
+	factor := float64(alpha) / 255
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		dy := y - centerY
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dx := x - centerX
+			distanceSquared := dx*dx + dy*dy
+			if distanceSquared > radius*radius || (inner > 0 && distanceSquared < inner*inner) {
+				continue
+			}
+			existing := canvas.RGBAAt(x, y)
+			canvas.SetRGBA(x, y, rgb(
+				uint8(float64(tint.R)*factor+float64(existing.R)*(1-factor)),
+				uint8(float64(tint.G)*factor+float64(existing.G)*(1-factor)),
+				uint8(float64(tint.B)*factor+float64(existing.B)*(1-factor)),
+			))
+		}
+	}
 }
 
 // activityVisual is the animation "voice" for one activity state: how fast

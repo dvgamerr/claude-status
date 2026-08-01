@@ -22,6 +22,8 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
 - `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 250ms
   และเลือก snapshot ล่าสุดของ Claude/Codex แยกกันเพื่อให้ Claude เป็นหน้าหลักเสมอ
+  จอเป็น touchscreen จริง แตะแล้วจะเห็น ripple จาง ๆ ตรงจุดที่แตะ (`--touch-device`
+  ปรับ evdev device ได้ ใส่ค่าว่างเพื่อปิด) เป็น feedback อย่างเดียว ไม่ใช่ปุ่มกด
 - `claude-status preview` render frame เดียวกันเป็น PNG สำหรับ visual QA
 - quota ที่ provider ไม่ส่งจะแสดง unavailable; Codex account ที่ระบุ unlimited
   จะแสดง `UNMETERED` แทนการสร้างเปอร์เซ็นต์ขึ้นเอง

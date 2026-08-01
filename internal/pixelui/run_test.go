@@ -9,6 +9,7 @@ import (
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
+	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 type testLoader struct {
@@ -43,7 +44,7 @@ func TestRunRendersImmediatelyAndStopsWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	screen := &testScreen{}
-	err = Run(ctx, testLoader{}, testMetrics{}, screen, renderer, RunConfig{RefreshInterval: time.Second})
+	err = Run(ctx, testLoader{}, testMetrics{}, screen, renderer, RunConfig{RefreshInterval: time.Second}, nil)
 	if err != nil || screen.frames != 1 {
 		t.Fatalf("Run() error=%v frames=%d", err, screen.frames)
 	}
@@ -55,9 +56,26 @@ func TestRenderFramePropagatesPresentError(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen := &testScreen{err: errors.New("screen failed")}
-	err = renderFrame(testLoader{err: errors.New("partial state")}, testMetrics{}, screen, renderer, RunConfig{}, time.Now())
+	err = renderFrame(testLoader{err: errors.New("partial state")}, testMetrics{}, screen, renderer, RunConfig{}, time.Now(), nil)
 	if err == nil || !errors.Is(err, screen.err) {
 		t.Fatalf("renderFrame() error = %v", err)
+	}
+}
+
+func TestDrainTouchesCollectsAndExpiresPoints(t *testing.T) {
+	now := time.Now()
+	channel := make(chan touch.Point, 2)
+	channel <- touch.Point{X: 1, Y: 2, At: now}
+	channel <- touch.Point{X: 3, Y: 4, At: now}
+
+	active := drainTouches(channel, nil, now)
+	if len(active) != 2 {
+		t.Fatalf("drainTouches() collected %d points, want 2", len(active))
+	}
+
+	active = drainTouches(channel, active, now.Add(touchRippleLifetime+time.Millisecond))
+	if len(active) != 0 {
+		t.Fatalf("drainTouches() kept %d expired points, want 0", len(active))
 	}
 }
 
