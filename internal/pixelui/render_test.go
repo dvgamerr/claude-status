@@ -54,14 +54,16 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	if frame.Bounds() != image.Rect(0, 0, Width, Height) {
 		t.Fatalf("frame bounds = %v", frame.Bounds())
 	}
-	// Rail (mascot/status/health), context card, quota row, bottom row.
-	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 100}, {300, 250}, {300, 400}} {
+	// Header mascot, rail mascot/health, open Claude panel's limit/context
+	// bars, and the framed Codex card (top and bottom, to confirm it spans
+	// the full rail height).
+	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 151}, {300, 272}, {600, 100}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
 	}
 	waiting := renderer.Render(View{Now: now, LoadError: errors.New("waiting")})
-	if waiting.Bounds() != frame.Bounds() || rgba(waiting.At(400, 190)) == backgroundTop {
+	if waiting.Bounds() != frame.Bounds() || rgba(waiting.At(600, 100)) == backgroundTop {
 		t.Fatalf("waiting frame was not rendered")
 	}
 }
@@ -176,7 +178,7 @@ func TestFormattingHelpers(t *testing.T) {
 	if got := thresholdColor(75, claudeOrange); got != yellow {
 		t.Fatalf("thresholdColor(75) = %v", got)
 	}
-	if resetLabel(nil, time.Now()) != "reset unavailable" {
+	if resetLabelShort(nil, time.Now()) != "reset unavailable" {
 		t.Fatal("missing reset label is incorrect")
 	}
 	if ageText(0) != "just now" || ageText(2*time.Minute) != "2m ago" {
@@ -184,17 +186,19 @@ func TestFormattingHelpers(t *testing.T) {
 	}
 }
 
-func TestQuotaCardHandlesUnlimitedAndUnavailableValues(t *testing.T) {
+func TestLimitLineHandlesUnlimitedAndUnavailableValues(t *testing.T) {
 	renderer, err := NewRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	unlimited := true
-	renderer.quotaCard(canvas, image.Rect(18, 20, 393, 128), "5 HOUR", model.RateWindow{}, model.RateLimits{Unlimited: &unlimited, Plan: "enterprise"}, claudeOrange, time.Now())
-	renderer.quotaCard(canvas, image.Rect(407, 20, 782, 128), "7 DAY", model.RateWindow{}, model.RateLimits{}, claudePeach, time.Now())
-	if rgba(canvas.At(30, 30)) == (color.RGBA{}) || rgba(canvas.At(420, 30)) == (color.RGBA{}) {
-		t.Fatal("quota cards were not painted")
+	renderer.limitLine(canvas, 20, 40, 200, "5 HOUR", model.RateWindow{}, model.RateLimits{Unlimited: &unlimited, Plan: "enterprise"}, claudeOrange, time.Now())
+	renderer.limitLine(canvas, 260, 40, 200, "7 DAY", model.RateWindow{}, model.RateLimits{}, claudePeach, time.Now())
+	// The progress bar (drawn even for "no data") is a reliable filled region
+	// regardless of glyph shapes, unlike checking a single text pixel.
+	if rgba(canvas.At(25, 101)) == (color.RGBA{}) || rgba(canvas.At(265, 101)) == (color.RGBA{}) {
+		t.Fatal("limit lines were not painted")
 	}
 }
 

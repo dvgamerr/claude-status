@@ -133,35 +133,21 @@ func (r *Renderer) Render(view View) *image.RGBA {
 	return canvas
 }
 
+// contentSplit is where the open left panel ends and the framed Codex card
+// begins. The Codex card gets the taller share since it now carries its own
+// context + two rate-limit rows instead of a one-line summary.
+const contentSplit = contentLeft + 260
+
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
-	accent := claudeOrange
 	modelName := snapshot.Model.DisplayName
 	if modelName == "" {
 		modelName = snapshot.Model.ID
 	}
 
-	r.renderHeader(canvas, view, modelName)
+	r.renderHeader(canvas, view, activity, modelName)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
-
-	card(canvas, image.Rect(contentLeft, 68, contentRight, 220), 19)
-	r.text(canvas, r.bold13, textSecondary, contentLeft+20, 92, "CONTEXT WINDOW")
-	contextPct := snapshot.Context.UsedPercentage
-	percent := percentValue(contextPct)
-	r.text(canvas, r.bold44, textPrimary, contentLeft+19, 146, percentLabel(contextPct))
-	r.text(canvas, r.bold16, accent, contentLeft+21, 170, "USED")
-	r.text(canvas, r.regular13, textSecondary, contentLeft+150, 146, fitText(r.regular13, contextFraction(snapshot.Context), 210))
-
-	metricChip(canvas, r, image.Rect(contentLeft+228, 88, contentRight-152, 150), "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
-	metricChip(canvas, r, image.Rect(contentRight-137, 88, contentRight-19, 150), "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
-	progress(canvas, image.Rect(contentLeft+20, 190, contentRight-19, 203), percent, thresholdColor(percent, accent))
-
-	quotaWidth := (contentRight - contentLeft - 14) / 2
-	r.quotaCard(canvas, image.Rect(contentLeft, 234, contentLeft+quotaWidth, 342), "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, view.Now)
-	r.quotaCard(canvas, image.Rect(contentLeft+quotaWidth+14, 234, contentRight, 342), "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, view.Now)
-
-	bottomWidth := (contentRight - contentLeft - 14) / 2
-	r.claudeSessionCard(canvas, image.Rect(contentLeft, 356, contentLeft+bottomWidth, 446), snapshot)
-	r.codexCard(canvas, image.Rect(contentLeft+bottomWidth+14, 356, contentRight, 446), view.Codex)
+	r.renderClaudePanel(canvas, snapshot, view.Now)
+	r.codexCard(canvas, image.Rect(contentSplit+14, sectionsTop, contentRight, sectionsBottom), view.Codex, view.Now)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
 	if view.SessionCount != 1 {
@@ -170,34 +156,77 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	if view.LoadError != nil {
 		footer = "STATE WARNING  •  " + fitText(r.regular12, view.LoadError.Error(), 500)
 	}
-	r.text(canvas, r.bold13, accent, 21, footerBaseline, footer)
+	r.text(canvas, r.bold13, claudeOrange, 21, footerBaseline, footer)
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "CLAUDE PRIMARY  •  800×480")
 }
 
+// renderClaudePanel is deliberately card-less (open on the base background):
+// the rail already frames "you", the Codex card already frames "the other
+// tool", so this middle panel reads as this session's own numbers rather
+// than another boxed widget competing for attention.
+func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot, now time.Time) {
+	halfWidth := (contentSplit - contentLeft - 14) / 2
+
+	r.limitLine(canvas, contentLeft, 90, halfWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, now)
+	r.limitLine(canvas, contentLeft+halfWidth+14, 90, halfWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, now)
+
+	r.text(canvas, r.bold13, textSecondary, contentLeft, 196, "CONTEXT WINDOW")
+	r.contextBlock(canvas, contentLeft, 236, contentSplit-contentLeft, snapshot.Context, claudeOrange, r.bold30)
+
+	r.text(canvas, r.bold13, claudePeach, contentLeft, 320, "CLAUDE SESSION")
+	r.text(canvas, r.bold18, textPrimary, contentLeft, 346, fitText(r.bold18, sessionName(snapshot), contentSplit-contentLeft))
+	details := strings.ToUpper(modelLabel(snapshot)) + "  •  " + modePrimary(snapshot)
+	r.text(canvas, r.regular12, textSecondary, contentLeft, 368, fitText(r.regular12, details, contentSplit-contentLeft))
+}
+
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
-	r.renderHeader(canvas, view, "")
+	r.renderHeader(canvas, view, activity, "")
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, nil, view.Stats, view.Now)
 
-	card(canvas, image.Rect(contentLeft, 68, contentRight, 342), 19)
-	center := contentLeft + (contentRight-contentLeft)/2
-	r.textCentered(canvas, r.bold30, textPrimary, center, 190, "WAITING FOR CLAUDE")
-	r.textCentered(canvas, r.regular16, textSecondary, center, 223, "Start or continue a Claude Code session on the source machine")
-	progress(canvas, image.Rect(center-158, 259, center+158, 269), animationPercent(view.Now), claudeOrange)
-	r.textCentered(canvas, r.regular13, textFaint, center, 295, "The next statusLine event will update this display")
+	panelWidth := contentSplit - contentLeft
+	center := contentLeft + panelWidth/2
+	r.textCentered(canvas, r.bold22, textPrimary, center, 210, "WAITING")
+	r.textCentered(canvas, r.regular13, textSecondary, center, 234, fitText(r.regular13, "for the next statusLine event", panelWidth-20))
+	progress(canvas, image.Rect(contentLeft+20, 262, contentSplit-20, 272), animationPercent(view.Now), claudeOrange)
+	r.textCentered(canvas, r.regular12, textFaint, center, 360, fitText(r.regular12, "start a session on the source machine", panelWidth-20))
 
-	bottomWidth := (contentRight - contentLeft - 14) / 2
-	miniCard(canvas, image.Rect(contentLeft, 356, contentLeft+bottomWidth, 446))
-	r.text(canvas, r.bold13, textSecondary, contentLeft+18, 381, "CLAUDE SESSION")
-	r.text(canvas, r.bold16, textPrimary, contentLeft+18, 411, "NO SESSION YET")
-	r.text(canvas, r.regular12, textFaint, contentLeft+18, 434, "status will appear once Claude Code reports in")
-	r.codexCard(canvas, image.Rect(contentLeft+bottomWidth+14, 356, contentRight, 446), view.Codex)
+	r.codexCard(canvas, image.Rect(contentSplit+14, sectionsTop, contentRight, sectionsBottom), view.Codex, view.Now)
 
 	r.text(canvas, r.bold13, claudeOrange, 21, footerBaseline, "CLAUDE PRIMARY  •  WAITING")
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "FRAMEBUFFER 800×480")
 }
 
-func (r *Renderer) renderHeader(canvas *image.RGBA, view View, modelName string) {
-	fillCircle(canvas, 33, 36, 7, claudeOrange)
+// limitLine draws one open (no card) rate-limit indicator — label, big
+// percentage, reset countdown, and a bar — stacked instead of side by side
+// so the same compact shape works whether it's given half the Claude panel's
+// width or the Codex card's full inner width.
+func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
+	r.text(canvas, r.bold13, textSecondary, x, top, label+" LIMIT")
+	if window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited {
+		r.text(canvas, r.bold22, green, x, top+30, "UNMETERED")
+		progress(canvas, image.Rect(x, top+58, x+width, top+66), 100, green)
+		return
+	}
+	pct := percentValue(window.UsedPercentage)
+	r.text(canvas, r.bold22, textPrimary, x, top+30, percentLabel(window.UsedPercentage))
+	r.text(canvas, r.regular12, textFaint, x, top+48, fitText(r.regular12, resetLabelShort(window.ResetsAt, now), width))
+	progress(canvas, image.Rect(x, top+58, x+width, top+66), pct, thresholdColor(pct, accent))
+}
+
+// contextBlock draws percent+USED, the token fraction, and a bar with no
+// card background, reused by both the Claude panel (bigger percentFace) and
+// the Codex card (smaller one) so the two read as the same kind of number.
+func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context model.Context, accent color.RGBA, percentFace font.Face) {
+	percentText := percentLabel(context.UsedPercentage)
+	r.text(canvas, percentFace, textPrimary, x, top, percentText)
+	usedX := x + font.MeasureString(percentFace, percentText).Ceil() + 10
+	r.text(canvas, r.bold13, accent, usedX, top, "USED")
+	r.text(canvas, r.regular12, textFaint, x, top+22, fitText(r.regular12, contextFraction(context), width))
+	progress(canvas, image.Rect(x, top+34, x+width, top+42), percentValue(context.UsedPercentage), accent)
+}
+
+func (r *Renderer) renderHeader(canvas *image.RGBA, view View, activityState, modelName string) {
+	r.drawMascot(canvas, 33, 36, 9, view.Now, activityState)
 	r.text(canvas, r.bold22, textPrimary, 54, 40, "CLAUDE")
 	subtitle := "PRIMARY STATUS"
 	if modelName != "" {
@@ -214,9 +243,15 @@ func (r *Renderer) renderHeader(canvas *image.RGBA, view View, modelName string)
 		if age > view.StaleAfter {
 			liveText, liveColor = "STALE", red
 		}
-		fillRounded(canvas, image.Rect(642, 18, 713, 46), 14, withAlpha(liveColor, 36))
-		fillCircle(canvas, 657, 32, 4, liveColor)
-		r.text(canvas, r.bold13, liveColor, 668, 37, liveText)
+		// Size the pill to the label instead of a fixed width: "STALE" is
+		// wider than "LIVE" and was overflowing its pill into the clock.
+		clockZoneLeft := contentRight - 80
+		textWidth := font.MeasureString(r.bold13, liveText).Ceil()
+		pillWidth := textWidth + 34
+		pillLeft := clockZoneLeft - 20 - pillWidth
+		fillRounded(canvas, image.Rect(pillLeft, 18, pillLeft+pillWidth, 46), 14, withAlpha(liveColor, 36))
+		fillCircle(canvas, pillLeft+15, 32, 4, liveColor)
+		r.text(canvas, r.bold13, liveColor, pillLeft+26, 37, liveText)
 	}
 	r.textRight(canvas, r.bold18, textPrimary, contentRight, 37, view.Now.Format("15:04"))
 }
@@ -264,52 +299,29 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 	r.text(canvas, r.regular12, textFaint, bounds.Min.X+22, healthTop+48, healthSecondary(stats))
 }
 
-func (r *Renderer) claudeSessionCard(canvas *image.RGBA, bounds image.Rectangle, snapshot model.Snapshot) {
-	miniCard(canvas, bounds)
-	r.text(canvas, r.bold13, claudePeach, bounds.Min.X+18, bounds.Min.Y+25, "CLAUDE SESSION")
-	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+18, bounds.Min.Y+54, fitText(r.bold18, sessionName(snapshot), bounds.Dx()-36))
-	details := strings.ToUpper(modelLabel(snapshot)) + "  •  " + modePrimary(snapshot)
-	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+75, fitText(r.regular12, details, bounds.Dx()-36))
-}
-
-func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapshot *model.Snapshot) {
-	miniCard(canvas, bounds)
+// codexCard is the one framed card on screen: it deliberately looks like a
+// boxed "other tool" widget next to the Claude panel's open background, and
+// now spans the full rail height so it can show the same context+limits
+// shape as the Claude panel instead of a one-line summary.
+func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapshot *model.Snapshot, now time.Time) {
+	card(canvas, bounds, 19)
 	r.text(canvas, r.bold13, green, bounds.Min.X+18, bounds.Min.Y+24, "CODEX")
 	r.textRight(canvas, r.regular12, textFaint, bounds.Max.X-17, bounds.Min.Y+24, "SESSION")
 	if snapshot == nil {
-		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+53, "NO SESSION")
-		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+75, "context unavailable")
+		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+50, "NO SESSION")
+		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+74, "context unavailable")
 		return
 	}
-	r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+51, fitText(r.bold16, sessionName(*snapshot), bounds.Dx()-36))
-	label := "CONTEXT  " + percentLabel(snapshot.Context.UsedPercentage)
-	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+75, label)
-	progress(canvas, image.Rect(bounds.Min.X+116, bounds.Min.Y+66, bounds.Max.X-18, bounds.Min.Y+77), percentValue(snapshot.Context.UsedPercentage), green)
-}
 
-func (r *Renderer) quotaCard(canvas *image.RGBA, bounds image.Rectangle, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
-	card(canvas, bounds, 17)
-	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+25, label+" LIMIT")
-	if window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited {
-		r.text(canvas, r.bold22, green, bounds.Min.X+18, bounds.Min.Y+61, "UNMETERED")
-		plan := strings.ToUpper(strings.ReplaceAll(limits.Plan, "_", " "))
-		if plan == "" {
-			plan = "ACCOUNT HAS NO METERED LIMIT"
-		}
-		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+83, fitText(r.regular12, plan, bounds.Dx()-36))
-		progress(canvas, image.Rect(bounds.Min.X+18, bounds.Max.Y-20, bounds.Max.X-18, bounds.Max.Y-10), 100, green)
-		return
-	}
-	pct := percentValue(window.UsedPercentage)
-	r.text(canvas, r.bold30, textPrimary, bounds.Min.X+18, bounds.Min.Y+64, percentLabel(window.UsedPercentage))
-	r.text(canvas, r.regular13, textSecondary, bounds.Min.X+112, bounds.Min.Y+55, fitText(r.regular13, resetLabel(window.ResetsAt, now), bounds.Dx()-130))
-	progress(canvas, image.Rect(bounds.Min.X+18, bounds.Max.Y-20, bounds.Max.X-18, bounds.Max.Y-10), pct, thresholdColor(pct, accent))
-}
+	innerWidth := bounds.Dx() - 36
+	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+18, bounds.Min.Y+52, fitText(r.bold18, sessionName(*snapshot), innerWidth))
+	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+74, fitText(r.regular12, strings.ToUpper(modelLabel(*snapshot)), innerWidth))
 
-func metricChip(canvas *image.RGBA, r *Renderer, bounds image.Rectangle, label, value string, accent color.RGBA) {
-	fillRounded(canvas, bounds, 13, cardStrong)
-	r.text(canvas, r.bold13, accent, bounds.Min.X+14, bounds.Min.Y+22, label)
-	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+14, bounds.Min.Y+48, fitText(r.bold18, value, bounds.Dx()-24))
+	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "CONTEXT")
+	r.contextBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, snapshot.Context, green, r.bold22)
+
+	r.limitLine(canvas, bounds.Min.X+18, bounds.Min.Y+198, innerWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, green, now)
+	r.limitLine(canvas, bounds.Min.X+18, bounds.Min.Y+284, innerWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, green, now)
 }
 
 func card(canvas *image.RGBA, bounds image.Rectangle, radius int) {
@@ -626,7 +638,9 @@ func trimZero(value string) string {
 	return strings.Replace(value, ".0K", "K", 1)
 }
 
-func resetLabel(epoch *int64, now time.Time) string {
+// resetLabelShort formats a rate-limit reset countdown for the compact
+// stacked limitLine layout, where width is at a premium.
+func resetLabelShort(epoch *int64, now time.Time) string {
 	if epoch == nil || *epoch <= 0 {
 		return "reset unavailable"
 	}
@@ -634,7 +648,7 @@ func resetLabel(epoch *int64, now time.Time) string {
 	if remaining <= 0 {
 		return "reset due"
 	}
-	return "resets in " + durationLabel(remaining)
+	return durationLabel(remaining) + " left"
 }
 
 func durationLabel(value time.Duration) string {
