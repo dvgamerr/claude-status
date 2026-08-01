@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,6 +115,28 @@ func TestRunCodexNotifyEndToEnd(t *testing.T) {
 	}
 }
 
+func TestRunPreviewWritesPNG(t *testing.T) {
+	root := t.TempDir()
+	output := filepath.Join(root, "preview.png")
+	var stdout, stderr bytes.Buffer
+	exitCode := Run(context.Background(), []string{"preview", "--state-dir", filepath.Join(root, "state"), "--output", output}, strings.NewReader(""), &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("Run(preview) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	file, err := os.Open(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	config, err := png.DecodeConfig(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Width != 800 || config.Height != 480 {
+		t.Fatalf("preview size = %dx%d", config.Width, config.Height)
+	}
+}
+
 func TestRunHelpAndUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run(context.Background(), nil, strings.NewReader(""), &stdout, &stderr); exitCode != 0 || !strings.Contains(stdout.String(), "claude-status ingest") {
@@ -152,6 +175,11 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "tui refresh too fast", args: []string{"tui", "--refresh", "100ms"}, wantExit: 2, wantText: "at least 250ms"},
 		{name: "tui stale invalid", args: []string{"tui", "--stale-after", "0s"}, wantExit: 2, wantText: "greater than zero"},
 		{name: "tui duration invalid", args: []string{"tui", "--refresh", "invalid"}, wantExit: 2, wantText: "invalid value"},
+		{name: "gfx help", args: []string{"gfx", "--help"}, wantExit: 0, wantText: "Usage: claude-status gfx"},
+		{name: "gfx positional", args: []string{"gfx", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "gfx refresh too fast", args: []string{"gfx", "--refresh", "100ms"}, wantExit: 2, wantText: "at least 250ms"},
+		{name: "preview help", args: []string{"preview", "--help"}, wantExit: 0, wantText: "Usage: claude-status preview"},
+		{name: "preview positional", args: []string{"preview", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 	}
 
 	for _, tt := range tests {

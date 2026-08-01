@@ -1,31 +1,12 @@
 # claude-status
 
-Terminal dashboard สำหรับดู Claude Code และ Codex usage บน Raspberry Pi 4 โดยรับ
+Native pixel dashboard สำหรับดู Claude Code และ Codex usage บน Raspberry Pi 4 โดยรับ
 ข้อมูลจาก Claude `statusLine` หรือ Codex turn notification + local rollout metadata
 แล้วสร้าง sanitized snapshot ไม่ scrape หน้าเว็บและไม่อ่าน/ส่ง credential ของ provider
 
-```text
-╭────────────────────────────────────────────────────────────────╮
-│CLAUDE STATUS  OPUS                             ● LIVE  21:42   │
-├────────────────────────────────────────────────────────────────┤
-│CONTEXT  72% USED                                  144k / 200k  │
-│██████████████████████████████████████████████░░░░░░░░░░░░░░░░░░│
-│INPUT ↑ 140k     OUTPUT ↓ 4k                                    │
-├───────────────────────────────┼────────────────────────────────┤
-│5-HOUR LIMIT                   │7-DAY LIMIT                     │
-│███████████████░░░░░░░░░░ 51% │██████████░░░░░░░░░░░░░░░░ 34%   │
-│resets 1h36m                   │resets 2d16h                    │
-├────────────────────────────────────────────────────────────────┤
-│SESSION  Pi dashboard demo  ·  01:42:18                         │
-│ACTIVITY Cost $1.28  ·  Code +186  -42                          │
-│MODEL    claude-opus-4-7  ·  effort high  ·  thinking on        │
-├────────────────────────────────────────────────────────────────┤
-│PI       CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42          │
-│UPDATED  4s ago  ·  CLAUDE 2.1.132                              │
-├────────────────────────────────────────────────────────────────┤
-│[s] Sessions     [r] Refresh                 [q] Quit           │
-╰────────────────────────────────────────────────────────────────╯
-```
+หน้าหลักวาดลง `/dev/fb0` แบบ RGB565 ที่ 800×480 โดยตรง ไม่ใช้ terminal grid,
+Desktop, Chromium หรือ X/Wayland จึงควบคุม typography, spacing, สี และ rounded cards
+ได้ทุกพิกเซล พร้อม hero context meter, token chips, quota cards และ Pi health
 
 ## สิ่งที่โปรแกรมทำ
 
@@ -34,15 +15,12 @@ Terminal dashboard สำหรับดู Claude Code และ Codex usage �
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
-- `claude-status tui` แสดง progress bar ของ 5-hour/7-day quota, context,
-  input/output token, session, estimated cost, code activity และสถานะระบบ Pi
-- layout หลักออกแบบสำหรับ Raspberry Pi Touch Display 7″ ที่ 800×480 โดยใช้
-  TerminusBold 12x24 และ render เต็มพื้นที่ 66×20 ตัวอักษรทุก state
-- ล้าง console ก่อน frame แรกและเขียนทับครบ 20 แถว เพื่อไม่ให้ boot log หรือ
-  frame เก่าค้างอยู่ใต้ dashboard
-- แยก state ตาม `session_id` และเลือก session ด้วย `s`, ลูกศร และ Enter
-- ตาม snapshot ล่าสุดอัตโนมัติ; เมื่อเลือก session ด้วย Enter จะ pin ไว้ และกด `a`
-  เพื่อกลับไปติดตาม session/provider ล่าสุด
+- `claude-status gfx` เปิด native framebuffer dashboard 800×480 และตาม snapshot
+  ล่าสุดอัตโนมัติทุกวินาที
+- `claude-status preview` render frame เดียวกันเป็น PNG สำหรับ visual QA
+- quota ที่ provider ไม่ส่งจะแสดง unavailable; Codex account ที่ระบุ unlimited
+  จะแสดง `UNMETERED` แทนการสร้างเปอร์เซ็นต์ขึ้นเอง
+- `claude-status tui` ยังเก็บไว้เป็น fallback สำหรับเครื่องที่ไม่มี framebuffer
 - แสดง `LIVE`/`STALE` ชัดเจน ป้องกันการเข้าใจ snapshot เก่าว่าเป็นข้อมูลสด
 - รองรับ field ที่หาย, เป็น `null` และ field ใหม่ที่โปรแกรมยังไม่รู้จัก
 
@@ -58,6 +36,9 @@ git clone <repository-url> claude-status
 cd claude-status
 bash scripts/install.sh
 ~/.local/bin/claude-status version
+sudo install -m 0644 configs/claude-status-tty1.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now claude-status-tty1.service
 ```
 
 หากมี binary ที่ cross-build มาแล้ว:
@@ -108,17 +89,17 @@ session เท่านั้น
 เปิด dashboard:
 
 ```bash
-claude-status tui
+claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1
 ```
 
 ตัวเลือกสำคัญ:
 
 ```text
 --state-dir DIR       เปลี่ยนที่เก็บ snapshot
---session ID          เปิด session ที่ระบุตั้งแต่เริ่ม
 --refresh 1s          รอบอ่านข้อมูลและ Pi metrics
 --stale-after 15s     อายุข้อมูลก่อนแสดง STALE
---inline              ไม่ใช้ alternate screen
+--framebuffer PATH    framebuffer device; ค่าเริ่มต้น /dev/fb0
+--tty PATH            console ที่สลับเข้า graphics mode; ค่าเริ่มต้น /dev/tty1
 ```
 
 ตั้ง path ด้วย environment variable ได้เช่นกัน:
@@ -131,7 +112,7 @@ export CLAUDE_STATUS_STATE_DIR=/var/lib/claude-status
 
 ```bash
 claude-status ingest < examples/statusline-input.json
-claude-status tui
+claude-status preview --output dashboard.png
 ```
 
 ใน Nushell ใช้ `open --raw` และ external-command marker `^`:

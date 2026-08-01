@@ -52,6 +52,8 @@ type rolloutValues struct {
 	ContextWindow *int64
 	Primary       *rateWindow
 	Secondary     *rateWindow
+	Plan          string
+	Unlimited     *bool
 }
 
 func DecodeNotification(value string) (Notification, error) {
@@ -133,6 +135,11 @@ func SnapshotFromNotification(notification Notification, codexHome string, now t
 
 	assignRateWindow(&snapshot.RateLimits, values.Primary, true)
 	assignRateWindow(&snapshot.RateLimits, values.Secondary, false)
+	snapshot.RateLimits.Plan = cleanText(values.Plan, 40)
+	if values.Unlimited != nil {
+		unlimited := *values.Unlimited
+		snapshot.RateLimits.Unlimited = &unlimited
+	}
 	return snapshot, nil
 }
 
@@ -234,6 +241,10 @@ func readRollout(path string) (rolloutValues, error) {
 					RateLimits struct {
 						Primary   *rateWindow `json:"primary"`
 						Secondary *rateWindow `json:"secondary"`
+						PlanType  string      `json:"plan_type"`
+						Credits   *struct {
+							Unlimited *bool `json:"unlimited"`
+						} `json:"credits"`
 					} `json:"rate_limits"`
 				} `json:"payload"`
 			}
@@ -242,6 +253,10 @@ func readRollout(path string) (rolloutValues, error) {
 				values.ContextWindow = record.Payload.Info.ModelContextWindow
 				values.Primary = record.Payload.RateLimits.Primary
 				values.Secondary = record.Payload.RateLimits.Secondary
+				values.Plan = record.Payload.RateLimits.PlanType
+				if record.Payload.RateLimits.Credits != nil {
+					values.Unlimited = record.Payload.RateLimits.Credits.Unlimited
+				}
 			}
 		}
 	})

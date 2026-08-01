@@ -71,7 +71,7 @@ func TestSnapshotFromNotificationReadsOnlyUsageMetadata(t *testing.T) {
 		`{"type":"turn_context","payload":{"model":"gpt-5.6-sol","effort":"xhigh","cwd":"C:/private/project"}}`,
 		`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50000,"cached_input_tokens":32000,"output_tokens":2000,"reasoning_output_tokens":1000,"total_tokens":52000},"model_context_window":200000},"rate_limits":{"primary":{"used_percent":51,"window_minutes":300,"resets_at":1785500280},"secondary":{"used_percent":34,"window_minutes":10080,"resets_at":1785675600}}}}`,
 	}, "\n") + "\n" + tooLongPrivateLine +
-		`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":60000,"cached_input_tokens":40000,"output_tokens":4000,"total_tokens":64000},"model_context_window":200000},"rate_limits":{"primary":{"used_percent":52,"window_minutes":300,"resets_at":1785500281},"secondary":{"used_percent":35,"window_minutes":10080,"resets_at":1785675601}}}}` + "\n"
+		`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":60000,"cached_input_tokens":40000,"output_tokens":4000,"total_tokens":64000},"model_context_window":200000},"rate_limits":{"primary":{"used_percent":52,"window_minutes":300,"resets_at":1785500281},"secondary":{"used_percent":35,"window_minutes":10080,"resets_at":1785675601},"credits":{"unlimited":true},"plan_type":"enterprise_cbp_usage_based"}}}` + "\n"
 	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +92,9 @@ func TestSnapshotFromNotificationReadsOnlyUsageMetadata(t *testing.T) {
 	}
 	if snapshot.RateLimits.FiveHour.UsedPercentage == nil || *snapshot.RateLimits.FiveHour.UsedPercentage != 52 || snapshot.RateLimits.SevenDay.UsedPercentage == nil || *snapshot.RateLimits.SevenDay.UsedPercentage != 35 {
 		t.Fatalf("rate limits = %+v", snapshot.RateLimits)
+	}
+	if snapshot.RateLimits.Unlimited == nil || !*snapshot.RateLimits.Unlimited || snapshot.RateLimits.Plan != "enterprise_cbp_usage_based" {
+		t.Fatalf("account metadata = %+v", snapshot.RateLimits)
 	}
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {

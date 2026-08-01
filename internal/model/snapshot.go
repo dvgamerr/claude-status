@@ -52,8 +52,10 @@ type TokenUsage struct {
 }
 
 type RateLimits struct {
-	FiveHour RateWindow `json:"five_hour"`
-	SevenDay RateWindow `json:"seven_day"`
+	FiveHour  RateWindow `json:"five_hour"`
+	SevenDay  RateWindow `json:"seven_day"`
+	Plan      string     `json:"plan,omitempty"`
+	Unlimited *bool      `json:"unlimited,omitempty"`
 }
 
 type RateWindow struct {

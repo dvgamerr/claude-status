@@ -3,20 +3,21 @@
 - Target host: `pilab`
 - Board: Raspberry Pi 4 Model B Rev 1.4
 - Display: original Raspberry Pi Touch Display 7-inch, 800x480
-- Linux console font: TerminusBold 12x24, configured persistently and loaded
-  without requiring a reboot
-- Effective console grid: 66 columns x 20 rows (previously about 100x30 with
-  an 8x16 font)
+- Native display path: `/dev/fb0`, `vc4drmfb`, 800x480, RGB565 (16 bpp),
+  stride 1600 bytes
+- Linux console font remains TerminusBold 12x24 only for text-mode fallback
+- Text-mode fallback grid: 66 columns x 20 rows
 - Installed/supported TerminusBold sizes: 10x20, 12x24, 14x28, and 16x32
 - Previous console configuration backup:
   `/etc/default/console-setup.codex-backup-20260731`
 
-Keep the primary TUI exactly 66x20 cells on the target console, including
-borders. Clear tty1 synchronously before the first render, and make every
-state—including waiting and session selection—paint all 20 rows so boot output
-cannot remain visible. Prefer short, high-contrast labels and progress bars
-that remain legible on the physical touch display. The session picker must
-paginate rather than grow past 20 rows.
+The primary UI is the native `gfx` dashboard, rendered at exactly 800x480
+pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. Design and visual
+QA against RGB565 output, not only an RGB PNG preview, because subtle gradients
+band on the physical 16-bit framebuffer. Keep a flat dark background,
+high-contrast type, large context usage, equal 5-hour/7-day quota cards, and
+compact session/Pi/mode cards. The display follows the newest snapshot without
+local keyboard input.
 
 ## Provider ingestion and Windows source
 
@@ -37,10 +38,8 @@ paginate rather than grow past 20 rows.
 - Codex context usage uses the latest `last_token_usage.total_tokens` divided
   by `model_context_window`. The 5-hour and 7-day bars use the 300-minute and
   10,080-minute rate-limit windows when the account exposes them; unavailable
-  enterprise limits remain `--` instead of being fabricated.
-- In the default unpinned mode the dashboard follows the newest snapshot, even
-  when it comes from a new session or the other provider. Enter in the session
-  picker pins a session; the `a` key returns to automatic latest-session mode.
+  enterprise limits show `UNMETERED` only when Codex explicitly reports
+  `credits.unlimited=true`; otherwise unavailable values remain `--`.
 
 References:
 
@@ -52,12 +51,14 @@ References:
 - `pilab` has no keyboard attached. Perform all input, control, recovery, and
   process management remotely through `ssh pilab`; never ask the user to press
   a key such as `q` on the Raspberry Pi.
-- The physical display is `/dev/tty1`. A normal SSH PTY and a PowerShell window
+- The physical pixels are `/dev/fb0`; `/dev/tty1` is switched to `KD_GRAPHICS`
+  while the service runs. A normal SSH PTY and a PowerShell window
   on Windows are different terminals, so clearing or drawing in either one does
   not change the Raspberry Pi display.
 - The dashboard on `/dev/tty1` is owned by the enabled system service
   `claude-status-tty1.service`. It runs
-  `/home/pi/.local/bin/claude-status tui` with `Restart=always`.
+  `/home/pi/.local/bin/claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1`
+  with `Restart=always`.
 - Inspect it with
   `ssh pilab "systemctl --no-pager --full status claude-status-tty1.service"`.
   Start, stop, or restart it through SSH with `sudo systemctl`; do not try to
@@ -70,8 +71,8 @@ References:
 
 - Running `clear` in an ordinary SSH session cleared only that SSH terminal,
   not `/dev/tty1`.
-- Running bare `claude-status` only printed command help; the dashboard command
-  is `claude-status tui`.
+- Running bare `claude-status` only prints command help; the primary dashboard
+  command is `claude-status gfx`.
 - Opening a visible PowerShell/SSH TUI on Windows did not update the Raspberry
   Pi's physical display and left an interactive session the user could not
   control from the Pi.

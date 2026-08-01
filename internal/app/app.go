@@ -6,16 +6,20 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image/png"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/codex"
 	"github.com/dvgamerr/claude-status/internal/dashboard"
+	"github.com/dvgamerr/claude-status/internal/framebuffer"
 	"github.com/dvgamerr/claude-status/internal/ingest"
 	"github.com/dvgamerr/claude-status/internal/mirror"
 	"github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/pixelui"
 	"github.com/dvgamerr/claude-status/internal/state"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 )
@@ -41,6 +45,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runImport(args[1:], stdin, stderr)
 	case "tui":
 		return runTUI(ctx, args[1:], stdin, stdout, stderr)
+	case "gfx":
+		return runGFX(ctx, args[1:], stderr)
+	case "preview":
+		return runPreview(args[1:], stderr)
 	case "version", "--version", "-version":
 		fmt.Fprintf(stdout, "claude-status %s (commit %s, built %s)\n", Version, Commit, Date)
 		return 0
@@ -281,6 +289,129 @@ func runTUI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	return 0
 }
 
+func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
+	defaultDir, err := state.DefaultDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		return 1
+	}
+	flags := flag.NewFlagSet("gfx", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
+	refresh := flags.Duration("refresh", time.Second, "frame refresh interval")
+	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
+	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
+	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 1s] [--framebuffer /dev/fb0] [--tty /dev/tty1]")
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "claude-status gfx: unexpected positional arguments")
+		return 2
+	}
+	if *refresh < 250*time.Millisecond {
+		fmt.Fprintln(stderr, "claude-status gfx: --refresh must be at least 250ms")
+		return 2
+	}
+	if *staleAfter <= 0 {
+		fmt.Fprintln(stderr, "claude-status gfx: --stale-after must be greater than zero")
+		return 2
+	}
+	store, err := state.New(*stateDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		return 1
+	}
+	renderer, err := pixelui.NewRenderer()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		return 1
+	}
+	screen, err := framebuffer.Open(*framebufferPath, *ttyPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if err := screen.Close(); err != nil {
+			fmt.Fprintf(stderr, "claude-status gfx: close display: %v\n", err)
+		}
+	}()
+	if size := screen.Size(); size.X != pixelui.Width || size.Y != pixelui.Height {
+		fmt.Fprintf(stderr, "claude-status gfx: display is %dx%d; expected %dx%d\n", size.X, size.Y, pixelui.Width, pixelui.Height)
+		return 1
+	}
+	config := pixelui.RunConfig{RefreshInterval: *refresh, StaleAfter: *staleAfter}
+	if err := pixelui.Run(ctx, store, systeminfo.NewReader("/"), screen, renderer, config); err != nil {
+		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runPreview(args []string, stderr io.Writer) int {
+	defaultDir, err := state.DefaultDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		return 1
+	}
+	flags := flag.NewFlagSet("preview", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
+	outputPath := flags.String("output", "pixel-dashboard-preview.png", "PNG output path")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: claude-status preview [--state-dir DIR] [--output dashboard.png]")
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "claude-status preview: unexpected positional arguments")
+		return 2
+	}
+	store, err := state.New(*stateDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		return 1
+	}
+	snapshots, loadErr := store.LoadAll()
+	var latest *model.Snapshot
+	if len(snapshots) > 0 {
+		copy := snapshots[0]
+		latest = &copy
+	}
+	renderer, err := pixelui.NewRenderer()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		return 1
+	}
+	frame := renderer.Render(pixelui.View{Snapshot: latest, Now: time.Now(), StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
+	file, err := os.Create(*outputPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status preview: create output: %v\n", err)
+		return 1
+	}
+	if err := png.Encode(file, frame); err != nil {
+		file.Close()
+		fmt.Fprintf(stderr, "claude-status preview: encode PNG: %v\n", err)
+		return 1
+	}
+	if err := file.Close(); err != nil {
+		fmt.Fprintf(stderr, "claude-status preview: close output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, `AI Usage Terminal for Raspberry Pi
 
@@ -288,6 +419,8 @@ Usage:
   claude-status ingest [flags]       Read Claude Code statusLine JSON from stdin
   claude-status codex-notify [flags] Read a Codex turn-complete notification
   claude-status import [flags]       Import one sanitized snapshot
+  claude-status gfx [flags]          Render the 800x480 framebuffer dashboard
+  claude-status preview [flags]      Save one framebuffer dashboard frame as PNG
   claude-status tui [flags]          Open the full-screen dashboard
   claude-status version              Print build information
 
