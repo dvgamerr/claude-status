@@ -94,25 +94,6 @@ func TestHeaderOmitsModelAndSessionIdentity(t *testing.T) {
 	}
 }
 
-func TestSessionNameFallsBackToIDWhenFaceCannotDrawIt(t *testing.T) {
-	renderer, err := NewRenderer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	latin := model.Snapshot{Session: model.Session{ID: "session-123", Name: "Pi dashboard demo"}}
-	if got := sessionName(renderer.regular13, latin); got != "Pi dashboard demo" {
-		t.Fatalf("sessionName() = %q, want the Latin name unchanged", got)
-	}
-
-	// The bundled UI font (Go's core "gofont" set) has no Thai glyphs, so a
-	// Thai session name must fall back to the ID instead of drawing as a row
-	// of unmapped glyph boxes.
-	thai := model.Snapshot{Session: model.Session{ID: "9ea96c33-71f0-4a93-9e65-448ce6249f26", Name: "ลบการแสดงผลซ้ำซ้อน"}}
-	if got := sessionName(renderer.regular13, thai); got != "9ea96c33-71f0-4a93…" {
-		t.Fatalf("sessionName() = %q, want the truncated ID fallback", got)
-	}
-}
-
 func TestRenderDrawsFreshTouchRippleAndSkipsStaleOnes(t *testing.T) {
 	renderer, err := NewRenderer()
 	if err != nil {

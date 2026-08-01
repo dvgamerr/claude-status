@@ -6,8 +6,21 @@ Native pixel dashboard สำหรับดู Claude Code และ Codex usag
 
 หน้าหลักวาดลง `/dev/fb0` แบบ RGB565 ที่ 800×480 โดยตรง ไม่ใช้ terminal grid,
 Desktop, Chromium หรือ X/Wayland จึงควบคุม typography, spacing, สี และ rounded cards
-ได้ทุกพิกเซล พร้อม Claude-first hero context meter, token chips, 5h/7day cards,
-animated Claude mark และ Pi health ส่วน Codex ย่อเหลือ current session/model + context
+ได้ทุกพิกเซล
+
+## หน้าตาปัจจุบันของ dashboard
+
+- ซ้าย: rail มี mascot (Clawd) เป็นจุดสนใจหลัก ใต้ pill สถานะ (WORKING/IDLE/NEEDS
+  APPROVAL) มีแค่ระยะเวลา ("working for 12s") — ไม่แสดงชื่อหรือ ID ของ session
+  เลย ต่อด้วย Pi health (CPU/MEM/GPU)
+- ขวาบน: "5 HOUR LIMIT" และ "7 DAY LIMIT" วางเต็มความกว้างซ้อนกันคนละแถว
+  (label+เวลารีเซ็ตแถวเดียวกัน ตามด้วย bar แล้วเลขเปอร์เซ็นต์ใหญ่)
+- กลาง: หัวข้อ model + reasoning level (เช่น "SONNET 5" / "HIGH EFFORT") สไตล์
+  เดียวกับการ์ด Codex ตามด้วย "CONTEXT WINDOW" และ token chip INPUT/OUTPUT
+- ขวาล่าง: การ์ด Codex (model, reasoning effort, context) ทั้งการ์ด Codex และ
+  chip INPUT/OUTPUT ชิดขอบล่างของจอเป็นแนวเดียวกัน ไม่มีที่ว่างเหลือด้านล่าง
+- header มีแค่ Anthropic mark กับคำว่า CLAUDE เท่านั้น ไม่มีนาฬิกา ไม่มี
+  model/session identity (ข้อมูลนั้นย้ายไปอยู่กลางจอแทน)
 
 ## สิ่งที่โปรแกรมทำ
 
@@ -36,6 +49,38 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
 - `claude-status tui` ยังเก็บไว้เป็น fallback สำหรับเครื่องที่ไม่มี framebuffer
 - แสดง `LIVE`/`STALE` ชัดเจน ป้องกันการเข้าใจ snapshot เก่าว่าเป็นข้อมูลสด
 - รองรับ field ที่หาย, เป็น `null` และ field ใหม่ที่โปรแกรมยังไม่รู้จัก
+
+## สถาปัตยกรรม: ข้อมูลเดินทางยังไงตั้งแต่ต้นจนขึ้นจอ
+
+ระบบแยกเป็น 3 ชั้นที่ไม่พึ่งพากันโดยตรง ชั้นไหนพังก็ไม่ทำให้ชั้นอื่นค้าง:
+
+1. **Source adapter** (เครื่องที่รัน Claude Code/Codex จริง) — `ingest`,
+   `activity`, `usage`, `codex-notify` แต่ละตัวเป็น process สั้น ๆ ที่ถูกเรียก
+   ต่อ event เดียว (statusLine refresh, hook, หรือ turn-complete notify) อ่าน
+   input, sanitize ผ่าน allowlist แล้ว **เขียนแค่ local state แบบ atomic**
+   (temp file + fsync + rename) จบแล้วก็ออก — ไม่เปิด network เอง ไม่รอ SSH
+   ไม่ block hook หรือ statusLine แม้แต่ nanoseconds เดียว
+2. **Relay** (`claude-status relay`) — process ระยะยาวตัวเดียวที่ watch local
+   state directory เดียวกันนั้น เจอ snapshot ที่เปลี่ยน (เทียบด้วย hash/mtime)
+   ก็ส่งไป Pi ผ่าน SSH โดย retry เองเมื่อเครือข่ายขาดหรือ Pi ปิดอยู่ชั่วคราว
+   เป็นเจ้าของ SSH transport เพียงจุดเดียวในทั้งระบบ ปลายทางเสมอคือ
+   `claude-status import` บน Pi ซึ่งรับเฉพาะ `model.Snapshot` schema ที่รู้จัก
+   และ reject field แปลกปลอมทันที
+3. **Renderer** (`claude-status gfx` บน Pi) — loop เดียวที่อ่าน state
+   directory ของตัวเอง (ที่ `import` เขียนไว้), เลือก snapshot ล่าสุดของ
+   Claude กับ Codex แยกกัน (Claude เป็นหลักเสมอ ต่อให้ Codex event ใหม่กว่า),
+   แล้ว composite เฟรมด้วย `internal/pixelui` วาดตรงลง `/dev/fb0` ทุก
+   `--refresh` (ดีฟอลต์ 66ms/~15fps) — ไม่รอ SSH, ไม่รอ relay, ไม่ block
+
+Activity state (working/idle/waiting-approval) เดินคนละ path จาก
+snapshot ทั่วไป: hook เขียนแค่ field `Activity{State, UpdatedAt}` merge เข้า
+ไปในของเดิม ไม่ทำให้ statusLine event ที่มาก่อน/หลังกันมาทับข้อมูลกัน และ
+mascot จะ fallback กลับ idle เองถ้า state ค้างเกิน 10 นาที (เผื่อ `Stop`
+hook หลุดไป)
+
+ถ้าเครื่องรัน Claude Code/Codex เป็นเครื่องเดียวกับที่มี `/dev/fb0` (Pi ตัวเดียว
+ทำหมด) ก็ข้าม relay ไปเลยได้ — `ingest`/`activity`/`gfx` อ่านเขียน state
+directory เดียวกันตรง ๆ
 
 ## ติดตั้งบน Raspberry Pi
 
@@ -80,11 +125,12 @@ bash scripts/install.sh ./claude-status
 ```
 
 hook ทั้งสี่ทำให้ mascot บนจอรู้สถานะจริงของ session: `UserPromptSubmit`/
-`PreToolUse` → กำลังทำงาน (Clawd Coding ขยับเหมือนกำลังพิมพ์), `Stop` → idle
-(Clawd Sleeping หายใจช้า ๆ), `Notification` ที่มีคำว่า permission → รอ
-approval (Clawd Exclamation Mark สั่นเตือน) โดย rail, card และ halo ด้านหลัง
-อยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยังทำงานได้ปกติ แต่จะเดา
-สถานะจาก statusLine freshness แทน
+`PreToolUse` → กำลังทำงาน (Clawd Coding พิมพ์อยู่ ตากะพริบ), `Stop` → idle
+(Clawd Sleeping หายใจช้า ๆ พร้อม Zzz ลอย), `Notification` ที่มีคำว่า permission →
+รอ approval (Clawd Exclamation Mark สั่นเตือน จุดตกใจกะพริบ) แต่ละสถานะมี SVG
+2 ท่าสลับกันตามจังหวะของตัวเอง (ไม่ใช่แค่ขยับ/ย่อขยาย raster เดิม) ส่วน rail,
+card และ halo ด้านหลังอยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยัง
+ทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
 
 ถ้า Claude/Codex รันบน Windows และ Pi ใช้ SSH alias `pilab` ให้ build Windows กับ
 ARM64 binary ก่อน จากนั้นติดตั้ง integration ฝั่ง Windows:

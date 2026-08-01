@@ -164,17 +164,16 @@ func renderTouchRipples(canvas *image.RGBA, points []touch.Point, now time.Time)
 }
 
 // contentSplit is where the open left panel ends and the framed Codex card
-// begins. Both the rate-limit row above and the Codex card below start
-// right after the header, full width, so neither side leaves a dead gap —
-// codexTop is shared by both the dashboard and waiting screens so the card
-// always starts exactly where the limit row ends. codexBottom is well short
-// of sectionsBottom: codexCard's own content (label, model, mode, CONTEXT
-// label, percent block) only runs ~176px tall, so stretching the card all
-// the way to sectionsBottom just left dead card background at the bottom.
+// begins. codexTop/codexBottom are shared by both the dashboard and waiting
+// screens. codexCard's own content (label, model, mode, CONTEXT label,
+// percent block) only runs ~176px tall, so the card is sized to that content
+// height and then anchored to sectionsBottom — flush with the rail's own
+// bottom edge — rather than left pinned to the top with dead card background
+// below it.
 const (
 	contentSplit = contentLeft + 260
-	codexTop     = 210
-	codexBottom  = 405
+	codexBottom  = sectionsBottom - 6
+	codexTop     = codexBottom - 195
 )
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
@@ -242,10 +241,14 @@ func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot
 	r.text(canvas, r.regular12, textFaint, contentLeft, 346, fitText(r.regular12, contextFraction(snapshot.Context), panelWidth))
 	progress(canvas, image.Rect(contentLeft, 354, contentSplit, 362), percentValue(snapshot.Context.UsedPercentage), claudeOrange)
 
+	// Bottom-anchored to the same baseline as the Codex card (codexBottom)
+	// instead of sitting right under the bar with dead space beneath —
+	// both boxes now hug the rail's own bottom edge.
 	chipWidth := (panelWidth - 14) / 2
-	chipBounds := image.Rect(contentLeft, 376, contentLeft+chipWidth, 434)
+	chipTop := codexBottom - 58
+	chipBounds := image.Rect(contentLeft, chipTop, contentLeft+chipWidth, codexBottom)
 	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
-	chipBounds = image.Rect(contentLeft+chipWidth+14, 376, contentSplit, 434)
+	chipBounds = image.Rect(contentLeft+chipWidth+14, chipTop, contentSplit, codexBottom)
 	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
 }
 
@@ -369,13 +372,12 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 
 	captionTop := pillBounds.Max.Y + 20
 	if snapshot != nil {
-		r.textCentered(canvas, r.regular13, textSecondary, centerX, captionTop, fitText(r.regular13, sessionName(r.regular13, *snapshot), bounds.Dx()-24))
-		r.textCentered(canvas, r.regular12, textFaint, centerX, captionTop+19, activityCaption(*snapshot, activityState, now))
+		r.textCentered(canvas, r.regular12, textFaint, centerX, captionTop, activityCaption(*snapshot, activityState, now))
 	} else {
 		r.textCentered(canvas, r.regular13, textFaint, centerX, captionTop, "no active session")
 	}
 
-	dividerY := captionTop + 38
+	dividerY := captionTop + 19
 	fillRounded(canvas, image.Rect(bounds.Min.X+24, dividerY, bounds.Max.X-24, dividerY+2), 1, trackColor)
 
 	healthTop := dividerY + 26
@@ -827,30 +829,6 @@ func ageText(value time.Duration) string {
 		return "just now"
 	}
 	return durationLabel(value) + " ago"
-}
-
-// sessionName falls back to the session ID whenever the stored name has a
-// rune the given face can't draw — the bundled UI font is Latin-only, so a
-// name in Thai or another non-Latin script would otherwise render as a row
-// of tofu boxes instead of degrading to something legible.
-func sessionName(face font.Face, snapshot model.Snapshot) string {
-	if name := snapshot.Session.Name; name != "" && faceHasGlyphsFor(face, name) {
-		return name
-	}
-	id := snapshot.Session.ID
-	if len(id) > 18 {
-		id = id[:18] + "…"
-	}
-	return id
-}
-
-func faceHasGlyphsFor(face font.Face, text string) bool {
-	for _, r := range text {
-		if _, ok := face.GlyphAdvance(r); !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func modelLabel(snapshot model.Snapshot) string {

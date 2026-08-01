@@ -59,11 +59,9 @@ and `waiting_approval` uses Clawd Exclamation Mark with a tight urgent shake.
 The rail, card, and halo stay completely still in every state; only the mascot
 artwork moves. The embedded SVGs are rasterized once at renderer startup, not
 on every frame. Activity state is independent of the statusLine refresh cycle
-— see below. The rail caption's session name is drawn with the bundled UI
-font (Go's core "gofont" set, Latin-only) — a name in Thai or another
-non-Latin script has no glyphs in that font, so `pixelui.sessionName` checks
-glyph coverage first and falls back to the truncated session ID rather than
-drawing a row of unmapped glyph boxes.
+— see below. The rail caption below the activity pill is just the activity
+duration ("working for 12s", "idle for 4m") — no session name or ID, matching
+the header's own omission of session identity.
 
 ## Provider ingestion and Windows source
 
