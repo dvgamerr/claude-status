@@ -50,7 +50,8 @@ primary display" pattern as `pixelui.resolveActivity`'s fallbacks. The
 `input` (added alongside `video`) or the device open fails with a
 permission error.
 
-The header uses a white Anthropic logo, and nowhere else does. The left-hand status rail
+The header uses a bare white Anthropic logo with no background or frame, and
+deliberately omits Claude model and session identity. The left-hand status rail
 holds context-specific Clawd SVG artwork and is the dashboard's focal point
 (`internal/pixelui/render.go`'s `renderRail`): `working` uses Clawd Coding with
 a fast bounce, `idle` uses Clawd Sleeping with a slow breathing halo, and
@@ -107,6 +108,53 @@ below.
   (falls back to a statusLine-freshness proxy) and when a state gets stuck
   (falls back to idle after `activityStaleAfter`, 10 minutes, in case a `Stop`
   hook was missed).
+
+## statusLine does not work from the VS Code extension (confirmed, not a bug)
+
+- Windows gotcha noticed while debugging this: `~/.claude.json`'s per-project
+  `hasTrustDialogAccepted` is keyed by the project path as a literal string,
+  case-sensitive drive letter included. `E:/.dvgamerr/aide-lab` and
+  `e:/.dvgamerr/aide-lab` are two separate entries; trusting one does not
+  trust the other, and Claude Code silently skips `statusLine`/hooks for an
+  untrusted entry with no visible error. If hooks ever stop firing after
+  reopening a project, check both letter-case variants before assuming a
+  config regression.
+- `statusLine` is CLI-terminal-only. Confirmed via Claude Code's own docs
+  (the VS Code extension feature-comparison table omits `statusLine`
+  entirely) and GitHub issue #55643 ("Support custom statusLine in VS Code
+  extension"), closed as **not planned**. It renders as a bar at the bottom
+  of a real terminal; the VS Code extension's chat panel has no such
+  surface, so `ingest` (the command `statusLine` invokes) never runs for
+  that session — not a settings.json mistake, not a trust problem. Hooks
+  are unaffected by this: they fire from any interface.
+- Rate limits only ever appear in the statusLine JSON for Pro/Max accounts,
+  and only after the session's first API response — a second, independent
+  reason the numbers can be briefly absent even when statusLine does fire.
+- Hooks never carry usage/rate-limit numbers, by design, in any interface —
+  `claude.HookInput` only has `session_id`, `hook_event_name`, and
+  `message` (Notification only) because that's all Claude Code sends. Don't
+  go looking for a hook-based way to get real percentages; there isn't one.
+- Non-obvious discovery: statusLine *does* fire from the short-lived CLI
+  processes Claude Code spawns internally for subagents (the Task/Agent
+  tool) and some slash commands (`/usage`) — those are real CLI
+  invocations with a terminal-like context, unlike the main chat session.
+  Their `ingest` writes a real snapshot under
+  `%LOCALAPPDATA%\claude-status\sessions\*.json` with genuine
+  `rate_limits` (account-wide, so any fresh one is valid regardless of
+  which session produced it) — but that `ingest` call's `--mirror-ssh`
+  step does not reliably reach `pilab` from inside that spawned process
+  (cause unconfirmed; possibly no SSH/network context there). So the real
+  numbers exist locally moments after any subagent or `/usage` run, but
+  don't show up on the Pi on their own.
+- Two ways to get real numbers onto `pilab` from a VS Code extension
+  session: (a) `claude-status usage --five-hour PCT --seven-day PCT`
+  (merges just the two percentages into the latest session, mirrors it —
+  see "Activity state" above for the shape it preserves), fed from numbers
+  read off `/usage`'s own output or the Account & Usage panel; or (b) find
+  the freshest real snapshot under `sessions\*.json` (matching `/usage`'s
+  numbers) and pipe it straight into
+  `ssh pilab "/home/pi/.local/bin/claude-status import"` to mirror that
+  exact snapshot.
 
 References:
 

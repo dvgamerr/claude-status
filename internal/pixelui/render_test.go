@@ -58,10 +58,13 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	// Header Anthropic mark, rail mascot/health, open Claude panel's limit/context
 	// bars, and the framed Codex card (confined to the middle+bottom, not
 	// the top row).
-	for _, point := range []image.Point{{22, 25}, {80, 150}, {30, 400}, {300, 151}, {300, 298}, {600, 260}, {600, 400}} {
+	for _, point := range []image.Point{{37, 27}, {80, 150}, {30, 400}, {300, 151}, {300, 298}, {600, 260}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
+	}
+	if got := rgba(frame.At(19, 22)); got != backgroundTop {
+		t.Fatalf("Anthropic mark has a background or frame at its corner: %v", got)
 	}
 	if rgba(frame.At(600, 100)) != backgroundTop {
 		t.Fatal("Codex card should not extend into the top row")
@@ -69,6 +72,25 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	waiting := renderer.Render(View{Now: now, LoadError: errors.New("waiting")})
 	if waiting.Bounds() != frame.Bounds() || rgba(waiting.At(600, 260)) == backgroundTop {
 		t.Fatalf("waiting frame was not rendered")
+	}
+}
+
+func TestHeaderOmitsModelAndSessionIdentity(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	first := baseSnapshot(now)
+	second := first
+	second.Model = model.Model{ID: "different-model", DisplayName: "Different Model"}
+	second.Session = model.Session{ID: "different-session", Name: "Different Session"}
+	second.Effort = "max"
+
+	firstFrame := renderer.Render(View{Claude: &first, Now: now, StaleAfter: 15 * time.Second})
+	secondFrame := renderer.Render(View{Claude: &second, Now: now, StaleAfter: 15 * time.Second})
+	if !sameRegion(firstFrame, secondFrame, image.Rect(0, 0, Width, sectionsTop)) {
+		t.Fatal("header still changes with model or session identity")
 	}
 }
 

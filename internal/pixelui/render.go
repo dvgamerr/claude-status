@@ -174,13 +174,7 @@ const (
 )
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
-	modelName := snapshot.Model.DisplayName
-	if modelName == "" {
-		modelName = snapshot.Model.ID
-	}
-	sessionDetail := sessionName(snapshot) + "  •  " + modePrimary(snapshot)
-
-	r.renderHeader(canvas, view, modelName, sessionDetail)
+	r.renderHeader(canvas, view)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
 	r.renderLimitsRow(canvas, snapshot, view.Now)
 	r.renderClaudePanel(canvas, snapshot)
@@ -210,9 +204,8 @@ func (r *Renderer) renderLimitsRow(canvas *image.RGBA, snapshot model.Snapshot, 
 // renderClaudePanel is deliberately card-less (open on the base background):
 // the rail already frames "you", the Codex card already frames "the other
 // tool", so this middle panel reads as this session's own numbers rather
-// than another boxed widget competing for attention. Session/model/effort
-// is written once, in the header, so this panel is context only, given the
-// full height below the limit row down to the footer.
+// than another boxed widget competing for attention. The header deliberately
+// omits session/model identity, so this panel stays focused on context only.
 func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot) {
 	panelWidth := contentSplit - contentLeft
 
@@ -227,7 +220,7 @@ func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
-	r.renderHeader(canvas, view, "", "")
+	r.renderHeader(canvas, view)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, nil, view.Stats, view.Now)
 
 	panelWidth := contentSplit - contentLeft
@@ -282,17 +275,11 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 	progress(canvas, image.Rect(x, top+34, x+width, top+42), percentValue(context.UsedPercentage), accent)
 }
 
-// renderHeader's sessionDetail is the one place session name/model/effort
-// gets written — nowhere else on the dashboard repeats it.
-func (r *Renderer) renderHeader(canvas *image.RGBA, view View, modelName, sessionDetail string) {
+// renderHeader intentionally contains no model, session ID/name, or effort:
+// its top-left identity is only the bare Anthropic mark and CLAUDE label.
+func (r *Renderer) renderHeader(canvas *image.RGBA, view View) {
 	r.drawLogoMark(canvas, 33, 36, 9)
 	r.text(canvas, r.bold22, textPrimary, 54, 37, "CLAUDE")
-	if modelName != "" {
-		r.text(canvas, r.regular13, textSecondary, 54, 54, strings.ToUpper(fitText(r.regular13, modelName, 200)))
-	}
-	if sessionDetail != "" {
-		r.text(canvas, r.regular12, textFaint, 54, 71, fitText(r.regular12, sessionDetail, 480))
-	}
 
 	if view.Claude != nil {
 		age := view.Now.Sub(view.Claude.CapturedAt)

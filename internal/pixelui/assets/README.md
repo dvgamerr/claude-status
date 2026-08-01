@@ -1,6 +1,7 @@
 # Icon sources
 
-- `anthropic.svg` reproduces the white iOS-style Anthropic mark shown in the
+- `anthropic.svg` is the bare white Anthropic mark, with no background or
+  surrounding frame, based on the
   [Icons8 Claude/Anthropic set](https://icons8.com/icons/set/anthropic-claude-icon).
 - `clawd-coding.svg`, `clawd-sleeping.svg`, and
   `clawd-exclamation-mark.svg` reproduce the pixel geometry of the matching
