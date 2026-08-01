@@ -177,7 +177,7 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "tui duration invalid", args: []string{"tui", "--refresh", "invalid"}, wantExit: 2, wantText: "invalid value"},
 		{name: "gfx help", args: []string{"gfx", "--help"}, wantExit: 0, wantText: "Usage: claude-status gfx"},
 		{name: "gfx positional", args: []string{"gfx", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
-		{name: "gfx refresh too fast", args: []string{"gfx", "--refresh", "100ms"}, wantExit: 2, wantText: "at least 250ms"},
+		{name: "gfx refresh too fast", args: []string{"gfx", "--refresh", "5ms"}, wantExit: 2, wantText: "at least 20ms"},
 		{name: "preview help", args: []string{"preview", "--help"}, wantExit: 0, wantText: "Usage: claude-status preview"},
 		{name: "preview positional", args: []string{"preview", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 	}

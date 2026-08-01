@@ -62,7 +62,7 @@ const (
 	railRight      = 232
 	contentLeft    = 246
 	contentRight   = Width - pageMargin
-	sectionsTop    = 68
+	sectionsTop    = 78
 	sectionsBottom = 446
 	footerBaseline = 469
 )
@@ -159,12 +159,13 @@ func renderTouchRipples(canvas *image.RGBA, points []touch.Point, now time.Time)
 }
 
 // contentSplit is where the open left panel ends and the framed Codex card
-// begins. codexTop keeps the Codex card confined to the middle+bottom of
-// the content area — it does not climb up into the top row, which is the
-// Claude panel's rate-limit line.
+// begins. Both the rate-limit row above and the Codex card below start
+// right after the header, full width, so neither side leaves a dead gap —
+// codexTop is shared by both the dashboard and waiting screens so the card
+// always starts exactly where the limit row ends.
 const (
 	contentSplit = contentLeft + 260
-	codexTop     = 234
+	codexTop     = 170
 )
 
 func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model.Snapshot, activity string) {
@@ -172,10 +173,12 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	if modelName == "" {
 		modelName = snapshot.Model.ID
 	}
+	sessionDetail := sessionName(snapshot) + "  •  " + modePrimary(snapshot)
 
-	r.renderHeader(canvas, view, activity, modelName)
+	r.renderHeader(canvas, view, activity, modelName, sessionDetail)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
-	r.renderClaudePanel(canvas, snapshot, view.Now)
+	r.renderLimitsRow(canvas, snapshot)
+	r.renderClaudePanel(canvas, snapshot)
 	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
@@ -189,35 +192,45 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "CLAUDE PRIMARY  •  800×480")
 }
 
+// renderLimitsRow spans the full content width (not just the Claude panel)
+// so the space above the Codex card — which deliberately starts lower,
+// below this row — is never a dead gap.
+func (r *Renderer) renderLimitsRow(canvas *image.RGBA, snapshot model.Snapshot) {
+	fullWidth := contentRight - contentLeft
+	halfWidth := (fullWidth - 14) / 2
+	r.limitLine(canvas, contentLeft, 90, halfWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange)
+	r.limitLine(canvas, contentLeft+halfWidth+14, 90, halfWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach)
+}
+
 // renderClaudePanel is deliberately card-less (open on the base background):
 // the rail already frames "you", the Codex card already frames "the other
 // tool", so this middle panel reads as this session's own numbers rather
-// than another boxed widget competing for attention.
-func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot, now time.Time) {
-	halfWidth := (contentSplit - contentLeft - 14) / 2
+// than another boxed widget competing for attention. Session/model/effort
+// is written once, in the header, so this panel is context only, given the
+// full height below the limit row down to the footer.
+func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot) {
+	panelWidth := contentSplit - contentLeft
 
-	r.limitLine(canvas, contentLeft, 90, halfWidth, "5 HOUR", snapshot.RateLimits.FiveHour, snapshot.RateLimits, claudeOrange, now)
-	r.limitLine(canvas, contentLeft+halfWidth+14, 90, halfWidth, "7 DAY", snapshot.RateLimits.SevenDay, snapshot.RateLimits, claudePeach, now)
+	r.text(canvas, r.bold13, textSecondary, contentLeft, 192, "CONTEXT WINDOW")
+	r.contextBlock(canvas, contentLeft, 232, panelWidth, snapshot.Context, claudeOrange, r.bold44)
 
-	r.text(canvas, r.bold13, textSecondary, contentLeft, 196, "CONTEXT WINDOW")
-	r.contextBlock(canvas, contentLeft, 236, contentSplit-contentLeft, snapshot.Context, claudeOrange, r.bold30)
-
-	r.text(canvas, r.bold13, claudePeach, contentLeft, 320, "CLAUDE SESSION")
-	r.text(canvas, r.bold18, textPrimary, contentLeft, 346, fitText(r.bold18, sessionName(snapshot), contentSplit-contentLeft))
-	details := strings.ToUpper(modelLabel(snapshot)) + "  •  " + modePrimary(snapshot)
-	r.text(canvas, r.regular12, textSecondary, contentLeft, 368, fitText(r.regular12, details, contentSplit-contentLeft))
+	chipWidth := (panelWidth - 14) / 2
+	chipBounds := image.Rect(contentLeft, 294, contentLeft+chipWidth, 354)
+	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
+	chipBounds = image.Rect(contentLeft+chipWidth+14, 294, contentSplit, 354)
+	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
-	r.renderHeader(canvas, view, activity, "")
+	r.renderHeader(canvas, view, activity, "", "")
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, nil, view.Stats, view.Now)
 
 	panelWidth := contentSplit - contentLeft
 	center := contentLeft + panelWidth/2
-	r.textCentered(canvas, r.bold22, textPrimary, center, 210, "WAITING")
-	r.textCentered(canvas, r.regular13, textSecondary, center, 234, fitText(r.regular13, "for the next statusLine event", panelWidth-20))
-	progress(canvas, image.Rect(contentLeft+20, 262, contentSplit-20, 272), animationPercent(view.Now), claudeOrange)
-	r.textCentered(canvas, r.regular12, textFaint, center, 360, fitText(r.regular12, "start a session on the source machine", panelWidth-20))
+	r.textCentered(canvas, r.bold22, textPrimary, center, 150, "WAITING")
+	r.textCentered(canvas, r.regular13, textSecondary, center, 174, fitText(r.regular13, "for the next statusLine event", panelWidth-20))
+	progress(canvas, image.Rect(contentLeft+20, 202, contentSplit-20, 212), animationPercent(view.Now), claudeOrange)
+	r.textCentered(canvas, r.regular12, textFaint, center, 280, fitText(r.regular12, "start a session on the source machine", panelWidth-20))
 
 	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, sectionsBottom), view.Codex)
 
@@ -225,21 +238,19 @@ func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string)
 	r.textRight(canvas, r.regular12, textFaint, contentRight, footerBaseline, "FRAMEBUFFER 800×480")
 }
 
-// limitLine draws one open (no card) rate-limit indicator — label, big
-// percentage, reset countdown, and a bar — stacked instead of side by side
-// so the same compact shape works whether it's given half the Claude panel's
-// width or the Codex card's full inner width.
-func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA, now time.Time) {
+// limitLine draws one open (no card) rate-limit indicator in exactly three
+// lines — label, big percentage, bar — stacked so the same compact shape
+// works whether it's given half the Claude panel's width or more.
+func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string, window model.RateWindow, limits model.RateLimits, accent color.RGBA) {
 	r.text(canvas, r.bold13, textSecondary, x, top, label+" LIMIT")
 	if window.UsedPercentage == nil && limits.Unlimited != nil && *limits.Unlimited {
 		r.text(canvas, r.bold22, green, x, top+30, "UNMETERED")
-		progress(canvas, image.Rect(x, top+58, x+width, top+66), 100, green)
+		progress(canvas, image.Rect(x, top+40, x+width, top+48), 100, green)
 		return
 	}
 	pct := percentValue(window.UsedPercentage)
 	r.text(canvas, r.bold22, textPrimary, x, top+30, percentLabel(window.UsedPercentage))
-	r.text(canvas, r.regular12, textFaint, x, top+48, fitText(r.regular12, resetLabelShort(window.ResetsAt, now), width))
-	progress(canvas, image.Rect(x, top+58, x+width, top+66), pct, thresholdColor(pct, accent))
+	progress(canvas, image.Rect(x, top+40, x+width, top+48), pct, thresholdColor(pct, accent))
 }
 
 // contextBlock draws percent+USED, the token fraction, and a bar with no
@@ -254,14 +265,19 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 	progress(canvas, image.Rect(x, top+34, x+width, top+42), percentValue(context.UsedPercentage), accent)
 }
 
-func (r *Renderer) renderHeader(canvas *image.RGBA, view View, activityState, modelName string) {
+// renderHeader's sessionDetail is the one place session name/model/effort
+// gets written — nowhere else on the dashboard repeats it.
+func (r *Renderer) renderHeader(canvas *image.RGBA, view View, activityState, modelName, sessionDetail string) {
 	r.drawMascot(canvas, 33, 36, 9, view.Now, activityState)
-	r.text(canvas, r.bold22, textPrimary, 54, 40, "CLAUDE")
+	r.text(canvas, r.bold22, textPrimary, 54, 37, "CLAUDE")
 	subtitle := "PRIMARY STATUS"
 	if modelName != "" {
 		subtitle += "  •  " + strings.ToUpper(fitText(r.regular13, modelName, 200))
 	}
-	r.text(canvas, r.regular13, textSecondary, 54, 57, subtitle)
+	r.text(canvas, r.regular13, textSecondary, 54, 54, subtitle)
+	if sessionDetail != "" {
+		r.text(canvas, r.regular12, textFaint, 54, 71, fitText(r.regular12, sessionDetail, 480))
+	}
 
 	if view.Claude != nil {
 		age := view.Now.Sub(view.Claude.CapturedAt)
@@ -347,7 +363,18 @@ func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapsho
 	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+74, fitText(r.regular12, strings.ToUpper(modelLabel(*snapshot)), innerWidth))
 
 	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "CONTEXT")
-	r.contextBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, snapshot.Context, green, r.bold22)
+	r.contextBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, snapshot.Context, green, r.bold30)
+
+	chipWidth := (innerWidth - 14) / 2
+	chipTop := bounds.Min.Y + 196
+	metricChip(canvas, r, image.Rect(bounds.Min.X+18, chipTop, bounds.Min.X+18+chipWidth, chipTop+60), "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
+	metricChip(canvas, r, image.Rect(bounds.Max.X-18-chipWidth, chipTop, bounds.Max.X-18, chipTop+60), "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
+}
+
+func metricChip(canvas *image.RGBA, r *Renderer, bounds image.Rectangle, label, value string, accent color.RGBA) {
+	fillRounded(canvas, bounds, 13, cardStrong)
+	r.text(canvas, r.bold13, accent, bounds.Min.X+14, bounds.Min.Y+24, label)
+	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+14, bounds.Min.Y+50, fitText(r.bold18, value, bounds.Dx()-24))
 }
 
 func card(canvas *image.RGBA, bounds image.Rectangle, radius int) {
@@ -691,19 +718,6 @@ func tokenLabel(value *int64) string {
 func trimZero(value string) string {
 	value = strings.Replace(value, ".0M", "M", 1)
 	return strings.Replace(value, ".0K", "K", 1)
-}
-
-// resetLabelShort formats a rate-limit reset countdown for the compact
-// stacked limitLine layout, where width is at a premium.
-func resetLabelShort(epoch *int64, now time.Time) string {
-	if epoch == nil || *epoch <= 0 {
-		return "reset unavailable"
-	}
-	remaining := time.Unix(*epoch, 0).Sub(now)
-	if remaining <= 0 {
-		return "reset due"
-	}
-	return durationLabel(remaining) + " left"
 }
 
 func durationLabel(value time.Duration) string {

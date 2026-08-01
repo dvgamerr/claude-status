@@ -18,9 +18,15 @@
   than assumed from headers.
 
 The primary UI is the native `gfx` dashboard, rendered at exactly 800x480
-pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. Design and visual
-QA against RGB565 output, not only an RGB PNG preview, because subtle gradients
-band on the physical 16-bit framebuffer. Keep the warm Claude-first theme with a
+pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. After every edit
+to `internal/pixelui` (layout, colors, animation), run
+`go run ./cmd/claude-status preview` and look at the resulting
+`pixel-dashboard-preview.png` before calling the change done — don't just
+read the diff and assume the pixels landed where the numbers say they
+should. Final visual QA before shipping to `pilab` should still be against
+real RGB565 output, not only this RGB PNG preview, because subtle gradients
+band on the physical 16-bit framebuffer in ways the preview won't show.
+Keep the warm Claude-first theme with a
 flat dark background, high-contrast type, equal Claude 5-hour/7-day quota cards,
 and a compact Codex card containing only its latest session/model and context.
 Provider selection is independent: a newer Codex event must never displace
@@ -117,7 +123,8 @@ References:
   not change the Raspberry Pi display.
 - The dashboard on `/dev/tty1` is owned by the enabled system service
   `claude-status-tty1.service`. It runs
-  `/home/pi/.local/bin/claude-status gfx --refresh 250ms --framebuffer /dev/fb0 --tty /dev/tty1`
+  `/home/pi/.local/bin/claude-status gfx --refresh 66ms --framebuffer /dev/fb0 --tty /dev/tty1`
+  (~15fps; the flag floor is 20ms, so this is intentionally not maxed out)
   with `Restart=always`.
 - Inspect it with
   `ssh pilab "systemctl --no-pager --full status claude-status-tty1.service"`.

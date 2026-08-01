@@ -20,7 +20,7 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
-- `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 250ms
+- `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 66ms (~15fps)
   และเลือก snapshot ล่าสุดของ Claude/Codex แยกกันเพื่อให้ Claude เป็นหน้าหลักเสมอ
   จอเป็น touchscreen จริง แตะแล้วจะเห็น ripple จาง ๆ ตรงจุดที่แตะ (`--touch-device`
   ปรับ evdev device ได้ ใส่ค่าว่างเพื่อปิด) เป็น feedback อย่างเดียว ไม่ใช่ปุ่มกด
@@ -116,7 +116,7 @@ claude-status gfx --framebuffer /dev/fb0 --tty /dev/tty1
 
 ```text
 --state-dir DIR       เปลี่ยนที่เก็บ snapshot
---refresh 250ms       รอบ animation, อ่านข้อมูล และ Pi metrics
+--refresh 66ms        รอบ animation, อ่านข้อมูล และ Pi metrics (ค่าเริ่มต้น ~15fps, ต่ำสุด 20ms)
 --stale-after 15s     อายุข้อมูลก่อนแสดง STALE
 --framebuffer PATH    framebuffer device; ค่าเริ่มต้น /dev/fb0
 --tty PATH            console ที่สลับเข้า graphics mode; ค่าเริ่มต้น /dev/tty1

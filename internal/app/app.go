@@ -349,13 +349,13 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gfx", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
-	refresh := flags.Duration("refresh", 250*time.Millisecond, "frame refresh interval")
+	refresh := flags.Duration("refresh", time.Second/15, "frame refresh interval (default ~15fps)")
 	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
 	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
 	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
 	touchDevice := flags.String("touch-device", "/dev/input/event0", "evdev device for the touchscreen (empty disables touch feedback)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 1s] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]")
+		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 66ms] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]")
 	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -367,8 +367,8 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "claude-status gfx: unexpected positional arguments")
 		return 2
 	}
-	if *refresh < 250*time.Millisecond {
-		fmt.Fprintln(stderr, "claude-status gfx: --refresh must be at least 250ms")
+	if *refresh < 20*time.Millisecond {
+		fmt.Fprintln(stderr, "claude-status gfx: --refresh must be at least 20ms")
 		return 2
 	}
 	if *staleAfter <= 0 {

@@ -58,7 +58,7 @@ func TestRenderDashboardAndWaitingFrames(t *testing.T) {
 	// Header mascot, rail mascot/health, open Claude panel's limit/context
 	// bars, and the framed Codex card (confined to the middle+bottom, not
 	// the top row).
-	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 151}, {300, 272}, {600, 260}, {600, 400}} {
+	for _, point := range []image.Point{{33, 36}, {80, 150}, {30, 400}, {300, 134}, {300, 298}, {600, 260}, {600, 400}} {
 		if got := rgba(frame.At(point.X, point.Y)); got == backgroundTop {
 			t.Fatalf("expected card/content at %v, got background %v", point, got)
 		}
@@ -208,9 +208,6 @@ func TestFormattingHelpers(t *testing.T) {
 	if got := thresholdColor(75, claudeOrange); got != yellow {
 		t.Fatalf("thresholdColor(75) = %v", got)
 	}
-	if resetLabelShort(nil, time.Now()) != "reset unavailable" {
-		t.Fatal("missing reset label is incorrect")
-	}
 	if ageText(0) != "just now" || ageText(2*time.Minute) != "2m ago" {
 		t.Fatal("age labels are incorrect")
 	}
@@ -223,11 +220,11 @@ func TestLimitLineHandlesUnlimitedAndUnavailableValues(t *testing.T) {
 	}
 	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	unlimited := true
-	renderer.limitLine(canvas, 20, 40, 200, "5 HOUR", model.RateWindow{}, model.RateLimits{Unlimited: &unlimited, Plan: "enterprise"}, claudeOrange, time.Now())
-	renderer.limitLine(canvas, 260, 40, 200, "7 DAY", model.RateWindow{}, model.RateLimits{}, claudePeach, time.Now())
+	renderer.limitLine(canvas, 20, 40, 200, "5 HOUR", model.RateWindow{}, model.RateLimits{Unlimited: &unlimited, Plan: "enterprise"}, claudeOrange)
+	renderer.limitLine(canvas, 260, 40, 200, "7 DAY", model.RateWindow{}, model.RateLimits{}, claudePeach)
 	// The progress bar (drawn even for "no data") is a reliable filled region
 	// regardless of glyph shapes, unlike checking a single text pixel.
-	if rgba(canvas.At(25, 101)) == (color.RGBA{}) || rgba(canvas.At(265, 101)) == (color.RGBA{}) {
+	if rgba(canvas.At(25, 84)) == (color.RGBA{}) || rgba(canvas.At(265, 84)) == (color.RGBA{}) {
 		t.Fatal("limit lines were not painted")
 	}
 }

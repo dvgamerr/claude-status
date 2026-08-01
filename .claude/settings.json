@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"E:\\.dvgamerr\\aide-lab\\scripts\\preview-on-pixelui-edit.ps1\""
+          }
+        ]
+      }
+    ]
+  }
+}
