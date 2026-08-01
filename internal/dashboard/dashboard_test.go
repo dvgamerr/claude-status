@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,21 +60,21 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	m = updated.(Model)
 
 	view := m.View()
-	for _, want := range []string{"Clauding", "LIVE", "OPUS", "5H LIMIT", "7 DAY LIMIT", "51%", "34%", "CONTEXT", "72%", "144k / 200k", "↑ 140k", "↓ 4k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
+	for _, want := range []string{"CLAUDE STATUS", "LIVE", "OPUS", "5-HOUR LIMIT", "7-DAY LIMIT", "51%", "34%", "CONTEXT", "72%", "144k / 200k", "↑ 140k", "↓ 4k", "$1.28", "+186  -42", "CPU 18%", "Temp 52°C", "Up 1h42m", "primary"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() does not contain %q:\n%s", want, view)
 		}
 	}
-	if got := lipgloss.Width(view); got > 66 {
-		t.Fatalf("Pi dashboard width = %d, want at most 66:\n%s", got, view)
+	if got := lipgloss.Width(view); got != 66 {
+		t.Fatalf("Pi dashboard width = %d, want 66:\n%s", got, view)
 	}
-	if got := lipgloss.Height(view); got > 20 {
-		t.Fatalf("Pi dashboard height = %d, want at most 20:\n%s", got, view)
+	if got := lipgloss.Height(view); got != 20 {
+		t.Fatalf("Pi dashboard height = %d, want 20:\n%s", got, view)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	m = updated.(Model)
-	if !strings.Contains(m.View(), "Sessions") || !strings.Contains(m.View(), "Sonnet") {
+	if !strings.Contains(m.View(), "SESSIONS") || !strings.Contains(m.View(), "Sonnet") {
 		t.Fatalf("sessions view is incomplete:\n%s", m.View())
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -82,6 +83,39 @@ func TestDashboardViewAndSessionSelection(t *testing.T) {
 	m = updated.(Model)
 	if m.selectedID != "second" || m.showSessions {
 		t.Fatalf("session selection failed: selected=%q show=%v", m.selectedID, m.showSessions)
+	}
+	if !m.selectionPinned {
+		t.Fatal("manual session selection did not pin the session")
+	}
+}
+
+func TestDashboardAutoFollowsNewestSnapshot(t *testing.T) {
+	now := time.Now()
+	older := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now.Add(-time.Minute), Session: statusmodel.Session{ID: "older"}}
+	newer := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "newer"}}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{older}})
+	m = updated.(Model)
+	if m.selectedID != "older" {
+		t.Fatalf("initial auto selection = %q", m.selectedID)
+	}
+	updated, _ = m.Update(dataMsg{snapshots: []statusmodel.Snapshot{newer, older}})
+	m = updated.(Model)
+	if m.selectedID != "newer" {
+		t.Fatalf("auto selection did not follow newest snapshot: %q", m.selectedID)
+	}
+
+	m.selectionPinned = true
+	m.selectedID = "older"
+	updated, _ = m.Update(dataMsg{snapshots: []statusmodel.Snapshot{newer, older}})
+	m = updated.(Model)
+	if m.selectedID != "older" {
+		t.Fatalf("pinned selection moved to %q", m.selectedID)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m = updated.(Model)
+	if m.selectionPinned || m.selectedID != "newer" {
+		t.Fatalf("auto key did not resume newest selection: pinned=%v selected=%q", m.selectionPinned, m.selectedID)
 	}
 }
 
@@ -94,6 +128,30 @@ func TestDashboardMarksOldSnapshotStale(t *testing.T) {
 	m = updated.(Model)
 	if !strings.Contains(m.View(), "STALE") {
 		t.Fatalf("old snapshot was not marked stale:\n%s", m.View())
+	}
+}
+
+func TestDashboardLabelsCodexSnapshot(t *testing.T) {
+	now := time.Now()
+	snapshot := statusmodel.Snapshot{
+		SchemaVersion: modelSchema(),
+		CapturedAt:    now,
+		Provider:      "codex",
+		ClientVersion: "0.146.0",
+		Session:       statusmodel.Session{ID: "codex-thread"},
+		Model:         statusmodel.Model{ID: "gpt-5.6-sol"},
+	}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	view := m.View()
+	for _, want := range []string{"CODEX STATUS", "GPT-5.6-SOL", "CODEX 0.146.0"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("Codex dashboard does not contain %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -139,13 +197,13 @@ func TestDashboardFitsNarrowTerminal(t *testing.T) {
 	updated, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
 	m = updated.(Model)
 	view := m.View()
-	if got := lipgloss.Width(view); got > 40 {
-		t.Fatalf("dashboard width = %d, want at most 40:\n%s", got, view)
+	if got := lipgloss.Width(view); got != 40 {
+		t.Fatalf("dashboard width = %d, want 40:\n%s", got, view)
 	}
-	if got := lipgloss.Height(view); got > 20 {
-		t.Fatalf("dashboard height = %d, want at most 20:\n%s", got, view)
+	if got := lipgloss.Height(view); got != 20 {
+		t.Fatalf("dashboard height = %d, want 20:\n%s", got, view)
 	}
-	for _, want := range []string{"Claude Status", "CTX", "18%", "5H", "27%", "7D", "44%", "↑ 3k input", "↓ 750 output"} {
+	for _, want := range []string{"CLAUDE STATUS", "CTX", "18%", "5H", "27%", "7D", "44%", "↑ 3k input", "↓ 750 output"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("compact dashboard does not contain %q:\n%s", want, view)
 		}
@@ -172,14 +230,42 @@ func TestSessionPickerPaginatesWithinPiDisplay(t *testing.T) {
 	m = updated.(Model)
 
 	view := m.View()
-	if got := lipgloss.Width(view); got > 66 {
-		t.Fatalf("session picker width = %d, want at most 66:\n%s", got, view)
+	if got := lipgloss.Width(view); got != 66 {
+		t.Fatalf("session picker width = %d, want 66:\n%s", got, view)
 	}
-	if got := lipgloss.Height(view); got > 20 {
-		t.Fatalf("session picker height = %d, want at most 20:\n%s", got, view)
+	if got := lipgloss.Height(view); got != 20 {
+		t.Fatalf("session picker height = %d, want 20:\n%s", got, view)
 	}
-	if !strings.Contains(view, "Showing 1–13 of 30") {
+	if !strings.Contains(view, "1–14 OF 30") {
 		t.Fatalf("session pagination summary missing:\n%s", view)
+	}
+}
+
+func TestWaitingFrameFillsPiDisplay(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	view := m.View()
+	if got := lipgloss.Width(view); got != 66 {
+		t.Fatalf("waiting frame width = %d, want 66:\n%s", got, view)
+	}
+	if got := lipgloss.Height(view); got != 20 {
+		t.Fatalf("waiting frame height = %d, want 20:\n%s", got, view)
+	}
+	for _, want := range []string{"WAITING FOR DATA", "STATUSLINE COMMAND", "PI HEALTH", "[r] Refresh"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("waiting frame does not contain %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestClearTerminalWritesEraseBeforeRenderSequence(t *testing.T) {
+	var output bytes.Buffer
+	if err := clearTerminal(&output); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != clearScreenSequence {
+		t.Fatalf("clearTerminal() = %q, want %q", got, clearScreenSequence)
 	}
 }
 

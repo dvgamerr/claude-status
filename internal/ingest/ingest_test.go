@@ -25,7 +25,7 @@ func TestRunPersistsSanitizedSnapshotAndWritesStatusLine(t *testing.T) {
 	var output bytes.Buffer
 	now := time.Date(2026, 7, 31, 14, 0, 0, 0, time.UTC)
 
-	if err := Run(input, &output, store, now); err != nil {
+	if _, err := Run(input, &output, store, now); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if got := strings.TrimSpace(output.String()); got != "[Opus] ctx 42%" {
@@ -45,12 +45,12 @@ func TestRunReturnsDecodeAndOutputErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(strings.NewReader("not-json"), &bytes.Buffer{}, store, time.Now()); err == nil {
+	if _, err := Run(strings.NewReader("not-json"), &bytes.Buffer{}, store, time.Now()); err == nil {
 		t.Fatal("Run() accepted invalid JSON")
 	}
 
 	valid := strings.NewReader(`{"session_id":"output-error"}`)
-	if err := Run(valid, errorWriter{}, store, time.Now()); err == nil || !strings.Contains(err.Error(), "write status line") {
+	if _, err := Run(valid, errorWriter{}, store, time.Now()); err == nil || !strings.Contains(err.Error(), "write status line") {
 		t.Fatalf("Run() output error = %v", err)
 	}
 }

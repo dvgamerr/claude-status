@@ -117,6 +117,8 @@ func ToSnapshot(input Input, now time.Time) model.Snapshot {
 	snapshot := model.Snapshot{
 		SchemaVersion:     model.CurrentSchemaVersion,
 		CapturedAt:        now.UTC(),
+		Provider:          "claude",
+		ClientVersion:     cleanText(input.Version, 80),
 		Session:           model.Session{ID: sessionID, Name: cleanText(input.SessionName, 120)},
 		Model:             model.Model{ID: cleanText(input.Model.ID, 120), DisplayName: cleanText(input.Model.DisplayName, 120)},
 		ClaudeCodeVersion: cleanText(input.Version, 80),

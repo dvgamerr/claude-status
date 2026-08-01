@@ -1,36 +1,48 @@
 # claude-status
 
-Terminal dashboard สำหรับดู Claude Code usage บน Raspberry Pi 4 โดยรับข้อมูลจาก
-`statusLine` JSON โดยตรง ไม่ scrape หน้าเว็บและไม่อ่าน credential ของ Claude
+Terminal dashboard สำหรับดู Claude Code และ Codex usage บน Raspberry Pi 4 โดยรับ
+ข้อมูลจาก Claude `statusLine` หรือ Codex turn notification + local rollout metadata
+แล้วสร้าง sanitized snapshot ไม่ scrape หน้าเว็บและไม่อ่าน/ส่ง credential ของ provider
 
 ```text
 ╭────────────────────────────────────────────────────────────────╮
-│╭──────────────────╮  ✦ Clauding…                      ● LIVE   │
-││ OPUS             │                                             │
-││ claude-opus-4-7  │  5H LIMIT                  resets 1h36m    │
-││ CONTEXT       72%│  ███████████████░░░░░░░░░░░░░░░ 51%       │
-││ ████████████░░░░ │  7 DAY LIMIT               resets 2d16h    │
-││ 144k / 200k      │  ██████████░░░░░░░░░░░░░░░░░░░░ 34%       │
-│╰──────────────────╯  TOKENS  ↑ 140k INPUT   ↓ 4k OUTPUT        │
-│                                                                │
+│CLAUDE STATUS  OPUS                             ● LIVE  21:42   │
+├────────────────────────────────────────────────────────────────┤
+│CONTEXT  72% USED                                  144k / 200k  │
+│██████████████████████████████████████████████░░░░░░░░░░░░░░░░░░│
+│INPUT ↑ 140k     OUTPUT ↓ 4k                                    │
+├───────────────────────────────┼────────────────────────────────┤
+│5-HOUR LIMIT                   │7-DAY LIMIT                     │
+│███████████████░░░░░░░░░░ 51% │██████████░░░░░░░░░░░░░░░░ 34%   │
+│resets 1h36m                   │resets 2d16h                    │
+├────────────────────────────────────────────────────────────────┤
 │SESSION  Pi dashboard demo  ·  01:42:18                         │
-│ACTIVITY Cost $1.28  ·  Code +186  -42  ·  effort high          │
+│ACTIVITY Cost $1.28  ·  Code +186  -42                          │
+│MODEL    claude-opus-4-7  ·  effort high  ·  thinking on        │
+├────────────────────────────────────────────────────────────────┤
 │PI       CPU 18%  RAM 1.1/4.0 GB  Temp 52°C  Load 0.42          │
-│UPDATED  4s ago  ·  21:42:03 ICT                               │
-│                                                                │
-│[q] Quit   [r] Refresh   [s] Sessions                           │
+│UPDATED  4s ago  ·  CLAUDE 2.1.132                              │
+├────────────────────────────────────────────────────────────────┤
+│[s] Sessions     [r] Refresh                 [q] Quit           │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
 ## สิ่งที่โปรแกรมทำ
 
-- `claude-status ingest` อ่าน JSON จาก stdin, sanitize, เขียน state แบบ atomic
+- `claude-status ingest` อ่าน Claude JSON จาก stdin, sanitize, เขียน state แบบ atomic
   แล้วพิมพ์ status line สั้นกลับให้ Claude Code
+- `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
+  model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
+- `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
 - `claude-status tui` แสดง progress bar ของ 5-hour/7-day quota, context,
   input/output token, session, estimated cost, code activity และสถานะระบบ Pi
 - layout หลักออกแบบสำหรับ Raspberry Pi Touch Display 7″ ที่ 800×480 โดยใช้
-  TerminusBold 12x24 (พื้นที่ 66×20 ตัวอักษร) และมี compact layout เมื่อจอแคบกว่า
+  TerminusBold 12x24 และ render เต็มพื้นที่ 66×20 ตัวอักษรทุก state
+- ล้าง console ก่อน frame แรกและเขียนทับครบ 20 แถว เพื่อไม่ให้ boot log หรือ
+  frame เก่าค้างอยู่ใต้ dashboard
 - แยก state ตาม `session_id` และเลือก session ด้วย `s`, ลูกศร และ Enter
+- ตาม snapshot ล่าสุดอัตโนมัติ; เมื่อเลือก session ด้วย Enter จะ pin ไว้ และกด `a`
+  เพื่อกลับไปติดตาม session/provider ล่าสุด
 - แสดง `LIVE`/`STALE` ชัดเจน ป้องกันการเข้าใจ snapshot เก่าว่าเป็นข้อมูลสด
 - รองรับ field ที่หาย, เป็น `null` และ field ใหม่ที่โปรแกรมยังไม่รู้จัก
 
@@ -66,6 +78,24 @@ bash scripts/install.sh ./claude-status
   }
 }
 ```
+
+ถ้า Claude/Codex รันบน Windows และ Pi ใช้ SSH alias `pilab` ให้ build Windows กับ
+ARM64 binary ก่อน จากนั้นติดตั้ง integration ฝั่ง Windows:
+
+```powershell
+pwsh -File scripts/verify.ps1
+pwsh -File scripts/install-windows.ps1 -MirrorHost pilab
+```
+
+installer จะสำรองและแก้สองไฟล์โดยรักษาค่าอื่นไว้:
+
+- `%USERPROFILE%\.claude\settings.json`: ตั้ง `statusLine` ให้เรียก `ingest`
+- `%USERPROFILE%\.codex\config.toml`: ห่อ `notify` เดิมด้วย `codex-notify`
+  และ forward event กลับไป notifier เดิมด้วย จึงไม่ทำ Computer Use เดิมหาย
+
+ทั้งสองทางส่งไป Pi ด้วย SSH เฉพาะ snapshot ที่ผ่าน allowlist แล้ว ปลายทางเรียก
+`/home/pi/.local/bin/claude-status import`; ไม่ส่ง statusLine JSON ดิบ, prompt,
+response, transcript, OAuth token หรือ session auth ไป Pi
 
 Claude Code ต้องได้รับ trust สำหรับ project ก่อนจึงจะเรียก command status line ได้
 ค่า `rate_limits` จะปรากฏเฉพาะบัญชี Claude.ai Pro/Max และหลัง API response แรกของ
@@ -104,6 +134,15 @@ claude-status ingest < examples/statusline-input.json
 claude-status tui
 ```
 
+ใน Nushell ใช้ `open --raw` และ external-command marker `^`:
+
+```nu
+open --raw examples/statusline-input.json | ^go run ./cmd/claude-status ingest
+```
+
+การรัน `claude-status ingest` เปล่า ๆ ไม่มี stdin จะ error ตามตั้งใจ เพราะตอนใช้งานจริง
+Claude Code เป็นผู้ pipe JSON เข้ามาให้อัตโนมัติ
+
 state จะอยู่ที่ `${XDG_CACHE_HOME:-~/.cache}/claude-status/` บน Linux:
 
 ```text
@@ -126,14 +165,17 @@ directory ใช้ permission `0700`; snapshot ใช้ `0600`; การเ�
 - OAuth token หรือ API key
 - path ของ workspace
 
+ฝั่ง Codex จะเปิด local rollout ของ `thread-id` ที่ notify ส่งมา แต่ decode เฉพาะ
+`session_meta`, `turn_context` และ `token_count`; บรรทัดอื่นรวมถึงข้อความสนทนาจะถูกข้าม
+ทั้งหมด จากนั้นจึง serialize เฉพาะ `Snapshot` schema เดียวกับ Claude
+
 ชื่อไฟล์ session เป็น hash เพื่อไม่ให้ `session_id` กลายเป็น path traversal หรือรั่วใน
 directory listing ข้อมูล cost เป็นค่าประมาณจาก token ไม่ใช่ยอดเรียกเก็บจริง
 
-## Claude อยู่บน PC/Mac แต่ใช้ Pi เป็นจอ
+## Claude/Codex อยู่บน PC/Mac แต่ใช้ Pi เป็นจอ
 
-ให้ `ingest` ทำงานที่เครื่อง Claude ก่อน แล้ว sync เฉพาะ directory snapshot ที่ sanitize
-แล้วไปยัง Pi ผ่าน SSH/rsync จากนั้นเปิด TUI ด้วย `--state-dir` ที่ปลายทาง ห้าม copy
-credential หรือส่ง JSON ดิบจาก statusLine ไปยัง Pi
+ให้ `ingest`/`codex-notify` ทำงานที่เครื่องต้นทาง แล้วส่งเฉพาะ snapshot ที่ sanitize
+แล้วไปยัง Pi ผ่าน SSH ห้าม copy credential หรือส่ง JSON ดิบจาก provider ไปยัง Pi
 
 โปรเจกต์ยังไม่เปิด HTTP collector โดยตั้งใจ เพราะการเปิด network endpoint เพิ่มภาระเรื่อง
 authentication/TLS โดยไม่จำเป็นสำหรับ MVP; SSH transport ปลอดภัยและดูแลง่ายกว่า
@@ -170,6 +212,8 @@ bash scripts/uninstall.sh
 ## แหล่งข้อมูลหลัก
 
 - [Claude Code: Customize your status line](https://code.claude.com/docs/en/statusline)
+- [Codex configuration reference](https://developers.openai.com/codex/config-reference)
+- [Codex CLI source: external notify configuration](https://github.com/openai/codex/blob/main/codex-rs/core/src/config/mod.rs)
 - [Claude Code: System requirements](https://code.claude.com/docs/en/setup)
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea)
 - [Raspberry Pi OS documentation](https://www.raspberrypi.com/documentation/computers/os.html)

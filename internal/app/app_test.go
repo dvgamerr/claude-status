@@ -3,10 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
@@ -47,6 +51,69 @@ func TestRunRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestRunImportEndToEnd(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	want := model.Snapshot{
+		SchemaVersion: model.CurrentSchemaVersion,
+		CapturedAt:    time.Unix(123, 0).UTC(),
+		Provider:      "codex",
+		Session:       model.Session{ID: "import-test"},
+	}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	exitCode := Run(context.Background(), []string{"import", "--state-dir", dir}, bytes.NewReader(data), &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("Run(import) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	store, err := state.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LoadLatest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Provider != "codex" || got.Session.ID != "import-test" {
+		t.Fatalf("imported snapshot = %+v", got)
+	}
+}
+
+func TestRunCodexNotifyEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "codex")
+	stateDir := filepath.Join(root, "state")
+	threadID := "thread-app-test"
+	rollout := filepath.Join(home, "sessions", "rollout-"+threadID+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"type":"turn_context","payload":{"model":"gpt-5.6-sol","effort":"high"}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"model_context_window":1000},"rate_limits":{}}}`
+	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"type":"agent-turn-complete","thread-id":"` + threadID + `","input-messages":["private"]}`
+	var stdout, stderr bytes.Buffer
+	exitCode := Run(context.Background(), []string{"codex-notify", "--state-dir", stateDir, "--codex-home", home, payload}, strings.NewReader(""), &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("Run(codex-notify) exit = %d, stderr = %q", exitCode, stderr.String())
+	}
+	store, err := state.New(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.LoadLatest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Provider != "codex" || snapshot.Model.ID != "gpt-5.6-sol" || snapshot.Context.UsedPercentage == nil || *snapshot.Context.UsedPercentage != 12 {
+		t.Fatalf("Codex snapshot = %+v", snapshot)
+	}
+}
+
 func TestRunHelpAndUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run(context.Background(), nil, strings.NewReader(""), &stdout, &stderr); exitCode != 0 || !strings.Contains(stdout.String(), "claude-status ingest") {
@@ -76,6 +143,10 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "ingest help", args: []string{"ingest", "--help"}, wantExit: 0, wantText: "Usage: claude-status ingest"},
 		{name: "ingest positional", args: []string{"ingest", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 		{name: "ingest empty state", args: []string{"ingest", "--state-dir", ""}, wantExit: 1, wantText: "state directory is empty"},
+		{name: "import help", args: []string{"import", "--help"}, wantExit: 0, wantText: "Usage: claude-status import"},
+		{name: "import positional", args: []string{"import", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
+		{name: "codex notify help", args: []string{"codex-notify", "--help"}, wantExit: 0, wantText: "Usage: claude-status codex-notify"},
+		{name: "codex notify missing payload", args: []string{"codex-notify"}, wantExit: 2, wantText: "expected one"},
 		{name: "tui help", args: []string{"tui", "--help"}, wantExit: 0, wantText: "Usage: claude-status tui"},
 		{name: "tui positional", args: []string{"tui", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 		{name: "tui refresh too fast", args: []string{"tui", "--refresh", "100ms"}, wantExit: 2, wantText: "at least 250ms"},

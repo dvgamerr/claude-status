@@ -32,18 +32,19 @@ type metricsReader interface {
 }
 
 type Model struct {
-	loader        snapshotLoader
-	metrics       metricsReader
-	config        Config
-	width         int
-	height        int
-	snapshots     []statusmodel.Snapshot
-	stats         systeminfo.Stats
-	selectedID    string
-	sessionCursor int
-	showSessions  bool
-	lastError     error
-	now           func() time.Time
+	loader          snapshotLoader
+	metrics         metricsReader
+	config          Config
+	width           int
+	height          int
+	snapshots       []statusmodel.Snapshot
+	stats           systeminfo.Stats
+	selectedID      string
+	selectionPinned bool
+	sessionCursor   int
+	showSessions    bool
+	lastError       error
+	now             func() time.Time
 }
 
 type tickMsg time.Time
@@ -67,10 +68,17 @@ var (
 	labelStyle = lipgloss.NewStyle().Foreground(colorMuted)
 	helpStyle  = lipgloss.NewStyle().Foreground(colorMuted)
 	errorStyle = lipgloss.NewStyle().Foreground(colorRed)
-	panelStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).Padding(0, 1)
 )
 
+const clearScreenSequence = "\x1b[2J\x1b[H"
+
 func Run(ctx context.Context, input io.Reader, output io.Writer, loader snapshotLoader, metrics metricsReader, config Config) error {
+	// Linux consoles do not provide a reliable alternate screen buffer. Clear
+	// tty1 synchronously before Bubble Tea can paint its initial View so boot
+	// messages can never remain underneath a short or waiting-state frame.
+	if err := clearTerminal(output); err != nil {
+		return err
+	}
 	model := NewModel(loader, metrics, config)
 	options := []tea.ProgramOption{tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)}
 	if !config.Inline {
@@ -81,6 +89,13 @@ func Run(ctx context.Context, input io.Reader, output io.Writer, loader snapshot
 	return err
 }
 
+func clearTerminal(output io.Writer) error {
+	if _, err := io.WriteString(output, clearScreenSequence); err != nil {
+		return fmt.Errorf("clear terminal before render: %w", err)
+	}
+	return nil
+}
+
 func NewModel(loader snapshotLoader, metrics metricsReader, config Config) Model {
 	if config.RefreshInterval <= 0 {
 		config.RefreshInterval = time.Second
@@ -89,11 +104,12 @@ func NewModel(loader snapshotLoader, metrics metricsReader, config Config) Model
 		config.StaleAfter = 15 * time.Second
 	}
 	return Model{
-		loader:     loader,
-		metrics:    metrics,
-		config:     config,
-		selectedID: config.InitialSession,
-		now:        time.Now,
+		loader:          loader,
+		metrics:         metrics,
+		config:          config,
+		selectedID:      config.InitialSession,
+		selectionPinned: config.InitialSession != "",
+		now:             time.Now,
 	}
 }
 
@@ -120,10 +136,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.showSessions = !m.showSessions
 			m.reconcileSelection()
+			return m, tea.ClearScreen
 		case "esc":
-			m.showSessions = false
+			if m.showSessions {
+				m.showSessions = false
+				return m, tea.ClearScreen
+			}
 		case "r":
-			return m, m.loadData()
+			return m, tea.Sequence(tea.ClearScreen, m.loadData())
+		case "a":
+			m.selectionPinned = false
+			m.reconcileSelection()
+			return m, tea.ClearScreen
 		case "up", "k":
 			if m.showSessions && len(m.snapshots) > 0 {
 				m.sessionCursor = (m.sessionCursor - 1 + len(m.snapshots)) % len(m.snapshots)
@@ -135,7 +159,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.showSessions && len(m.snapshots) > 0 {
 				m.selectedID = m.snapshots[m.sessionCursor].Session.ID
+				m.selectionPinned = true
 				m.showSessions = false
+				return m, tea.ClearScreen
 			}
 		}
 	}
@@ -165,6 +191,11 @@ func (m *Model) reconcileSelection() {
 		m.sessionCursor = 0
 		return
 	}
+	if !m.selectionPinned {
+		m.selectedID = m.snapshots[0].Session.ID
+		m.sessionCursor = 0
+		return
+	}
 	for i, snapshot := range m.snapshots {
 		if snapshot.Session.ID == m.selectedID {
 			m.sessionCursor = i
@@ -173,6 +204,7 @@ func (m *Model) reconcileSelection() {
 	}
 	m.selectedID = m.snapshots[0].Session.ID
 	m.sessionCursor = 0
+	m.selectionPinned = false
 }
 
 func (m Model) selectedSnapshot() (statusmodel.Snapshot, bool) {
@@ -185,28 +217,12 @@ func (m Model) selectedSnapshot() (statusmodel.Snapshot, bool) {
 }
 
 func (m Model) dashboardView() string {
-	width := m.contentWidth()
-	bodyWidth := max(20, width-4)
+	width, height := m.frameSize()
 	now := m.now()
 
 	snapshot, found := m.selectedSnapshot()
 	if !found {
-		body := strings.Join([]string{
-			betweenRendered(titleStyle.Render("✦ Claude Status"), labelStyle.Render(now.Format("15:04:05 MST")), bodyWidth),
-			"",
-			labelStyle.Render("Waiting for Claude Code status data…"),
-			"",
-			"Configure statusLine to run:",
-			titleStyle.Render("claude-status ingest"),
-			"",
-			infoLine("PI", m.systemText(), bodyWidth),
-			"",
-			helpStyle.Render("[q] Quit  [r] Refresh  [s] Sessions"),
-		}, "\n")
-		if m.lastError != nil {
-			body += "\n" + errorStyle.Render(m.lastError.Error())
-		}
-		return panelStyle.Width(bodyWidth + 2).Render(body)
+		return m.waitingFrame(now, width, height)
 	}
 
 	age := now.Sub(snapshot.CapturedAt)
@@ -221,81 +237,142 @@ func (m Model) dashboardView() string {
 	}
 	status := lipgloss.NewStyle().Bold(true).Foreground(statusColor).Render(statusText)
 
-	var lines []string
-	if bodyWidth >= 58 {
-		lines = m.piDashboardLines(snapshot, now, age, status, bodyWidth)
-	} else {
-		lines = m.compactDashboardLines(snapshot, now, age, status, bodyWidth)
+	if width >= 58 && height >= 20 {
+		return m.fullDashboardFrame(snapshot, now, age, status, width, height)
+	}
+	return m.compactDashboardFrame(snapshot, now, age, status, width, height)
+}
+
+// fullDashboardFrame fills the Raspberry Pi console's complete 66x20 grid.
+// Keeping every state full-height also overwrites any boot log that might have
+// been on tty1 before the service started.
+func (m Model) fullDashboardFrame(snapshot statusmodel.Snapshot, now time.Time, age time.Duration, status string, width, height int) string {
+	inner := width - 2
+	leftWidth, rightWidth := splitWidths(width)
+	modelName := strings.ToUpper(displayModelName(snapshot))
+	headerLeft := titleStyle.Render(providerTitle(snapshot)+" STATUS") + "  " + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render(modelName)
+	headerRight := status + "  " + labelStyle.Render(now.Format("15:04"))
+
+	contextSummary := labelStyle.Render("CONTEXT  ") +
+		lipgloss.NewStyle().Bold(true).Foreground(contextColor(snapshot.Context.UsedPercentage)).Render(percentageText(snapshot.Context.UsedPercentage)+" USED")
+	tokens := labelStyle.Render("INPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+tokenText(contextInputTokens(snapshot.Context))) +
+		labelStyle.Render("     OUTPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+tokenText(contextOutputTokens(snapshot.Context)))
+
+	modelDetail := snapshot.Model.ID
+	if modelDetail == "" {
+		modelDetail = displayModelName(snapshot)
+	}
+	if mode := modeText(snapshot); mode != "" {
+		modelDetail += "  ·  " + mode
+	}
+	updateText := ageText(age) + " ago"
+	if version := clientVersion(snapshot); version != "" {
+		updateText += "  ·  " + providerTitle(snapshot) + " " + version
 	}
 	if m.lastError != nil {
-		lines = append(lines, errorStyle.Render(clip(m.lastError.Error(), bodyWidth)))
+		updateText = m.lastError.Error()
 	}
-	lines = append(lines, "", helpStyle.Render("[q] Quit   [r] Refresh   [s] Sessions"))
 
-	return panelStyle.Width(bodyWidth + 2).Render(strings.Join(lines, "\n"))
+	lines := []string{
+		topBorder(width),
+		frameLine(betweenRendered(headerLeft, headerRight, inner), width),
+		separator(width),
+		frameLine(betweenRendered(contextSummary, labelStyle.Render(contextText(snapshot.Context)), inner), width),
+		frameLine(renderContextBar(snapshot.Context.UsedPercentage, inner), width),
+		frameLine(tokens, width),
+		splitSeparator(width),
+		splitFrameLine(labelStyle.Render("5-HOUR LIMIT"), labelStyle.Render("7-DAY LIMIT"), width),
+		splitFrameLine(progressLine(snapshot.RateLimits.FiveHour.UsedPercentage, leftWidth), progressLine(snapshot.RateLimits.SevenDay.UsedPercentage, rightWidth), width),
+		splitFrameLine(labelStyle.Render(resetCountdown(snapshot.RateLimits.FiveHour.ResetsAt, now)), labelStyle.Render(resetCountdown(snapshot.RateLimits.SevenDay.ResetsAt, now)), width),
+		separator(width),
+		frameLine(infoLine("SESSION", sessionLabel(snapshot)+"  ·  "+durationText(snapshot.Cost.TotalDurationMS), inner), width),
+		frameLine(infoLine("ACTIVITY", activityText(snapshot), inner), width),
+		frameLine(infoLine("MODEL", modelDetail, inner), width),
+		separator(width),
+		frameLine(infoLine("PI", m.systemText(), inner), width),
+		frameLine(infoLine("UPDATED", styleErrorOrNormal(updateText, m.lastError), inner), width),
+		separator(width),
+		frameLine(helpStyle.Render("[s] Sessions   [a] Auto   [r] Refresh       [q] Quit"), width),
+		bottomBorder(width),
+	}
+	return finalizeFrame(lines, width, height)
 }
 
-// piDashboardLines is designed around the Raspberry Pi Touch Display's
-// 66-column console when TerminusBold 12x24 is used. The context card and the
-// quota panel consume exactly 62 cells inside the outer panel at that size.
-func (m Model) piDashboardLines(snapshot statusmodel.Snapshot, now time.Time, age time.Duration, status string, width int) []string {
-	const (
-		cardWidth = 20
-		gapWidth  = 2
-	)
-	quotaWidth := width - cardWidth - gapWidth
-	card := contextCard(snapshot, cardWidth)
-	quota := quotaPanel(snapshot, now, status, quotaWidth)
-
-	lines := make([]string, 0, 16)
-	for i := range card {
-		lines = append(lines, card[i]+strings.Repeat(" ", gapWidth)+quota[i])
+func (m Model) compactDashboardFrame(snapshot statusmodel.Snapshot, now time.Time, age time.Duration, status string, width, height int) string {
+	inner := width - 2
+	header := betweenRendered(titleStyle.Render(providerTitle(snapshot)+" STATUS"), status, inner)
+	lines := []string{
+		topBorder(width),
+		frameLine(header, width),
+		separator(width),
+		frameLine(infoLine("MODEL", displayModelName(snapshot), inner), width),
+		frameLine(smallMeterRow("CTX", snapshot.Context.UsedPercentage, inner), width),
+		frameLine(infoLine("TOKENS", compactTokenText(snapshot.Context), inner), width),
+		separator(width),
+		frameLine(smallMeterRow("5H", snapshot.RateLimits.FiveHour.UsedPercentage, inner), width),
+		frameLine(infoLine("RESET", resetCountdown(snapshot.RateLimits.FiveHour.ResetsAt, now), inner), width),
+		frameLine(smallMeterRow("7D", snapshot.RateLimits.SevenDay.UsedPercentage, inner), width),
+		frameLine(infoLine("RESET", resetCountdown(snapshot.RateLimits.SevenDay.ResetsAt, now), inner), width),
+		separator(width),
+		frameLine(infoLine("SESSION", sessionLabel(snapshot), inner), width),
+		frameLine(infoLine("PI", m.systemText(), inner), width),
+		frameLine(infoLine("UPDATED", ageText(age)+" ago", inner), width),
+		separator(width),
+		frameLine(helpStyle.Render("[s] Sessions  [a] Auto  [r] Refresh  [q] Quit"), width),
+		bottomBorder(width),
 	}
-	lines = append(lines, "")
-	lines = append(lines,
-		infoLine("SESSION", sessionLabel(snapshot)+"  ·  "+durationText(snapshot.Cost.TotalDurationMS), width),
-		infoLine("ACTIVITY", activityText(snapshot), width),
-		infoLine("PI", m.systemText(), width),
-		infoLine("UPDATED", ageText(age)+" ago  ·  "+now.Format("15:04:05 MST"), width),
-	)
-	return lines
+	return finalizeFrame(lines, width, height)
 }
 
-func (m Model) compactDashboardLines(snapshot statusmodel.Snapshot, now time.Time, age time.Duration, status string, width int) []string {
-	modelName := displayModelName(snapshot)
-	return []string{
-		betweenRendered(titleStyle.Render("✦ Claude Status"), status, width),
-		field("Model", modelName),
-		smallMeterRow("CTX", snapshot.Context.UsedPercentage, width),
-		infoLine("TOKENS", compactTokenText(snapshot.Context), width),
-		smallMeterRow("5H", snapshot.RateLimits.FiveHour.UsedPercentage, width),
-		infoLine("RESET", resetCountdown(snapshot.RateLimits.FiveHour.ResetsAt, now), width),
-		smallMeterRow("7D", snapshot.RateLimits.SevenDay.UsedPercentage, width),
-		infoLine("RESET", resetCountdown(snapshot.RateLimits.SevenDay.ResetsAt, now), width),
-		infoLine("SESSION", sessionLabel(snapshot), width),
-		infoLine("PI", m.systemText(), width),
-		infoLine("UPDATED", ageText(age)+" ago", width),
+func (m Model) waitingFrame(now time.Time, width, height int) string {
+	inner := width - 2
+	header := betweenRendered(titleStyle.Render("AI STATUS"), labelStyle.Render(now.Format("15:04:05 MST")), inner)
+	errorLine := ""
+	if m.lastError != nil {
+		errorLine = errorStyle.Render(m.lastError.Error())
 	}
+	lines := []string{
+		topBorder(width),
+		frameLine(header, width),
+		separator(width),
+		frameLine("", width),
+		frameLine(centerRendered(titleStyle.Render("WAITING FOR DATA"), inner), width),
+		frameLine(centerRendered(labelStyle.Render("No Claude or Codex snapshot is available yet"), inner), width),
+		frameLine("", width),
+		frameLine(labelStyle.Render("STATUSLINE COMMAND"), width),
+		frameLine(titleStyle.Render("~/.local/bin/claude-status ingest"), width),
+		frameLine("", width),
+		separator(width),
+		frameLine(labelStyle.Render("PI HEALTH"), width),
+		frameLine(m.systemText(), width),
+		frameLine("", width),
+		frameLine(centerRendered(labelStyle.Render("Data appears after the next AI response"), inner), width),
+		frameLine(errorLine, width),
+		frameLine("", width),
+		separator(width),
+		frameLine(helpStyle.Render("[r] Refresh                              [q] Quit"), width),
+		bottomBorder(width),
+	}
+	return finalizeFrame(lines, width, height)
 }
 
 func (m Model) sessionsView() string {
-	width := m.contentWidth()
-	bodyWidth := max(20, width-4)
-	bodyHeight := 18
-	if m.height > 0 {
-		bodyHeight = max(6, m.height-2)
-	}
-	visible := max(1, bodyHeight-5)
+	width, height := m.frameSize()
+	inner := width - 2
+	visible := max(1, height-6)
 	start, end := visibleRange(m.sessionCursor, len(m.snapshots), visible)
-	summary := "Newest snapshot first"
-	if len(m.snapshots) > visible {
-		summary = fmt.Sprintf("Showing %d–%d of %d", start+1, end, len(m.snapshots))
+	summary := fmt.Sprintf("%d SESSIONS", len(m.snapshots))
+	if len(m.snapshots) > 0 {
+		summary = fmt.Sprintf("%d–%d OF %d", start+1, end, len(m.snapshots))
 	}
-	lines := []string{titleStyle.Render("Sessions"), labelStyle.Render(summary), ""}
-	if len(m.snapshots) == 0 {
-		lines = append(lines, "No session snapshots yet.")
-	} else {
-		for i := start; i < end; i++ {
+	lines := []string{
+		topBorder(width),
+		frameLine(betweenRendered(titleStyle.Render("SESSIONS"), labelStyle.Render(summary), inner), width),
+		separator(width),
+	}
+	for slot := 0; slot < visible; slot++ {
+		i := start + slot
+		if i < end {
 			snapshot := m.snapshots[i]
 			cursor := "  "
 			style := lipgloss.NewStyle()
@@ -303,16 +380,19 @@ func (m Model) sessionsView() string {
 				cursor = "› "
 				style = style.Bold(true).Foreground(colorBlue)
 			}
-			modelName := snapshot.Model.DisplayName
-			if modelName == "" {
-				modelName = snapshot.Model.ID
-			}
-			line := fmt.Sprintf("%s%-24s %-12s %s ago", cursor, clip(sessionLabel(snapshot), 24), clip(modelName, 12), ageText(max(0, m.now().Sub(snapshot.CapturedAt))))
-			lines = append(lines, style.Render(clip(line, bodyWidth)))
+			left := style.Render(cursor + clip(sessionLabel(snapshot), max(8, inner-24)))
+			right := labelStyle.Render(clip(displayModelName(snapshot), 10) + "  " + ageText(max(0, m.now().Sub(snapshot.CapturedAt))) + " ago")
+			lines = append(lines, frameLine(betweenRendered(left, right, inner), width))
+		} else {
+			lines = append(lines, frameLine("", width))
 		}
 	}
-	lines = append(lines, "", helpStyle.Render("[↑/↓] Select  [enter] Open  [s/esc] Back  [q] Quit"))
-	return panelStyle.Width(bodyWidth + 2).Render(strings.Join(lines, "\n"))
+	lines = append(lines,
+		separator(width),
+		frameLine(helpStyle.Render("[↑/↓] Move  [enter] Pin  [a] Auto  [s/esc] Back  [q] Quit"), width),
+		bottomBorder(width),
+	)
+	return finalizeFrame(lines, width, height)
 }
 
 func (m Model) systemText() string {
@@ -330,52 +410,105 @@ func (m Model) systemText() string {
 	return strings.Join(parts, "  ")
 }
 
-func (m Model) contentWidth() int {
-	if m.width <= 0 {
-		return 80
+func (m Model) frameSize() (int, int) {
+	width := 66
+	if m.width > 0 {
+		width = min(66, max(28, m.width))
 	}
-	return min(100, max(28, m.width))
+	height := 20
+	if m.height > 0 {
+		height = min(20, max(6, m.height))
+	}
+	return width, height
 }
 
-func contextCard(snapshot statusmodel.Snapshot, width int) []string {
-	inner := width - 2
-	modelName := strings.ToUpper(displayModelName(snapshot))
-	modelID := snapshot.Model.ID
-	if modelID == "" || strings.EqualFold(modelID, snapshot.Model.DisplayName) {
-		modelID = "CLAUDE CODE"
-	}
-
-	contextPercentage := percentageText(snapshot.Context.UsedPercentage)
-	barWidth := max(4, inner-2)
-	bar := renderBar(snapshot.Context.UsedPercentage, barWidth)
-
-	return []string{
-		colorBorderString("╭" + strings.Repeat("─", inner) + "╮"),
-		boxLine(titleStyle.Render(" "+clip(modelName, inner-2)), inner),
-		boxLine(labelStyle.Render(" "+clip(modelID, inner-2)), inner),
-		boxLine(betweenRendered(labelStyle.Render(" CONTEXT"), titleStyle.Render(contextPercentage), inner), inner),
-		boxLine(" "+bar+" ", inner),
-		boxLine(labelStyle.Render(" "+clip(contextText(snapshot.Context), inner-2)), inner),
-		colorBorderString("╰" + strings.Repeat("─", inner) + "╯"),
-	}
+func topBorder(width int) string {
+	return colorBorderString("╭" + strings.Repeat("─", max(0, width-2)) + "╮")
 }
 
-func quotaPanel(snapshot statusmodel.Snapshot, now time.Time, status string, width int) []string {
-	tokenLine := labelStyle.Render("TOKENS  ") +
-		lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+tokenText(contextInputTokens(snapshot.Context))) +
-		labelStyle.Render(" INPUT   ") +
-		lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+tokenText(contextOutputTokens(snapshot.Context))) +
-		labelStyle.Render(" OUTPUT")
+func bottomBorder(width int) string {
+	return colorBorderString("╰" + strings.Repeat("─", max(0, width-2)) + "╯")
+}
 
-	return []string{
-		betweenRendered(titleStyle.Render("✦ Clauding…"), status, width),
-		"",
-		betweenRendered(labelStyle.Render("5H LIMIT"), labelStyle.Render(resetCountdown(snapshot.RateLimits.FiveHour.ResetsAt, now)), width),
-		progressLine(snapshot.RateLimits.FiveHour.UsedPercentage, width),
-		betweenRendered(labelStyle.Render("7 DAY LIMIT"), labelStyle.Render(resetCountdown(snapshot.RateLimits.SevenDay.ResetsAt, now)), width),
-		progressLine(snapshot.RateLimits.SevenDay.UsedPercentage, width),
-		clipStyled(tokenLine, width),
+func separator(width int) string {
+	return colorBorderString("├" + strings.Repeat("─", max(0, width-2)) + "┤")
+}
+
+func splitSeparator(width int) string {
+	left, right := splitWidths(width)
+	return colorBorderString("├" + strings.Repeat("─", left) + "┼" + strings.Repeat("─", right) + "┤")
+}
+
+func frameLine(content string, width int) string {
+	inner := max(0, width-2)
+	content = clipStyled(content, inner)
+	return colorBorderString("│") + padStyled(content, inner) + colorBorderString("│")
+}
+
+func splitFrameLine(left, right string, width int) string {
+	leftWidth, rightWidth := splitWidths(width)
+	left = padStyled(clipStyled(left, leftWidth), leftWidth)
+	right = padStyled(clipStyled(right, rightWidth), rightWidth)
+	return colorBorderString("│") + left + colorBorderString("│") + right + colorBorderString("│")
+}
+
+func splitWidths(width int) (int, int) {
+	inner := max(1, width-2)
+	left := max(1, (inner-1)/2)
+	return left, max(1, inner-left-1)
+}
+
+func finalizeFrame(lines []string, width, height int) string {
+	if height <= 0 {
+		height = len(lines)
 	}
+	if len(lines) > height {
+		lines = append(lines[:height-1], bottomBorder(width))
+	}
+	insertAt := max(1, len(lines)-3)
+	for len(lines) < height {
+		lines = append(lines, "")
+		copy(lines[insertAt+1:], lines[insertAt:])
+		lines[insertAt] = frameLine("", width)
+		insertAt++
+	}
+	return strings.Join(lines, "\n")
+}
+
+func centerRendered(value string, width int) string {
+	space := max(0, width-lipgloss.Width(value))
+	return strings.Repeat(" ", space/2) + value
+}
+
+func renderContextBar(percentage *float64, width int) string {
+	if percentage == nil {
+		return labelStyle.Render(strings.Repeat("░", width))
+	}
+	value := min(100, max(0, *percentage))
+	filled := int(math.Round(value * float64(width) / 100))
+	return lipgloss.NewStyle().Foreground(contextColor(percentage)).Render(strings.Repeat("█", filled)) +
+		labelStyle.Render(strings.Repeat("░", width-filled))
+
+}
+
+func contextColor(percentage *float64) lipgloss.Color {
+	if percentage == nil {
+		return colorMuted
+	}
+	if *percentage >= 90 {
+		return colorRed
+	}
+	if *percentage >= 75 {
+		return colorYellow
+	}
+	return colorBlue
+}
+
+func styleErrorOrNormal(value string, err error) string {
+	if err != nil {
+		return errorStyle.Render(value)
+	}
+	return value
 }
 
 func progressLine(percentage *float64, width int) string {
@@ -432,18 +565,33 @@ func displayModelName(snapshot statusmodel.Snapshot) string {
 	if snapshot.Model.ID != "" {
 		return snapshot.Model.ID
 	}
+	if providerTitle(snapshot) == "CODEX" {
+		return "Codex"
+	}
 	return "Claude"
 }
 
+func providerTitle(snapshot statusmodel.Snapshot) string {
+	switch strings.ToLower(strings.TrimSpace(snapshot.Provider)) {
+	case "codex", "openai":
+		return "CODEX"
+	default:
+		return "CLAUDE"
+	}
+}
+
+func clientVersion(snapshot statusmodel.Snapshot) string {
+	if snapshot.ClientVersion != "" {
+		return snapshot.ClientVersion
+	}
+	return snapshot.ClaudeCodeVersion
+}
+
 func activityText(snapshot statusmodel.Snapshot) string {
-	parts := []string{
+	return strings.Join([]string{
 		"Cost " + costText(snapshot.Cost.TotalCostUSD),
 		"Code " + codeText(snapshot.Cost.TotalLinesAdded, snapshot.Cost.TotalLinesRemoved),
-	}
-	if mode := modeText(snapshot); mode != "" {
-		parts = append(parts, mode)
-	}
-	return strings.Join(parts, "  ·  ")
+	}, "  ·  ")
 }
 
 func contextInputTokens(context statusmodel.Context) *int64 {
@@ -487,10 +635,6 @@ func infoLine(label, value string, width int) string {
 	return clipStyled(line, width)
 }
 
-func boxLine(content string, inner int) string {
-	return colorBorderString("│") + padStyled(content, inner) + colorBorderString("│")
-}
-
 func colorBorderString(value string) string {
 	return lipgloss.NewStyle().Foreground(colorBorder).Render(value)
 }
@@ -528,13 +672,6 @@ func thresholdColor(value float64) lipgloss.Color {
 		return colorYellow
 	}
 	return colorGreen
-}
-
-func field(label, value string) string {
-	if value == "" {
-		value = "--"
-	}
-	return fmt.Sprintf("%-12s %s", label, value)
 }
 
 func contextText(context statusmodel.Context) string {

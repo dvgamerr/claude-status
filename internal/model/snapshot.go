@@ -6,12 +6,16 @@ const CurrentSchemaVersion = 1
 
 // Snapshot is the deliberately small, sanitized representation persisted by
 // claude-status. It must never contain prompts, transcripts, credentials, or
-// arbitrary fields copied from Claude Code's input.
+// arbitrary fields copied from Claude or Codex provider input.
 type Snapshot struct {
-	SchemaVersion     int        `json:"schema_version"`
-	CapturedAt        time.Time  `json:"captured_at"`
-	Session           Session    `json:"session"`
-	Model             Model      `json:"model"`
+	SchemaVersion int       `json:"schema_version"`
+	CapturedAt    time.Time `json:"captured_at"`
+	Provider      string    `json:"provider,omitempty"`
+	ClientVersion string    `json:"client_version,omitempty"`
+	Session       Session   `json:"session"`
+	Model         Model     `json:"model"`
+	// ClaudeCodeVersion is retained and populated for compatibility with older
+	// snapshots/readers; provider-neutral consumers should use ClientVersion.
 	ClaudeCodeVersion string     `json:"claude_code_version,omitempty"`
 	Context           Context    `json:"context"`
 	RateLimits        RateLimits `json:"rate_limits"`
