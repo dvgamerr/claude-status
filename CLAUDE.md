@@ -27,8 +27,10 @@ should. Final visual QA before shipping to `pilab` should still be against
 real RGB565 output, not only this RGB PNG preview, because subtle gradients
 band on the physical 16-bit framebuffer in ways the preview won't show.
 Keep the warm Claude-first theme with a
-flat dark background, high-contrast type, equal Claude 5-hour/7-day quota cards,
-and a compact Codex card containing only its latest session/model and context.
+flat dark background, high-contrast type, equal Claude 5-hour/7-day limit
+rows (each with its reset countdown), and a Codex card that deliberately
+never shows a session id/name — only its model, reasoning effort, and
+context %, since Codex is "the other tool" here, not a session to track.
 Provider selection is independent: a newer Codex event must never displace
 Claude from the primary UI. The display follows the newest snapshot for each
 provider without local input, except for the touch ripple below — touch

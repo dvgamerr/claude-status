@@ -29,6 +29,12 @@ type RunConfig struct {
 	StaleAfter      time.Duration
 }
 
+// statsInterval throttles CPU/RAM/GPU sampling independently of the render
+// refresh rate: those are comparatively expensive /proc reads, and nothing
+// about the Pi's own load needs to be resampled 15 times a second just
+// because the mascot animates that fast.
+const statsInterval = 500 * time.Millisecond
+
 // Run renders frames on config.RefreshInterval. touches may be nil (no
 // touch input available, e.g. the device failed to open) — a nil channel
 // always blocks in a select with a default case, so touch feedback is
@@ -40,9 +46,12 @@ func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, scre
 	if config.StaleAfter <= 0 {
 		config.StaleAfter = 15 * time.Second
 	}
+	now := time.Now()
 	var active []touch.Point
-	active = drainTouches(touches, active, time.Now())
-	if err := renderFrame(loader, metrics, screen, renderer, config, time.Now(), active); err != nil {
+	active = drainTouches(touches, active, now)
+	stats := metrics.Read()
+	lastStatsAt := now
+	if err := renderFrame(loader, screen, renderer, config, now, active, stats); err != nil {
 		return err
 	}
 	ticker := time.NewTicker(config.RefreshInterval)
@@ -53,7 +62,11 @@ func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, scre
 			return nil
 		case now := <-ticker.C:
 			active = drainTouches(touches, active, now)
-			if err := renderFrame(loader, metrics, screen, renderer, config, now, active); err != nil {
+			if now.Sub(lastStatsAt) >= statsInterval {
+				stats = metrics.Read()
+				lastStatsAt = now
+			}
+			if err := renderFrame(loader, screen, renderer, config, now, active, stats); err != nil {
 				return err
 			}
 		}
@@ -79,13 +92,13 @@ func drainTouches(touches <-chan touch.Point, active []touch.Point, now time.Tim
 	}
 }
 
-func renderFrame(loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig, now time.Time, touches []touch.Point) error {
+func renderFrame(loader SnapshotLoader, screen Screen, renderer *Renderer, config RunConfig, now time.Time, touches []touch.Point, stats systeminfo.Stats) error {
 	snapshots, loadErr := loader.LoadAll()
 	claude, codex := LatestProviders(snapshots)
 	frame := renderer.Render(View{
 		Claude:       claude,
 		Codex:        codex,
-		Stats:        metrics.Read(),
+		Stats:        stats,
 		Now:          now,
 		StaleAfter:   config.StaleAfter,
 		SessionCount: len(snapshots),

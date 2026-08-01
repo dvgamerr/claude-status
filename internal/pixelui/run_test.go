@@ -50,13 +50,40 @@ func TestRunRendersImmediatelyAndStopsWithContext(t *testing.T) {
 	}
 }
 
+type countingMetrics struct{ reads int }
+
+func (metrics *countingMetrics) Read() systeminfo.Stats {
+	metrics.reads++
+	return systeminfo.Stats{}
+}
+
+func TestRunThrottlesStatsSamplingIndependentlyOfRefresh(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics := &countingMetrics{}
+	screen := &testScreen{}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if err := Run(ctx, testLoader{}, metrics, screen, renderer, RunConfig{RefreshInterval: 10 * time.Millisecond}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if screen.frames < 8 {
+		t.Fatalf("frames = %d, want several at a 10ms refresh over 150ms", screen.frames)
+	}
+	if metrics.reads > 2 {
+		t.Fatalf("Stats.Read() called %d times in 150ms; want throttling to ~1-2 calls at the 500ms stats interval", metrics.reads)
+	}
+}
+
 func TestRenderFramePropagatesPresentError(t *testing.T) {
 	renderer, err := NewRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	screen := &testScreen{err: errors.New("screen failed")}
-	err = renderFrame(testLoader{err: errors.New("partial state")}, testMetrics{}, screen, renderer, RunConfig{}, time.Now(), nil)
+	err = renderFrame(testLoader{err: errors.New("partial state")}, screen, renderer, RunConfig{}, time.Now(), nil, systeminfo.Stats{})
 	if err == nil || !errors.Is(err, screen.err) {
 		t.Fatalf("renderFrame() error = %v", err)
 	}
