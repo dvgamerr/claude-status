@@ -175,7 +175,7 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	}
 	sessionDetail := sessionName(snapshot) + "  •  " + modePrimary(snapshot)
 
-	r.renderHeader(canvas, view, activity, modelName, sessionDetail)
+	r.renderHeader(canvas, view, modelName, sessionDetail)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
 	r.renderLimitsRow(canvas, snapshot, view.Now)
 	r.renderClaudePanel(canvas, snapshot)
@@ -222,7 +222,7 @@ func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
-	r.renderHeader(canvas, view, activity, "", "")
+	r.renderHeader(canvas, view, "", "")
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, nil, view.Stats, view.Now)
 
 	panelWidth := contentSplit - contentLeft
@@ -268,8 +268,8 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 
 // renderHeader's sessionDetail is the one place session name/model/effort
 // gets written — nowhere else on the dashboard repeats it.
-func (r *Renderer) renderHeader(canvas *image.RGBA, view View, activityState, modelName, sessionDetail string) {
-	r.drawMascot(canvas, 33, 36, 9, view.Now, activityState)
+func (r *Renderer) renderHeader(canvas *image.RGBA, view View, modelName, sessionDetail string) {
+	r.drawLogoMark(canvas, 33, 36, 9)
 	r.text(canvas, r.bold22, textPrimary, 54, 37, "CLAUDE")
 	subtitle := "PRIMARY STATUS"
 	if modelName != "" {
@@ -484,6 +484,7 @@ type activityVisual struct {
 	halo      color.RGBA
 	pulseAmp  float64
 	orbit     bool
+	sleeping  bool
 }
 
 func visualForActivity(state string) activityVisual {
@@ -493,7 +494,9 @@ func visualForActivity(state string) activityVisual {
 	case model.ActivityWaitingApproval:
 		return activityVisual{period: 1500 * time.Millisecond, rayColor: yellow, rayColor2: rgb(255, 226, 143), halo: rgb(58, 49, 24), pulseAmp: 0.16, orbit: false}
 	default:
-		return activityVisual{period: 4200 * time.Millisecond, rayColor: withAlpha(claudeOrange, 150), rayColor2: withAlpha(claudePeach, 120), halo: rgb(38, 34, 30), pulseAmp: 0.08, orbit: false}
+		// Idle reads as asleep, not just "slow" — a still mascot with
+		// drifting z's communicates it at a glance, no text required.
+		return activityVisual{rayColor: withAlpha(claudeOrange, 130), rayColor2: withAlpha(claudePeach, 100), halo: rgb(32, 29, 27), sleeping: true}
 	}
 }
 
@@ -551,6 +554,13 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, state string) {
 	visual := visualForActivity(state)
 	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
+
+	if visual.sleeping {
+		r.drawSleepingRays(canvas, centerX, centerY, radius, visual)
+		r.drawSleepZs(canvas, centerX, centerY, radius, now)
+		return
+	}
+
 	periodMS := visual.period.Milliseconds()
 	if periodMS <= 0 {
 		periodMS = 2000
@@ -585,6 +595,90 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 			max(2, radius/9),
 			visual.rayColor2,
 		)
+	}
+}
+
+// drawSleepingRays is idle's still, drooped body: shorter and thinner than
+// the animated states, and — deliberately — not a function of `now`, so
+// the mascot itself reads as motionless while drawSleepZs animates above it.
+func (r *Renderer) drawSleepingRays(canvas *image.RGBA, centerX, centerY, radius int, visual activityVisual) {
+	for ray := 0; ray < 8; ray++ {
+		angle := float64(ray) * math.Pi / 4
+		inner := float64(radius) * 0.3
+		outer := float64(radius) * 0.55
+		fill := visual.rayColor
+		if ray%3 == 0 {
+			fill = visual.rayColor2
+		}
+		drawThickLine(
+			canvas,
+			centerX+int(math.Cos(angle)*inner),
+			centerY+int(math.Sin(angle)*inner),
+			centerX+int(math.Cos(angle)*outer),
+			centerY+int(math.Sin(angle)*outer),
+			max(2, radius/8),
+			fill,
+		)
+	}
+	fillCircle(canvas, centerX, centerY, max(3, radius/6), visual.rayColor)
+}
+
+// drawSleepZs floats three "z"s up and out from the mascot in a loop —
+// the classic sleep cue, so idle reads as "asleep" without any text label.
+func (r *Renderer) drawSleepZs(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
+	const period = 1800
+	baseX := centerX + int(float64(radius)*0.5)
+	baseY := centerY - int(float64(radius)*0.65)
+	elapsed := now.UnixMilli()
+	for i := int64(0); i < 3; i++ {
+		phase := float64((elapsed+i*period/3)%period) / period
+		yOffset := int(-30 * phase)
+		xOffset := int(4 * math.Sin(phase*2*math.Pi))
+		alpha := uint8(210 * (1 - phase))
+		if alpha == 0 {
+			continue
+		}
+		r.text(canvas, r.bold13, fadeColor(textSecondary, alpha), baseX+xOffset, baseY+yOffset, "z")
+	}
+}
+
+// drawLogoMark is a small static version of the mascot for the header — a
+// plain brand mark, not an animated status indicator. The rail owns that
+// job; duplicating its motion in the corner would compete for attention.
+func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, radius int) {
+	fillCircle(canvas, centerX, centerY, radius+6, rgb(48, 34, 28))
+	for ray := 0; ray < 8; ray++ {
+		angle := float64(ray) * math.Pi / 4
+		inner := float64(radius) * 0.3
+		outer := float64(radius) * 0.85
+		fill := claudeOrange
+		if ray%2 == 1 {
+			fill = claudePeach
+		}
+		drawThickLine(
+			canvas,
+			centerX+int(math.Cos(angle)*inner),
+			centerY+int(math.Sin(angle)*inner),
+			centerX+int(math.Cos(angle)*outer),
+			centerY+int(math.Sin(angle)*outer),
+			max(2, radius/6),
+			fill,
+		)
+	}
+	fillCircle(canvas, centerX, centerY, max(3, radius/5), claudeOrange)
+}
+
+// fadeColor returns base at the given alpha, premultiplied as color.RGBA
+// requires — unlike withAlpha (which blends toward a fixed card background),
+// this composites correctly over whatever the mascot happens to be sitting
+// on, via the normal draw.Over path font.Drawer already uses.
+func fadeColor(base color.RGBA, alpha uint8) color.RGBA {
+	factor := float64(alpha) / 255
+	return color.RGBA{
+		R: uint8(float64(base.R) * factor),
+		G: uint8(float64(base.G) * factor),
+		B: uint8(float64(base.B) * factor),
+		A: alpha,
 	}
 }
 
