@@ -1,0 +1,73 @@
+package claude
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/dvgamerr/claude-status/internal/model"
+)
+
+const maxHookInputBytes = 256 << 10
+
+// HookInput models only the Claude Code hook fields this app needs to
+// classify activity. Unknown fields (transcript_path, tool_input, cwd, ...)
+// are intentionally accepted for forward compatibility and discarded once an
+// activity state is derived; the message text itself is never persisted.
+type HookInput struct {
+	SessionID     string `json:"session_id"`
+	HookEventName string `json:"hook_event_name"`
+	Message       string `json:"message"`
+}
+
+func DecodeHook(r io.Reader) (HookInput, error) {
+	var input HookInput
+	data, err := io.ReadAll(io.LimitReader(r, maxHookInputBytes+1))
+	if err != nil {
+		return input, fmt.Errorf("read hook input: %w", err)
+	}
+	if len(data) > maxHookInputBytes {
+		return input, fmt.Errorf("hook input exceeds %d bytes", maxHookInputBytes)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return input, errors.New("hook input is empty")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&input); err != nil {
+		return input, fmt.Errorf("decode hook JSON: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return input, errors.New("hook input contains multiple JSON values")
+		}
+		return input, fmt.Errorf("decode trailing hook data: %w", err)
+	}
+	return input, nil
+}
+
+// ActivityForHook classifies a hook event into a dashboard activity state.
+// It inspects the Notification message text only to detect a permission
+// prompt (e.g. "Claude needs your permission to use Bash"); the message
+// itself is discarded either way and never returned or persisted. Events
+// that don't map to a meaningful state (e.g. an idle-nudge notification)
+// report ok=false so the caller leaves the last known state untouched.
+func ActivityForHook(input HookInput) (state string, ok bool) {
+	switch input.HookEventName {
+	case "UserPromptSubmit", "PreToolUse":
+		return model.ActivityWorking, true
+	case "Stop", "SubagentStop":
+		return model.ActivityIdle, true
+	case "Notification":
+		if strings.Contains(strings.ToLower(input.Message), "permission") {
+			return model.ActivityWaitingApproval, true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}

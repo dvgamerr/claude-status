@@ -13,6 +13,10 @@ animated Claude mark และ Pi health ส่วน Codex ย่อเหล�
 
 - `claude-status ingest` อ่าน Claude JSON จาก stdin, sanitize, เขียน state แบบ atomic
   แล้วพิมพ์ status line สั้นกลับให้ Claude Code
+- `claude-status activity` อ่าน Claude Code hook event (`UserPromptSubmit`,
+  `PreToolUse`, `Stop`, `Notification`) จาก stdin แล้วอัปเดตแค่สถานะ
+  working/idle/waiting-approval ของ session นั้น โดยไม่แตะ field อื่นและไม่เก็บ
+  ข้อความ hook ดิบไว้เลย ใช้ขับ animation ของ mascot บนหน้าจอ
 - `claude-status codex-notify` รับ Codex turn-complete notification แล้วอ่านเฉพาะ
   model, context/token usage และ 5-hour/7-day usage จาก rollout ของ thread นั้น
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
@@ -57,9 +61,21 @@ bash scripts/install.sh ./claude-status
     "command": "~/.local/bin/claude-status ingest",
     "padding": 1,
     "refreshInterval": 5
+  },
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }]
   }
 }
 ```
+
+hook ทั้งสี่ทำให้ mascot บนจอรู้สถานะจริงของ session: `UserPromptSubmit`/
+`PreToolUse` → กำลังทำงาน (animation เร็ว สีส้มสด), `Stop` → idle (animation
+ช้า สีจาง), `Notification` ที่มีคำว่า permission → รอ approval (สีเหลือง
+พร้อม badge "?" กระพริบบน mascot) ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยัง
+ทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
 
 ถ้า Claude/Codex รันบน Windows และ Pi ใช้ SSH alias `pilab` ให้ build Windows กับ
 ARM64 binary ก่อน จากนั้นติดตั้ง integration ฝั่ง Windows:
@@ -72,6 +88,7 @@ pwsh -File scripts/install-windows.ps1 -MirrorHost pilab
 installer จะสำรองและแก้สองไฟล์โดยรักษาค่าอื่นไว้:
 
 - `%USERPROFILE%\.claude\settings.json`: ตั้ง `statusLine` ให้เรียก `ingest`
+  และเพิ่ม hook สี่ตัวให้เรียก `activity` (merge เข้าไปแบบไม่ลบ hook อื่นที่มีอยู่)
 - `%USERPROFILE%\.codex\config.toml`: ห่อ `notify` เดิมด้วย `codex-notify`
   และ forward event กลับไป notifier เดิมด้วย จึงไม่ทำ Computer Use เดิมหาย
 

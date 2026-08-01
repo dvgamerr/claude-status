@@ -87,6 +87,13 @@ func (s *Store) LoadLatest() (model.Snapshot, error) {
 	return readSnapshot(filepath.Join(s.dir, latestFile))
 }
 
+// LoadSession loads the most recently saved snapshot for one session ID. It
+// returns an error satisfying errors.Is(err, os.ErrNotExist) when no
+// snapshot has been saved for that session yet.
+func (s *Store) LoadSession(sessionID string) (model.Snapshot, error) {
+	return readSnapshot(filepath.Join(s.dir, "sessions", sessionFilename(sessionID)))
+}
+
 func (s *Store) LoadAll() ([]model.Snapshot, error) {
 	dir := filepath.Join(s.dir, "sessions")
 	entries, err := os.ReadDir(dir)

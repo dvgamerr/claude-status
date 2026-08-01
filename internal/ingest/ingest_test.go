@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
@@ -37,6 +38,38 @@ func TestRunPersistsSanitizedSnapshotAndWritesStatusLine(t *testing.T) {
 	}
 	if snapshot.Session.ID != "ingest-test" || !snapshot.CapturedAt.Equal(now) {
 		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+}
+
+func TestRunPreservesActivityAcrossStatusLineRefresh(t *testing.T) {
+	store, err := state.New(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 31, 14, 0, 0, 0, time.UTC)
+	first := strings.NewReader(`{"session_id":"activity-test","context_window":{"used_percentage":10}}`)
+	if _, err := Run(first, &bytes.Buffer{}, store, now); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	snapshot, err := store.LoadSession("activity-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now}
+	if err := store.Save(snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	second := strings.NewReader(`{"session_id":"activity-test","context_window":{"used_percentage":20}}`)
+	if _, err := Run(second, &bytes.Buffer{}, store, now.Add(5*time.Second)); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	after, err := store.LoadSession("activity-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Activity.State != model.ActivityWorking {
+		t.Fatalf("Activity.State = %q, want %q (statusLine refresh must not erase it)", after.Activity.State, model.ActivityWorking)
 	}
 }
 

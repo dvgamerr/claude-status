@@ -14,12 +14,22 @@
 The primary UI is the native `gfx` dashboard, rendered at exactly 800x480
 pixels into `/dev/fb0`; the old 66x20 TUI is fallback only. Design and visual
 QA against RGB565 output, not only an RGB PNG preview, because subtle gradients
-band on the physical 16-bit framebuffer. Keep the warm Claude-first theme with
-a flat dark background, animated clay starburst mark, high-contrast type, large
-Claude context usage, equal Claude 5-hour/7-day quota cards, and a compact Codex
-card containing only its latest session/model and context. Provider selection is
-independent: a newer Codex event must never displace Claude from the primary UI.
-The display follows the newest snapshot for each provider without local input.
+band on the physical 16-bit framebuffer. Keep the warm Claude-first theme with a
+flat dark background, high-contrast type, equal Claude 5-hour/7-day quota cards,
+and a compact Codex card containing only its latest session/model and context.
+Provider selection is independent: a newer Codex event must never displace
+Claude from the primary UI. The display follows the newest snapshot for each
+provider without local input.
+
+The left-hand status rail holds the animated clay starburst mascot and is the
+dashboard's focal point (`internal/pixelui/render.go`'s `renderRail`): its
+motion communicates the source session's activity state at a glance, per
+Nielsen's visibility-of-system-status heuristic, without requiring anyone to
+read text. Three states, each with a distinct speed/color/behavior profile in
+`visualForActivity`: `working` (fast, bright orange, orbiting dot), `idle`
+(slow, dim breathing), and `waiting_approval` (yellow, plus a pulsing "?"
+badge overlaid on the mascot and a yellow glow around the rail card). Activity
+state is independent of the statusLine refresh cycle — see below.
 
 ## Provider ingestion and Windows source
 
@@ -42,6 +52,33 @@ The display follows the newest snapshot for each provider without local input.
   10,080-minute rate-limit windows when the account exposes them; unavailable
   enterprise limits show `UNMETERED` only when Codex explicitly reports
   `credits.unlimited=true`; otherwise unavailable values remain `--`.
+
+## Activity state (mascot animation, approval badge)
+
+- The statusLine refresh alone cannot tell whether Claude is working, idle, or
+  blocked on a permission prompt, so `%USERPROFILE%\.claude\settings.json`
+  also registers four hooks — `UserPromptSubmit`, `PreToolUse` (matcher `*`),
+  `Stop`, and `Notification` — that all call `claude-status activity`
+  (`scripts/install-windows.ps1`'s `Set-ClaudeStatusHook`). That merge is
+  additive: it only ever replaces the `claude-status ... activity` hook group
+  it previously installed on each event and leaves every other tool's hook
+  group on that event untouched.
+- `claude-status activity` reads one hook payload from stdin, classifies it
+  with `claude.ActivityForHook`, and merges just the `Activity{State,
+  UpdatedAt}` field into that session's already-stored snapshot — it never
+  rebuilds the snapshot from scratch, so a hook firing before or after the
+  next statusLine event can't clobber the other's fields. For `Notification`
+  it inspects the hook's `message` text locally to detect a permission prompt
+  ("needs your permission to use ...") vs. an idle-nudge; either way the
+  message text itself is discarded, never persisted or mirrored, matching the
+  "never mirror raw payloads" rule above.
+- This command must always exit 0. `PreToolUse` hooks can block the tool call
+  if their hook exits non-zero, and this activity side channel must never be
+  able to do that.
+- `pixelui.resolveActivity` degrades gracefully when hooks aren't installed
+  (falls back to a statusLine-freshness proxy) and when a state gets stuck
+  (falls back to idle after `activityStaleAfter`, 10 minutes, in case a `Stop`
+  hook was missed).
 
 References:
 

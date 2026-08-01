@@ -4,6 +4,15 @@ import "time"
 
 const CurrentSchemaVersion = 1
 
+// Activity states describe what the source session is doing right now, as
+// reported by Claude Code hooks. They are derived, boolean-ish signals only
+// — never the hook's raw message/prompt text.
+const (
+	ActivityWorking         = "working"
+	ActivityIdle            = "idle"
+	ActivityWaitingApproval = "waiting_approval"
+)
+
 // Snapshot is the deliberately small, sanitized representation persisted by
 // claude-status. It must never contain prompts, transcripts, credentials, or
 // arbitrary fields copied from Claude or Codex provider input.
@@ -22,6 +31,15 @@ type Snapshot struct {
 	Cost              Cost       `json:"cost"`
 	Effort            string     `json:"effort,omitempty"`
 	ThinkingEnabled   *bool      `json:"thinking_enabled,omitempty"`
+	Activity          Activity   `json:"activity,omitempty"`
+}
+
+// Activity is set by Claude Code hook events, independent of the statusLine
+// refresh cycle, so the dashboard can animate work-in-progress vs idle vs a
+// pending permission prompt.
+type Activity struct {
+	State     string    `json:"state,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 type Session struct {

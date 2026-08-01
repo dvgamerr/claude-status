@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/activity"
 	"github.com/dvgamerr/claude-status/internal/codex"
 	"github.com/dvgamerr/claude-status/internal/dashboard"
 	"github.com/dvgamerr/claude-status/internal/framebuffer"
@@ -39,6 +40,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	switch args[0] {
 	case "ingest":
 		return runIngest(ctx, args[1:], stdin, stdout, stderr)
+	case "activity":
+		return runActivity(ctx, args[1:], stdin, stderr)
 	case "codex-notify":
 		return runCodexNotify(ctx, args[1:], stderr)
 	case "import":
@@ -98,6 +101,53 @@ func runIngest(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	}
 	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
 		fmt.Fprintf(stderr, "claude-status ingest: warning: %v\n", err)
+	}
+	return 0
+}
+
+// runActivity records a Claude Code hook event (Notification, PreToolUse,
+// Stop, UserPromptSubmit) as a working/idle/waiting-approval indicator. It
+// always exits 0: some of these hook events (PreToolUse) can block the tool
+// call if the hook exits non-zero, and this side channel must never do that.
+func runActivity(ctx context.Context, args []string, stdin io.Reader, stderr io.Writer) int {
+	defaultDir, err := state.DefaultDir()
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		return 0
+	}
+	flags := flag.NewFlagSet("activity", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
+	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives the sanitized snapshot")
+	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: claude-status activity [--state-dir DIR] [--mirror-ssh HOST]")
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "claude-status activity: unexpected positional arguments")
+		return 0
+	}
+	store, err := state.New(*stateDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		return 0
+	}
+	snapshot, matched, err := activity.Run(stdin, store, time.Now())
+	if err != nil {
+		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		return 0
+	}
+	if !matched {
+		return 0
+	}
+	if err := mirrorIfConfigured(ctx, *mirrorSSH, *remoteBinary, snapshot); err != nil {
+		fmt.Fprintf(stderr, "claude-status activity: warning: %v\n", err)
 	}
 	return 0
 }
@@ -413,6 +463,7 @@ func printUsage(w io.Writer) {
 
 Usage:
   claude-status ingest [flags]       Read Claude Code statusLine JSON from stdin
+  claude-status activity [flags]     Read a Claude Code hook event from stdin
   claude-status codex-notify [flags] Read a Codex turn-complete notification
   claude-status import [flags]       Import one sanitized snapshot
   claude-status gfx [flags]          Render the 800x480 framebuffer dashboard

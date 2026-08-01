@@ -108,11 +108,19 @@ func Decode(r io.Reader) (Input, error) {
 	return input, nil
 }
 
-func ToSnapshot(input Input, now time.Time) model.Snapshot {
-	sessionID := cleanText(input.SessionID, maxSessionIDRunes)
+// CleanSessionID sanitizes a session identifier the same way statusLine
+// input is sanitized, so hook events and statusLine events agree on which
+// session a snapshot belongs to.
+func CleanSessionID(value string) string {
+	sessionID := cleanText(value, maxSessionIDRunes)
 	if sessionID == "" {
 		sessionID = "unknown"
 	}
+	return sessionID
+}
+
+func ToSnapshot(input Input, now time.Time) model.Snapshot {
+	sessionID := CleanSessionID(input.SessionID)
 
 	snapshot := model.Snapshot{
 		SchemaVersion:     model.CurrentSchemaVersion,

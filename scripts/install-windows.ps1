@@ -63,6 +63,47 @@ $ClaudeSettings["statusLine"] = [ordered]@{
     padding = 1
     refreshInterval = 5
 }
+
+# The activity command turns hook events into the dashboard's working / idle /
+# needs-approval mascot state. It is registered on four hooks and is additive:
+# any other hook already configured on the same event is left in place.
+$ActivityCommand = '"' + $InstalledBinary + '" activity --mirror-ssh ' + $MirrorHost + ' --remote-bin ' + $RemoteBinary
+
+function Set-ClaudeStatusHook {
+    param($Settings, [string]$EventName, [string]$Command, [string]$Matcher)
+
+    if (-not $Settings.Contains("hooks")) {
+        $Settings["hooks"] = [ordered]@{}
+    }
+    $Hooks = $Settings["hooks"]
+    $ExistingGroups = @()
+    if ($Hooks.Contains($EventName)) {
+        $ExistingGroups = @($Hooks[$EventName])
+    }
+
+    # Drop any group this script previously installed for this event, then
+    # re-add it fresh; leave every other tool's hook group untouched.
+    $KeptGroups = @($ExistingGroups | Where-Object {
+        $GroupHooks = @($_.hooks)
+        -not ($GroupHooks | Where-Object { $_.command -like '*claude-status*" activity*' })
+    })
+
+    $NewGroup = [ordered]@{
+        hooks = @([ordered]@{ type = "command"; command = $Command })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Matcher)) {
+        $NewGroup = [ordered]@{ matcher = $Matcher; hooks = $NewGroup.hooks }
+    }
+
+    $Hooks[$EventName] = @($KeptGroups) + @($NewGroup)
+    $Settings["hooks"] = $Hooks
+}
+
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "UserPromptSubmit" -Command $ActivityCommand
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "PreToolUse" -Command $ActivityCommand -Matcher "*"
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "Stop" -Command $ActivityCommand
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "Notification" -Command $ActivityCommand
+
 $ClaudeJson = $ClaudeSettings | ConvertTo-Json -Depth 100
 Write-Utf8Atomic -Path $ClaudeSettingsPath -Content ($ClaudeJson + [Environment]::NewLine)
 
