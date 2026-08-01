@@ -271,11 +271,9 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 func (r *Renderer) renderHeader(canvas *image.RGBA, view View, modelName, sessionDetail string) {
 	r.drawLogoMark(canvas, 33, 36, 9)
 	r.text(canvas, r.bold22, textPrimary, 54, 37, "CLAUDE")
-	subtitle := "PRIMARY STATUS"
 	if modelName != "" {
-		subtitle += "  •  " + strings.ToUpper(fitText(r.regular13, modelName, 200))
+		r.text(canvas, r.regular13, textSecondary, 54, 54, strings.ToUpper(fitText(r.regular13, modelName, 200)))
 	}
-	r.text(canvas, r.regular13, textSecondary, 54, 54, subtitle)
 	if sessionDetail != "" {
 		r.text(canvas, r.regular12, textFaint, 54, 71, fitText(r.regular12, sessionDetail, 480))
 	}
@@ -475,28 +473,27 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 	}
 }
 
-// activityVisual is the animation "voice" for one activity state: how fast
-// the mascot pulses, how far its rays swing, and its color mood.
+// activityVisual is the animation "voice" for one activity state: the
+// mascot's body color, its background glow, and whether it bounces
+// (working) or goes still and asleep (idle).
 type activityVisual struct {
 	period    time.Duration
-	rayColor  color.RGBA
-	rayColor2 color.RGBA
+	bodyColor color.RGBA
 	halo      color.RGBA
-	pulseAmp  float64
-	orbit     bool
+	bounce    bool
 	sleeping  bool
 }
 
 func visualForActivity(state string) activityVisual {
 	switch state {
 	case model.ActivityWorking:
-		return activityVisual{period: 900 * time.Millisecond, rayColor: claudeOrange, rayColor2: claudePeach, halo: rgb(58, 40, 32), pulseAmp: 0.30, orbit: true}
+		return activityVisual{period: 900 * time.Millisecond, bodyColor: claudeOrange, halo: rgb(58, 40, 32), bounce: true}
 	case model.ActivityWaitingApproval:
-		return activityVisual{period: 1500 * time.Millisecond, rayColor: yellow, rayColor2: rgb(255, 226, 143), halo: rgb(58, 49, 24), pulseAmp: 0.16, orbit: false}
+		return activityVisual{period: 1500 * time.Millisecond, bodyColor: yellow, halo: rgb(58, 49, 24)}
 	default:
 		// Idle reads as asleep, not just "slow" — a still mascot with
 		// drifting z's communicates it at a glance, no text required.
-		return activityVisual{rayColor: withAlpha(claudeOrange, 130), rayColor2: withAlpha(claudePeach, 100), halo: rgb(32, 29, 27), sleeping: true}
+		return activityVisual{bodyColor: withAlpha(claudeOrange, 130), halo: rgb(32, 29, 27), sleeping: true}
 	}
 }
 
@@ -556,71 +553,69 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
 
 	if visual.sleeping {
-		r.drawSleepingRays(canvas, centerX, centerY, radius, visual)
+		r.drawPixelMascot(canvas, centerX, centerY, radius, visual.bodyColor, true, 0)
 		r.drawSleepZs(canvas, centerX, centerY, radius, now)
 		return
 	}
 
-	periodMS := visual.period.Milliseconds()
-	if periodMS <= 0 {
-		periodMS = 2000
-	}
-	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
-	for ray := 0; ray < 8; ray++ {
-		angle := float64(ray)*math.Pi/4 + phase/8
-		pulse := (math.Sin(phase+float64(ray)*math.Pi/4) + 1) / 2
-		inner := float64(radius) * 0.28
-		outer := float64(radius) * (0.68 + pulse*visual.pulseAmp*2)
-		fill := visual.rayColor
-		if pulse > 0.72 {
-			fill = visual.rayColor2
+	bounce := 0
+	if visual.bounce {
+		periodMS := visual.period.Milliseconds()
+		if periodMS <= 0 {
+			periodMS = 900
 		}
-		drawThickLine(
-			canvas,
-			centerX+int(math.Cos(angle)*inner),
-			centerY+int(math.Sin(angle)*inner),
-			centerX+int(math.Cos(angle)*outer),
-			centerY+int(math.Sin(angle)*outer),
-			max(2, radius/7),
-			fill,
-		)
+		phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
+		bounce = int(4 * math.Sin(phase))
 	}
-	fillCircle(canvas, centerX, centerY, max(3, radius/5), visual.rayColor)
-	if visual.orbit {
-		orbit := phase * 1.5
-		fillCircle(
-			canvas,
-			centerX+int(math.Cos(orbit)*float64(radius+6)),
-			centerY+int(math.Sin(orbit)*float64(radius+6)),
-			max(2, radius/9),
-			visual.rayColor2,
-		)
+	r.drawPixelMascot(canvas, centerX, centerY, radius, visual.bodyColor, false, bounce)
+}
+
+// pixelMascotBody and pixelMascotEyes lay out the blocky pixel-art creature
+// on a small (col, row) grid: a two-row head with ear/arm nubs sticking out
+// on the wider bottom row, then three separated leg blocks below.
+var pixelMascotBody = [][2]int{
+	{-1, 0}, {0, 0}, {1, 0}, // head, top row
+	{-3, 1}, {-1, 1}, {0, 1}, {1, 1}, {3, 1}, // ears + head, bottom row
+	{-2, 3}, {0, 3}, {2, 3}, // legs, row 1
+	{-2, 4}, {0, 4}, {2, 4}, // legs, row 2
+}
+
+var pixelMascotEyes = [][2]int{{-1, 0}, {1, 0}}
+
+// drawPixelMascot renders the creature as flat squares on a 7x5 grid —
+// eyesClosed swaps the eye squares for a thin closed-eye line (idle/asleep),
+// and yOffset lets the working state bounce the whole body in place.
+func (r *Renderer) drawPixelMascot(canvas *image.RGBA, centerX, centerY, radius int, bodyColor color.RGBA, eyesClosed bool, yOffset int) {
+	unit := max(2, radius*2/7)
+	half := unit / 2
+	originX, originY := centerX, centerY-unit*2+yOffset
+
+	for _, cell := range pixelMascotBody {
+		x := originX + cell[0]*unit - half
+		y := originY + cell[1]*unit - half
+		fillRounded(canvas, image.Rect(x, y, x+unit, y+unit), 0, bodyColor)
+	}
+
+	eyeColor := rgb(32, 22, 16)
+	for _, eye := range pixelMascotEyes {
+		x := originX + eye[0]*unit - half
+		y := originY + eye[1]*unit - half
+		if eyesClosed {
+			lineY := y + half
+			fillRounded(canvas, image.Rect(x+unit/6, lineY-1, x+unit-unit/6, lineY+2), 0, eyeColor)
+			continue
+		}
+		inset := max(1, unit/5)
+		fillRounded(canvas, image.Rect(x+inset, y+inset, x+unit-inset, y+unit-inset), 0, eyeColor)
 	}
 }
 
-// drawSleepingRays is idle's still, drooped body: shorter and thinner than
-// the animated states, and — deliberately — not a function of `now`, so
-// the mascot itself reads as motionless while drawSleepZs animates above it.
-func (r *Renderer) drawSleepingRays(canvas *image.RGBA, centerX, centerY, radius int, visual activityVisual) {
-	for ray := 0; ray < 8; ray++ {
-		angle := float64(ray) * math.Pi / 4
-		inner := float64(radius) * 0.3
-		outer := float64(radius) * 0.55
-		fill := visual.rayColor
-		if ray%3 == 0 {
-			fill = visual.rayColor2
-		}
-		drawThickLine(
-			canvas,
-			centerX+int(math.Cos(angle)*inner),
-			centerY+int(math.Sin(angle)*inner),
-			centerX+int(math.Cos(angle)*outer),
-			centerY+int(math.Sin(angle)*outer),
-			max(2, radius/8),
-			fill,
-		)
-	}
-	fillCircle(canvas, centerX, centerY, max(3, radius/6), visual.rayColor)
+// drawLogoMark is a small static version of the mascot for the header — a
+// plain brand mark, not an animated status indicator. The rail owns that
+// job; duplicating its motion in the corner would compete for attention.
+func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, radius int) {
+	fillCircle(canvas, centerX, centerY, radius+6, rgb(48, 34, 28))
+	r.drawPixelMascot(canvas, centerX, centerY, radius, claudeOrange, false, 0)
 }
 
 // drawSleepZs floats three "z"s up and out from the mascot in a loop —
@@ -640,32 +635,6 @@ func (r *Renderer) drawSleepZs(canvas *image.RGBA, centerX, centerY, radius int,
 		}
 		r.text(canvas, r.bold13, fadeColor(textSecondary, alpha), baseX+xOffset, baseY+yOffset, "z")
 	}
-}
-
-// drawLogoMark is a small static version of the mascot for the header — a
-// plain brand mark, not an animated status indicator. The rail owns that
-// job; duplicating its motion in the corner would compete for attention.
-func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, radius int) {
-	fillCircle(canvas, centerX, centerY, radius+6, rgb(48, 34, 28))
-	for ray := 0; ray < 8; ray++ {
-		angle := float64(ray) * math.Pi / 4
-		inner := float64(radius) * 0.3
-		outer := float64(radius) * 0.85
-		fill := claudeOrange
-		if ray%2 == 1 {
-			fill = claudePeach
-		}
-		drawThickLine(
-			canvas,
-			centerX+int(math.Cos(angle)*inner),
-			centerY+int(math.Sin(angle)*inner),
-			centerX+int(math.Cos(angle)*outer),
-			centerY+int(math.Sin(angle)*outer),
-			max(2, radius/6),
-			fill,
-		)
-	}
-	fillCircle(canvas, centerX, centerY, max(3, radius/5), claudeOrange)
 }
 
 // fadeColor returns base at the given alpha, premultiplied as color.RGBA
@@ -693,21 +662,6 @@ func (r *Renderer) drawApprovalBadge(canvas *image.RGBA, x, y int, now time.Time
 	label := "?"
 	width := font.MeasureString(r.bold16, label).Ceil()
 	r.text(canvas, r.bold16, rgb(46, 36, 8), x-width/2, y+6, label)
-}
-
-func drawThickLine(canvas *image.RGBA, x0, y0, x1, y1, thickness int, fill color.RGBA) {
-	dx := x1 - x0
-	dy := y1 - y0
-	steps := max(max(dx, -dx), max(dy, -dy))
-	if steps == 0 {
-		fillCircle(canvas, x0, y0, thickness, fill)
-		return
-	}
-	for step := 0; step <= steps; step++ {
-		x := x0 + dx*step/steps
-		y := y0 + dy*step/steps
-		fillCircle(canvas, x, y, thickness, fill)
-	}
 }
 
 func animationPercent(now time.Time) float64 {
