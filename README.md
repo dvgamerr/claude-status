@@ -39,6 +39,12 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
 - `claude-status import` รับเฉพาะ sanitized snapshot schema สำหรับเครื่อง Pi
 - `claude-status relay` เป็น process แยกที่อ่าน snapshot ล่าสุดจาก local state,
   ส่งไป Pi ผ่าน SSH และ retry อัตโนมัติเมื่อเครือข่ายขาด
+- `claude-status service install|remove|start|stop|status` ติดตั้ง relay ให้รัน
+  เป็น background service — คำสั่งเดียวกันทำงานเหมือนกันบน Windows (Windows
+  Service จริง), Linux (`systemd --user`) และ macOS (launchd `LaunchAgent`)
+- `claude-status pi install` เขียนและเปิดใช้งาน systemd unit ของ dashboard บน
+  Raspberry Pi เอง ชี้ไปที่ path ของ binary ปัจจุบันโดยตรง (รองรับ `go install`
+  โดยไม่ต้อง clone repo)
 - `claude-status gfx` เปิด native framebuffer dashboard 800×480, animate ที่ 66ms (~15fps)
   และเลือก snapshot ล่าสุดของ Claude/Codex แยกกันเพื่อให้ Claude เป็นหน้าหลักเสมอ
   จอเป็น touchscreen จริง แตะแล้วจะเห็น ripple จาง ๆ ตรงจุดที่แตะ (`--touch-device`
@@ -84,28 +90,37 @@ directory เดียวกันตรง ๆ
 
 ## ติดตั้งบน Raspberry Pi
 
-ต้องใช้ Raspberry Pi OS 64-bit และ Go 1.25 ขึ้นไป ตัว dashboard ใช้งานบน Pi 4
-RAM 2 GB ได้ แต่ถ้าจะรัน Claude Code บน Pi เครื่องเดียวกัน ควรใช้ RAM 4 GB หรือ
-8 GB ตามข้อกำหนดของ Claude Code
+ต้องใช้ Raspberry Pi OS 64-bit ตัว dashboard ใช้งานบน Pi 4 RAM 2 GB ได้ แต่ถ้าจะรัน
+Claude Code บน Pi เครื่องเดียวกัน ควรใช้ RAM 4 GB หรือ 8 GB ตามข้อกำหนดของ Claude Code
+
+วิธีที่ง่ายที่สุด: ติดตั้งผ่าน `go install` (ต้องมี Go 1.25+ บน Pi) แล้วสั่ง
+`pi install` ตัวเดียวจบ — ไม่ต้อง clone repo, ไม่ต้องเขียน systemd unit เอง:
 
 ```bash
 uname -m                         # ควรได้ aarch64
-git clone <repository-url> claude-status
-cd claude-status
-bash scripts/install.sh
-~/.local/bin/claude-status version
-sudo install -m 0644 configs/claude-status-tty1.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now claude-status-tty1.service
+go install github.com/dvgamerr/claude-status/cmd/claude-status@latest
+sudo $(go env GOPATH)/bin/claude-status pi install
 ```
 
-หากมี binary ที่ cross-build มาแล้ว:
+`pi install` เขียน systemd unit `claude-status-tty1.service` ชี้ไปที่ path ของ
+binary ปัจจุบันโดยตรง (ไม่ hardcode `/home/pi/.local/bin` เหมือนเดิมอีกต่อไป)
+ตั้ง `User`/`Group`/`WorkingDirectory` ตามผู้ใช้ที่เรียก (`$SUDO_USER`, override ได้
+ด้วย `--user NAME`) แล้ว `systemctl daemon-reload` + `enable --now` ให้ในคำสั่งเดียว
+— ต้องรันด้วยสิทธิ์ root (จะ `sudo` ให้เองอัตโนมัติถ้ายังไม่ได้รันแบบ root) ตัวเลือกอื่น:
+`--refresh 66ms`, `--framebuffer /dev/fb0`, `--tty /dev/tty1`, `--touch-device
+/dev/input/event0` (ใส่ค่าว่างเพื่อปิด touch feedback)
+
+ถ้าไม่อยากพึ่ง Go module proxy ก็ยังใช้วิธี clone + build เองได้เหมือนเดิม:
 
 ```bash
-bash scripts/install.sh ./claude-status
+git clone https://github.com/dvgamerr/claude-status
+cd claude-status
+bash scripts/install.sh          # หรือ: bash scripts/install.sh ./claude-status (มี binary cross-build แล้ว)
+sudo ~/.local/bin/claude-status pi install
 ```
 
-จากนั้นเพิ่มใน `~/.claude/settings.json` (หรือ project settings):
+จากนั้นเพิ่มใน `~/.claude/settings.json` (หรือ project settings) ถ้า Claude Code
+รันบน Pi เครื่องเดียวกัน:
 
 ```json
 {
@@ -132,28 +147,8 @@ hook ทั้งสี่ทำให้ mascot บนจอรู้สถา�
 card และ halo ด้านหลังอยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยัง
 ทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
 
-ถ้า Claude/Codex รันบน Windows และ Pi ใช้ SSH alias `pilab` ให้ build Windows กับ
-ARM64 binary ก่อน จากนั้นติดตั้ง integration ฝั่ง Windows:
-
-```powershell
-pwsh -File scripts/verify.ps1
-pwsh -File scripts/install-windows.ps1 -MirrorHost pilab
-```
-
-installer จะสำรองและแก้สองไฟล์โดยรักษาค่าอื่นไว้:
-
-- `%USERPROFILE%\.claude\settings.json`: ตั้ง `statusLine` ให้เรียก `ingest`
-  และเพิ่ม hook สี่ตัวให้เรียก `activity` (merge เข้าไปแบบไม่ลบ hook อื่นที่มีอยู่)
-- `%USERPROFILE%\.codex\config.toml`: ห่อ `notify` เดิมด้วย `codex-notify`
-  และ forward event กลับไป notifier เดิมด้วย จึงไม่ทำ Computer Use เดิมหาย
-- Windows Scheduled Task `claude-status-relay`: รัน relay หนึ่ง instance หลัง login,
-  retry ข้อมูลที่ยังส่งไม่สำเร็จ และเก็บ error/recovery log ไว้ที่
-  `%LOCALAPPDATA%\claude-status\relay.log`
-
-`ingest`, `activity`, `usage` และ `codex-notify` เขียน local state เท่านั้นและไม่เปิด
-network เอง ตัว relay เป็นเจ้าของ SSH transport เพียงจุดเดียว โดยส่งเฉพาะ snapshot
-ที่ผ่าน allowlist ไปเรียก `/home/pi/.local/bin/claude-status import`; ไม่ส่ง
-statusLine JSON ดิบ, prompt, response, transcript, OAuth token หรือ session auth ไป Pi
+ถ้า Claude Code/Codex รันอยู่คนละเครื่องกับจอ Pi ดูหัวข้อ "Claude/Codex อยู่บน
+PC/Mac แต่ใช้ Pi เป็นจอ" ด้านล่าง สำหรับวิธีตั้งค่าฝั่งเครื่องต้นทาง
 
 Claude Code ต้องได้รับ trust สำหรับ project ก่อนจึงจะเรียก command status line ได้
 ค่า `rate_limits` จะปรากฏเฉพาะบัญชี Claude.ai Pro/Max และหลัง API response แรกของ
@@ -232,15 +227,44 @@ directory listing ข้อมูล cost เป็นค่าประมา�
 
 ## Claude/Codex อยู่บน PC/Mac แต่ใช้ Pi เป็นจอ
 
-ให้ `ingest`/`codex-notify` ทำงานที่เครื่องต้นทาง แล้วเปิด relay ระยะยาวเพียงตัวเดียว:
+`ingest`/`activity`/`usage`/`codex-notify` เขียนแค่ local state บนเครื่องต้นทาง
+และไม่เปิด network เอง — ตัว **relay** เป็น process ระยะยาวตัวเดียวที่เป็นเจ้าของ
+SSH transport ทั้งหมด คอย watch local state แล้วส่งเฉพาะ snapshot ที่ sanitize
+แล้วไปเรียก `/home/pi/.local/bin/claude-status import` บน Pi ห้าม copy credential
+หรือส่ง JSON ดิบจาก provider ไปยัง Pi เด็ดขาด
+
+ติดตั้ง relay ให้รันเป็น background service — คำสั่งเดียวกัน ทำงานเหมือนกันทั้ง
+Windows, Linux, และ macOS:
 
 ```bash
-claude-status relay --mirror-ssh pilab
+go install github.com/dvgamerr/claude-status/cmd/claude-status@latest
+claude-status service install --mirror-ssh pilab
 ```
 
-relay จะส่งเฉพาะ snapshot ที่ sanitize แล้วไปยัง Pi ผ่าน SSH; ห้าม copy credential
-หรือส่ง JSON ดิบจาก provider ไปยัง Pi บน Windows installer จะสร้าง Scheduled Task นี้ให้
-อัตโนมัติ
+`service install` ใช้ service manager ของแต่ละ OS โดยตรง (ไม่ผ่านตัวกลางอื่น):
+
+| OS      | กลไกเบื้องหลัง                        | สิทธิ์ที่ต้องใช้                  |
+|---------|----------------------------------------|-----------------------------------|
+| Windows | Windows Service จริง (SCM)             | รันจาก Administrator shell        |
+| Linux   | `systemd --user` unit                  | ไม่ต้อง root                      |
+| macOS   | launchd `LaunchAgent`                  | ไม่ต้อง root                      |
+
+คำสั่งอื่นในกลุ่มเดียวกัน: `claude-status service status|start|stop|remove`
+(ใช้ชื่อบริการ `claude-status-relay` เดียวกันทุก OS) รัน `install` ซ้ำได้เสมอ —
+ถ้ามี instance เดิมรันอยู่จะ stop แล้ว restart ให้เองด้วย binary/flag ใหม่
+
+บน Windows ยังมีสคริปต์ `install-windows.ps1` ที่ทำครบในคำสั่งเดียว (build/ติดตั้ง
+binary + เพิ่ม hook ใน `~/.claude/settings.json` + wrap `notify` ใน
+`~/.codex/config.toml` + เรียก `service install` ให้ตอนท้าย):
+
+```powershell
+pwsh -File scripts/verify.ps1
+pwsh -File scripts/install-windows.ps1 -MirrorHost pilab
+```
+
+installer จะสำรองไฟล์เดิมไว้ก่อนแก้เสมอ (`.claude-status-backup-<timestamp>`)
+บน Linux/macOS ยังต้องแก้ `~/.claude/settings.json` และ `~/.codex/config.toml`
+ตามตัวอย่าง JSON ด้านบนเอง ก่อนรัน `service install`
 
 โปรเจกต์ยังไม่เปิด HTTP collector โดยตั้งใจ เพราะการเปิด network endpoint เพิ่มภาระเรื่อง
 authentication/TLS โดยไม่จำเป็นสำหรับ MVP; SSH transport ปลอดภัยและดูแลง่ายกว่า
