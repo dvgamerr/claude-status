@@ -221,6 +221,8 @@ func TestRunValidatesCommandFlags(t *testing.T) {
 		{name: "relay missing host", args: []string{"relay", "--once"}, wantExit: 2, wantText: "--mirror-ssh is required"},
 		{name: "relay positional", args: []string{"relay", "--mirror-ssh", "pilab", "unexpected"}, wantExit: 2, wantText: "unexpected positional"},
 		{name: "relay refresh too fast", args: []string{"relay", "--mirror-ssh", "pilab", "--refresh", "10ms"}, wantExit: 2, wantText: "at least 100ms"},
+		{name: "service install help", args: []string{"service", "install", "--help"}, wantExit: 0, wantText: "Usage: claude-status service install"},
+		{name: "service install invalid flag", args: []string{"service", "install", "--invalid"}, wantExit: 2, wantText: "flag provided but not defined"},
 		{name: "ingest legacy mirror removed", args: []string{"ingest", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
 		{name: "activity legacy mirror removed", args: []string{"activity", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},
 		{name: "usage legacy mirror removed", args: []string{"usage", "--mirror-ssh", "pilab"}, wantExit: 2, wantText: "flag provided but not defined"},

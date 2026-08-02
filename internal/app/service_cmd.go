@@ -1,8 +1,6 @@
 package app
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -72,21 +70,14 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("service install", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("service install", "Usage: claude-status service install --mirror-ssh HOST [--remote-bin PATH] [--refresh 1s] [--state-dir DIR] [--log-file FILE]", stderr)
 	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives sanitized snapshots")
 	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	refresh := flags.Duration("refresh", time.Second, "interval between local snapshot checks")
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	logFile := flags.String("log-file", filepath.Join(defaultDir, "relay.log"), "relay diagnostics log file")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status service install --mirror-ssh HOST [--remote-bin PATH] [--refresh 1s] [--state-dir DIR] [--log-file FILE]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")

@@ -465,6 +465,7 @@ func fillRounded(canvas *image.RGBA, bounds image.Rectangle, radius int, fill co
 		return
 	}
 	radius = min(radius, min(bounds.Dx()/2, bounds.Dy()/2))
+	fillSource := image.NewUniform(fill)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		inset := 0
 		if radius > 0 {
@@ -479,7 +480,7 @@ func fillRounded(canvas *image.RGBA, bounds image.Rectangle, radius int, fill co
 				inset = radius - int(math.Sqrt(max(0, float64(radius*radius)-dy*dy)))
 			}
 		}
-		draw.Draw(canvas, image.Rect(bounds.Min.X+inset, y, bounds.Max.X-inset, y+1), image.NewUniform(fill), image.Point{}, draw.Src)
+		draw.Draw(canvas, image.Rect(bounds.Min.X+inset, y, bounds.Max.X-inset, y+1), fillSource, image.Point{}, draw.Src)
 	}
 }
 

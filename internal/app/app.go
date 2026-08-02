@@ -36,6 +36,28 @@ var (
 	Date    = "unknown"
 )
 
+// newCommandFlagSet centralizes the output and usage setup shared by every
+// command. Keeping this in one place prevents subtle differences in help and
+// parse-error behavior as new subcommands are added.
+func newCommandFlagSet(name, usage string, stderr io.Writer) *flag.FlagSet {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() { fmt.Fprintln(stderr, usage) }
+	return flags
+}
+
+// parseCommandFlags translates flag's parse result to the CLI exit-code
+// contract. parsed is false when the caller should return exitCode directly.
+func parseCommandFlags(flags *flag.FlagSet, args []string) (exitCode int, parsed bool) {
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0, false
+		}
+		return 2, false
+	}
+	return 0, true
+}
+
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printUsage(stdout)
@@ -85,17 +107,10 @@ func runIngest(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("ingest", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("ingest", "Usage: claude-status ingest [--state-dir DIR]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status ingest [--state-dir DIR]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -125,17 +140,10 @@ func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 0
 	}
-	flags := flag.NewFlagSet("activity", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("activity", "Usage: claude-status activity [--state-dir DIR]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status activity [--state-dir DIR]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -165,22 +173,15 @@ func runUsage(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("usage", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("usage", "Usage: claude-status usage --five-hour PCT --seven-day PCT [--five-hour-reset 5h] [--seven-day-reset 168h] [--session ID] [--state-dir DIR]", stderr)
 	fiveHour := flags.Float64("five-hour", -1, "5-hour rate limit used percentage (0-100), required")
 	sevenDay := flags.Float64("seven-day", -1, "7-day rate limit used percentage (0-100), required")
 	fiveHourReset := flags.Duration("five-hour-reset", 5*time.Hour, "time until the 5-hour window resets")
 	sevenDayReset := flags.Duration("seven-day-reset", 7*24*time.Hour, "time until the 7-day window resets")
 	sessionID := flags.String("session", "", "session ID to update (defaults to the most recently updated session)")
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status usage --five-hour PCT --seven-day PCT [--five-hour-reset 5h] [--seven-day-reset 168h] [--session ID] [--state-dir DIR]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -210,17 +211,10 @@ func runImport(args []string, stdin io.Reader, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("import", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("import", "Usage: claude-status import [--state-dir DIR]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status import [--state-dir DIR]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -263,21 +257,14 @@ func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve codex home")
 		return 1
 	}
-	flags := flag.NewFlagSet("codex-notify", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("codex-notify", "Usage: claude-status codex-notify [flags] NOTIFICATION_JSON", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
 	codexHome := flags.String("codex-home", defaultCodexHome, "Codex home containing session rollouts")
 	forward := flags.String("forward", "", "existing notifier executable to preserve")
 	var forwardArgs stringList
 	flags.Var(&forwardArgs, "forward-arg", "argument for the existing notifier (repeatable)")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status codex-notify [flags] NOTIFICATION_JSON")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 1 {
 		logger.Error().Msg("expected one Codex notification JSON argument")
@@ -318,22 +305,15 @@ func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("relay", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("relay", "Usage: claude-status relay --mirror-ssh HOST [--refresh 1s] [--once] [--log-file FILE]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives sanitized snapshots")
 	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
 	refresh := flags.Duration("refresh", time.Second, "interval between local snapshot checks")
 	once := flags.Bool("once", false, "send pending snapshots once and exit")
 	logFile := flags.String("log-file", "", "append relay diagnostics to this file")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status relay --mirror-ssh HOST [--refresh 1s] [--once] [--log-file FILE]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -424,21 +404,14 @@ func runTUI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("tui", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("tui", "Usage: claude-status tui [--state-dir DIR] [--session ID] [--refresh 1s] [--stale-after 15s] [--inline]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	sessionID := flags.String("session", "", "initial session ID (defaults to most recent)")
 	refresh := flags.Duration("refresh", time.Second, "dashboard refresh interval")
 	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
 	inline := flags.Bool("inline", false, "render without the terminal alternate screen")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status tui [--state-dir DIR] [--session ID] [--refresh 1s] [--stale-after 15s] [--inline]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -477,22 +450,15 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("gfx", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("gfx", "Usage: claude-status gfx [--state-dir DIR] [--refresh 66ms] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	refresh := flags.Duration("refresh", time.Second/15, "frame refresh interval (default ~15fps)")
 	staleAfter := flags.Duration("stale-after", 15*time.Second, "age at which a snapshot is marked stale")
 	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
 	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
 	touchDevice := flags.String("touch-device", "/dev/input/event0", "evdev device for the touchscreen (empty disables touch feedback)")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status gfx [--state-dir DIR] [--refresh 66ms] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -557,18 +523,11 @@ func runPreview(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := flag.NewFlagSet("preview", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("preview", "Usage: claude-status preview [--state-dir DIR] [--output dashboard.png]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	outputPath := flags.String("output", "pixel-dashboard-preview.png", "PNG output path")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status preview [--state-dir DIR] [--output dashboard.png]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")

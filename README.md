@@ -312,6 +312,12 @@ authentication/TLS โดยไม่จำเป็นสำหรับ MVP; S
 
 ## พัฒนาและทดสอบ
 
+โค้ด CLI ใช้ `newCommandFlagSet` และ `parseCommandFlags` เป็นทางเข้ากลางสำหรับ
+help/parse error ของทุก subcommand เพื่อให้ข้อความ help และ exit code (`0` สำหรับ
+help, `2` สำหรับ flag ที่ไม่ถูกต้อง) สม่ำเสมอเมื่อเพิ่มคำสั่งใหม่ ส่วน renderer ของ
+จอ framebuffer จะ reuse แหล่งสีหนึ่งครั้งต่อ rounded shape แทนการสร้างใหม่ทุก
+scanline เพื่อลด allocation ใน render loop ~15 FPS โดยไม่เปลี่ยนภาพที่ได้
+
 ```bash
 go test ./...
 go vet ./...

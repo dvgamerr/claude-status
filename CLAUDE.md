@@ -229,3 +229,32 @@ References:
   `Restart=always`. Control `claude-status-tty1.service` instead.
 - This file is the canonical project instruction file. Do not write these notes
   to `C:\Users\dvgamerr\Desktop\CLAUDE.md`.
+
+## Maintenance log
+
+### 2026-08-02 — CLI deduplication and framebuffer render allocation cleanup
+
+- Replaced the repeated `flag.NewFlagSet`/output/usage/parse-error blocks in
+  the app commands with `newCommandFlagSet` and `parseCommandFlags`. The shared
+  path preserves the existing help text and exit-code contract while removing
+  11 copies of the same control flow across `app.go`, `service_cmd.go`, and
+  `pi_cmd.go`. Service-install help and invalid-flag cases now explicitly cover
+  the shared behavior alongside the existing command-table tests.
+- `pixelui.fillRounded` now creates one `image.Uniform` per shape and reuses it
+  for every scanline. Previously it created the same uniform inside the row
+  loop; this removes redundant allocations from the ~15 FPS framebuffer hot
+  path without changing geometry, compositing mode, colors, or rendered pixels.
+- Successful verification for this maintenance pass: shuffled tests repeated
+  three times, package coverage collection, `go vet ./...`, native
+  `go build ./...`, a Windows binary ingest/privacy smoke test, Linux ARM64
+  cross-build plus metadata inspection, PowerShell and shell syntax checks,
+  Linux AMD64/ARM64 release packaging plus checksum verification, and
+  `git diff --check`.
+- Two pre-existing verification constraints remain visible rather than being
+  hidden: the full suite currently reports 71.0% coverage while
+  `scripts/verify.ps1` requires 80%, so that script stops at step 5; and
+  `go test -race ./...` cannot build on this Windows machine because no GCC C
+  compiler is installed. Normal, shuffled, and repeated tests pass.
+- Pre-existing worktree changes in Claude/state/system-info tests and reader
+  code, plus untracked mascot GIFs in top-level `assets/`, were deliberately
+  left intact and are not part of this maintenance pass.

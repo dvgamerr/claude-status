@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -54,21 +53,14 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	flags := flag.NewFlagSet("pi install", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags := newCommandFlagSet("pi install", "Usage: claude-status pi install [--user NAME] [--refresh 66ms] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]", stderr)
 	userName := flags.String("user", "", "user the dashboard service runs as (default: $SUDO_USER, or the current user)")
 	refresh := flags.String("refresh", "66ms", "frame refresh interval")
 	framebufferPath := flags.String("framebuffer", "/dev/fb0", "Linux framebuffer device")
 	ttyPath := flags.String("tty", "/dev/tty1", "virtual console switched to graphics mode")
 	touchDevice := flags.String("touch-device", "/dev/input/event0", "evdev device for touch feedback (empty disables it)")
-	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: claude-status pi install [--user NAME] [--refresh 66ms] [--framebuffer /dev/fb0] [--tty /dev/tty1] [--touch-device /dev/input/event0]")
-	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
