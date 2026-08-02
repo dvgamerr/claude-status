@@ -129,7 +129,10 @@ func TestRailMascotAnimatesOverTime(t *testing.T) {
 	snapshot := baseSnapshot(now)
 	snapshot.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now}
 	frame := renderer.Render(View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second})
-	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(120 * time.Millisecond), StaleAfter: 15 * time.Second})
+	// ActivityWorking now plays back a traced GIF sequence at
+	// gifFrameDuration per frame (see gifFrameIndex), not a continuous pose
+	// bob, so the delta must cross a frame boundary to show a difference.
+	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(gifFrameDuration), StaleAfter: 15 * time.Second})
 	mascotRegion := image.Rect(railLeft+20, sectionsTop+20, railRight-20, sectionsTop+180)
 	if sameRegion(frame, later, mascotRegion) {
 		t.Fatal("mascot did not animate between frames")
@@ -147,8 +150,12 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 		name  string
 		state string
 		later time.Time
+		// gifSequence states render at a fixed rect (see gifFramesForActivity)
+		// — only the frame content changes, not a pose offset/scale — so
+		// movingBounds can't be derived from mascotPoseForActivity for them.
+		gifSequence bool
 	}{
-		{name: "coding bob", state: model.ActivityWorking, later: start.Add(120 * time.Millisecond)},
+		{name: "typing frames", state: model.ActivityTyping, later: start.Add(gifFrameDuration), gifSequence: true},
 		{name: "sleeping breath", state: model.ActivityIdle, later: start.Add(700 * time.Millisecond)},
 		{name: "approval shake", state: model.ActivityWaitingApproval, later: start.Add(65 * time.Millisecond)},
 	}
@@ -163,13 +170,18 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 				t.Fatal("mascot artwork did not move")
 			}
 
-			firstPose := mascotPoseForActivity(tt.state, start)
-			secondPose := mascotPoseForActivity(tt.state, tt.later)
-			movingBounds := iconDestination(
-				centerX+firstPose.xOffset, centerY+firstPose.yOffset, firstPose.width, firstPose.height,
-			).Union(iconDestination(
-				centerX+secondPose.xOffset, centerY+secondPose.yOffset, secondPose.width, secondPose.height,
-			))
+			var movingBounds image.Rectangle
+			if tt.gifSequence {
+				movingBounds = iconDestination(centerX, centerY, railIconSize, railIconSize)
+			} else {
+				firstPose := mascotPoseForActivity(tt.state, start)
+				secondPose := mascotPoseForActivity(tt.state, tt.later)
+				movingBounds = iconDestination(
+					centerX+firstPose.xOffset, centerY+firstPose.yOffset, firstPose.width, firstPose.height,
+				).Union(iconDestination(
+					centerX+secondPose.xOffset, centerY+secondPose.yOffset, secondPose.width, secondPose.height,
+				))
+			}
 			if !sameOutsideRegion(first, second, movingBounds) {
 				t.Fatal("mascot animation changed the static backdrop")
 			}
@@ -216,6 +228,18 @@ func TestResolveActivityStates(t *testing.T) {
 	approvalOverridesSubagents := model.Snapshot{Activity: model.Activity{State: model.ActivityWaitingApproval, UpdatedAt: now.Add(-1 * time.Second), Subagents: 2}}
 	if got := resolveActivity(&approvalOverridesSubagents, now); got != model.ActivityWaitingApproval {
 		t.Fatalf("resolveActivity(approval + subagents) = %q, want a pending approval to win", got)
+	}
+
+	// A SubagentStart merged before any state-setting hook ever fired for
+	// this session leaves State == "" with Subagents already positive —
+	// the count must still win instead of falling through to the
+	// statusLine-freshness fallback, which would ignore it entirely.
+	subagentBeforeAnyState := model.Snapshot{
+		CapturedAt: now.Add(-30 * time.Second),
+		Activity:   model.Activity{UpdatedAt: now.Add(-1 * time.Second), Subagents: 1},
+	}
+	if got := resolveActivity(&subagentBeforeAnyState, now); got != model.ActivitySubagentOne {
+		t.Fatalf("resolveActivity(subagent before any state) = %q, want subagent_one", got)
 	}
 }
 
@@ -267,13 +291,25 @@ func TestNewActivityStatesRenderDistinctly(t *testing.T) {
 		}
 	}
 
+	// A single fixed delta can coincidentally round back to the same integer
+	// pose offset for some state's period (e.g. 300ms happens to land back
+	// on a zero offset for a 620ms period) — check a couple of deltas and
+	// only fail if none of them show movement.
+	deltas := []time.Duration{150 * time.Millisecond, 300 * time.Millisecond, 470 * time.Millisecond}
 	for _, state := range states {
 		first := image.NewRGBA(image.Rect(0, 0, 200, 200))
-		second := image.NewRGBA(first.Bounds())
 		renderer.drawMascot(first, centerX, centerY, radius, now, state)
-		renderer.drawMascot(second, centerX, centerY, radius, now.Add(300*time.Millisecond), state)
-		if sameRegion(first, second, first.Bounds()) {
-			t.Fatalf("%s did not animate between frames", state)
+		animated := false
+		for _, delta := range deltas {
+			second := image.NewRGBA(first.Bounds())
+			renderer.drawMascot(second, centerX, centerY, radius, now.Add(delta), state)
+			if !sameRegion(first, second, first.Bounds()) {
+				animated = true
+				break
+			}
+		}
+		if !animated {
+			t.Fatalf("%s did not animate across any sampled delta", state)
 		}
 	}
 }

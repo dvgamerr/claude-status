@@ -516,9 +516,13 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 	}
 }
 
-// activityVisual gives each context-specific Clawd SVG its own tempo and a
-// fixed backdrop color. The backdrop never animates: motion belongs to the
-// mascot artwork, not to the rail behind it.
+// activityVisual gives each state a halo tint; period additionally drives
+// timing, but only for the two states that still use a single pose plus
+// procedural motion (idle, waiting_approval — see mascotPoseForActivity and
+// mascotFrameForActivity). Every GIF-driven state (the legacy working alias,
+// typing, thinking, building, subagent_one, subagent_many) gets its timing
+// entirely from gifFrameDuration instead, so period is left at its zero
+// value for them — only their halo matters.
 type activityVisual struct {
 	period time.Duration
 	halo   color.RGBA
@@ -527,16 +531,13 @@ type activityVisual struct {
 func visualForActivity(state string) activityVisual {
 	switch state {
 	case model.ActivityWorking, model.ActivityTyping:
-		return activityVisual{period: 720 * time.Millisecond, halo: rgb(58, 40, 32)}
+		return activityVisual{halo: rgb(58, 40, 32)}
 	case model.ActivityThinking:
-		// Slower and cooler-toned than Typing — Clawd is pondering, not
-		// actively typing yet.
-		return activityVisual{period: 1600 * time.Millisecond, halo: rgb(44, 38, 58)}
+		return activityVisual{halo: rgb(44, 38, 58)}
 	case model.ActivityBuilding:
-		// Faster than Typing — a hammering cadence for "running a command".
-		return activityVisual{period: 480 * time.Millisecond, halo: rgb(58, 46, 24)}
+		return activityVisual{halo: rgb(58, 46, 24)}
 	case model.ActivitySubagentOne, model.ActivitySubagentMany:
-		return activityVisual{period: 620 * time.Millisecond, halo: rgb(34, 42, 58)}
+		return activityVisual{halo: rgb(34, 42, 58)}
 	case model.ActivityWaitingApproval:
 		return activityVisual{period: 780 * time.Millisecond, halo: rgb(58, 49, 24)}
 	default:
@@ -554,6 +555,11 @@ type mascotPose struct {
 	height  int
 }
 
+// mascotPoseForActivity only runs for the two states that still use a
+// single static pose plus procedural motion (idle, waiting_approval) — every
+// other state now has its motion traced frame-by-frame from a real GIF
+// instead (see gifFramesForActivity/gifFrameIndex), so drawMascot never
+// calls this for them.
 func mascotPoseForActivity(state string, now time.Time) mascotPose {
 	visual := visualForActivity(state)
 	periodMS := max(int64(1), visual.period.Milliseconds())
@@ -561,18 +567,6 @@ func mascotPoseForActivity(state string, now time.Time) mascotPose {
 	pose := mascotPose{width: railIconSize, height: railIconSize}
 
 	switch state {
-	case model.ActivityWorking, model.ActivityTyping, model.ActivitySubagentOne, model.ActivitySubagentMany:
-		// Two quick taps per cycle make Clawd Coding feel busy without moving
-		// the card or halo. The upward bob lands on each typing beat.
-		pose.xOffset = int(math.Round(2 * math.Sin(2*phase)))
-		pose.yOffset = -int(math.Round(3 * math.Abs(math.Sin(phase))))
-	case model.ActivityThinking:
-		// A slow side-to-side sway, not a bob — reads as pondering rather
-		// than actively typing.
-		pose.xOffset = int(math.Round(3 * math.Sin(phase)))
-	case model.ActivityBuilding:
-		// Sharp, fast downward taps read as hammering on something.
-		pose.yOffset = -int(math.Round(5 * math.Abs(math.Sin(2*phase))))
 	case model.ActivityWaitingApproval:
 		// A tight three-beat shake matches the exclamation artwork and reads
 		// as urgent even from across the room.
@@ -624,7 +618,13 @@ func resolveActivity(snapshot *model.Snapshot, now time.Time) string {
 	if snapshot == nil {
 		return model.ActivityIdle
 	}
-	if snapshot.Activity.State != "" {
+	// Freshness is keyed on UpdatedAt, not on State being set: a session
+	// whose very first merged hook was SubagentStart has Subagents>0 with
+	// State still "" (activity.Run always stamps UpdatedAt when anything
+	// matched, even a subagent-only delta), and that count must still win
+	// below instead of silently falling through to the statusLine-freshness
+	// fallback meant for sessions hooks have never touched at all.
+	if !snapshot.Activity.UpdatedAt.IsZero() {
 		age := now.Sub(snapshot.Activity.UpdatedAt)
 		if age < 0 || age > activityStaleAfter {
 			return model.ActivityIdle
@@ -638,7 +638,9 @@ func resolveActivity(snapshot *model.Snapshot, now time.Time) string {
 		case snapshot.Activity.Subagents == 1:
 			return model.ActivitySubagentOne
 		}
-		return snapshot.Activity.State
+		if snapshot.Activity.State != "" {
+			return snapshot.Activity.State
+		}
 	}
 	age := now.Sub(snapshot.CapturedAt)
 	if age >= 0 && age < 3*time.Second {
@@ -677,72 +679,55 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 	visual := visualForActivity(state)
 	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
 
+	if frames := gifFramesForActivity(&r.icons, state); frames != nil {
+		icon := frames[gifFrameIndex(frames, now)]
+		drawIconScaledCentered(canvas, icon, centerX, centerY, railIconSize, railIconSize)
+		return
+	}
+
 	frames := r.icons.idle
-	switch state {
-	case model.ActivityWorking, model.ActivityTyping, model.ActivityThinking, model.ActivityBuilding,
-		model.ActivitySubagentOne, model.ActivitySubagentMany:
-		frames = r.icons.working
-	case model.ActivityWaitingApproval:
+	if state == model.ActivityWaitingApproval {
 		frames = r.icons.waitingApproval
 	}
 	icon := frames[mascotFrameForActivity(state, now)]
 	pose := mascotPoseForActivity(state, now)
 	drawIconScaledCentered(canvas, icon, centerX+pose.xOffset, centerY+pose.yOffset, pose.width, pose.height)
+}
 
-	// Thinking/Building/Subagent-count share the Clawd Coding artwork above
-	// (no licensed source art exists for those poses — see
-	// internal/pixelui/assets/README.md), so a small procedurally drawn
-	// badge is what actually distinguishes them from Typing and from each
-	// other.
+// gifFramesForActivity returns the traced GIF-sequence frames for state, or
+// nil when state instead uses the legacy 2-frame pose+alternation system
+// (idle, waiting_approval — see mascotPoseForActivity).
+//
+// ActivityWorking is the pre-Typing/Building legacy value (see its doc
+// comment in internal/model/snapshot.go) and renders on the same traced
+// sequence as Typing, not the original static Clawd Coding pose.
+func gifFramesForActivity(icons *iconSet, state string) []*image.RGBA {
 	switch state {
+	case model.ActivityWorking, model.ActivityTyping:
+		return icons.typing
 	case model.ActivityThinking:
-		drawThoughtBubble(canvas, centerX, centerY, radius, now)
+		return icons.thinking
 	case model.ActivityBuilding:
-		drawBuildingBadge(canvas, centerX, centerY, radius, now)
+		return icons.building
 	case model.ActivitySubagentOne:
-		drawSubagentBadge(canvas, centerX, centerY, radius, now, 1)
+		return icons.subagentOne
 	case model.ActivitySubagentMany:
-		drawSubagentBadge(canvas, centerX, centerY, radius, now, 2)
+		return icons.subagentMany
+	default:
+		return nil
 	}
 }
 
-// drawThoughtBubble draws a small three-circle thought-bubble trail rising
-// from the mascot's head, gently bobbing — the Thinking state's only visual
-// distinction from Typing, since both reuse the Clawd Coding artwork.
-func drawThoughtBubble(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
-	phase := float64(now.UnixMilli()%2400) / 2400 * 2 * math.Pi
-	bob := int(math.Round(2 * math.Sin(phase)))
-	baseX := centerX + radius/2
-	baseY := centerY - radius - 4 + bob
-	fillCircle(canvas, baseX, baseY+16, 4, textPrimary)
-	fillCircle(canvas, baseX+9, baseY+5, 6, textPrimary)
-	fillCircle(canvas, baseX+20, baseY-10, 11, textPrimary)
-}
-
-// drawBuildingBadge draws a small pulsing ring badge (a stand-in for a gear)
-// at the mascot's lower-right — Building's only visual distinction from
-// Typing/Thinking.
-func drawBuildingBadge(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
-	phase := float64(now.UnixMilli()%500) / 500 * 2 * math.Pi
-	pulse := (math.Sin(phase) + 1) / 2
-	badgeX := centerX + radius - 6
-	badgeY := centerY + radius - 6
-	fillCircle(canvas, badgeX, badgeY, 9, rgb(58, 40, 20))
-	blendRing(canvas, badgeX, badgeY, 7-int(2*pulse), 3, yellow, 255)
-}
-
-// drawSubagentBadge draws one dot per running subagent (capped at 2 — "2+"
-// doesn't need an exact count) below the mascot, gently bouncing.
-func drawSubagentBadge(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, count int) {
-	phase := float64(now.UnixMilli()%900) / 900 * 2 * math.Pi
-	bounce := int(math.Round(2 * math.Abs(math.Sin(phase))))
-	const dotRadius, spacing = 6, 16
-	total := min(count, 2)
-	startX := centerX - (total-1)*spacing/2
-	y := centerY + radius + 4 - bounce
-	for i := range total {
-		fillCircle(canvas, startX+i*spacing, y, dotRadius, purple)
+// gifFrameIndex advances through a traced GIF sequence at gifFrameDuration
+// per frame, looping. This is independent of visualForActivity's period,
+// which for these states now only picks the halo tint.
+func gifFrameIndex(frames []*image.RGBA, now time.Time) int {
+	durationMS := gifFrameDuration.Milliseconds()
+	index := int(now.UnixMilli() / durationMS % int64(len(frames)))
+	if index < 0 {
+		index += len(frames)
 	}
+	return index
 }
 
 // mascotFrameForActivity picks between the two rasterized SVG poses for the

@@ -53,19 +53,22 @@ permission error.
 The header uses a bare white Anthropic logo with no background or frame, and
 deliberately omits Claude model and session identity. The left-hand status rail
 holds context-specific Clawd SVG artwork and is the dashboard's focal point
-(`internal/pixelui/render.go`'s `renderRail`). Three SVG-backed base poses
-exist: Clawd Coding (fast typing bob), Clawd Sleeping (`idle`, slow
-inhale/exhale scale), and Clawd Exclamation Mark (`waiting_approval`, tight
-urgent shake). `thinking`, `typing`, `building`, `subagent_one`, and
-`subagent_many` all reuse the Clawd Coding artwork — there
-is no licensed Icons8 source art for those poses (see
-`internal/pixelui/assets/README.md`), so they're distinguished only by tempo,
-halo tint, motion (a slow sway for thinking, sharp downward taps for
-building), and a small procedurally drawn badge on top: a rising three-circle
-thought bubble for `thinking`, a pulsing ring for `building`, and 1 or 2 dots
-for `subagent_one`/`subagent_many`. The rail, card, and halo stay completely
-still in every state; only the mascot artwork (and its badge, where one
-exists) moves. The embedded SVGs are rasterized once at renderer startup, not
+(`internal/pixelui/render.go`'s `renderRail`). Two states still use a single
+static pose plus procedural motion (`mascotPoseForActivity`): Clawd Sleeping
+(`idle`, slow inhale/exhale scale) and Clawd Exclamation Mark
+(`waiting_approval`, tight urgent shake) — each with a hand-edited "-2"
+alternate frame that `render.go` alternates on the state's own beat.
+Everything else (`working` legacy alias, `typing`, `thinking`, `building`,
+`subagent_one`, `subagent_many`) instead plays back a real frame-by-frame
+sequence hand-traced from a reference GIF for that pose (thought bubble
+rising, hands typing, hammer swinging, head bobbing to music, balls arcing)
+— `gifFramesForActivity` picks the state's `[]*image.RGBA` sequence and
+`gifFrameIndex` advances through it at `gifFrameDuration` (300ms) per frame,
+looping; see `internal/pixelui/assets/README.md` for the per-state frame
+counts and naming (`clawd-<state>-NN.svg`, zero-padded so lexical sort is
+also playback order). The rail, card, and halo stay completely still in
+every state; only the mascot artwork moves. The embedded SVGs are rasterized
+once at renderer startup, not
 on every frame. Activity state is independent of the statusLine refresh cycle
 — see below. The rail caption below the activity pill is just the activity
 duration ("typing for 12s", "idle for 4m") — no session name or ID, matching
