@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dvgamerr/claude-status/internal/model"
 )
@@ -17,6 +18,15 @@ import (
 const (
 	appDirectory = "claude-status"
 	latestFile   = "latest.json"
+
+	// A reader can land mid-rename on Windows: writeAtomic's os.Rename onto
+	// an existing destination briefly holds it exclusively, and a read
+	// during that window fails with "The process cannot access the file
+	// because it is being used by another process" instead of a real
+	// error. The write finishes in microseconds, so a few short retries
+	// clear it without the relay ever having to treat it as corruption.
+	readRetryAttempts = 5
+	readRetryDelay    = 20 * time.Millisecond
 )
 
 type Store struct {
@@ -179,9 +189,26 @@ func writeAtomic(dir, name string, data []byte) (returnErr error) {
 	return nil
 }
 
+// readFileWithRetry retries a transient read failure (a file mid-rename)
+// but not os.ErrNotExist, which is either a real "no such session" or a
+// race with a caller-visible directory listing and shouldn't be masked by
+// waiting.
+func readFileWithRetry(path string) ([]byte, error) {
+	var data []byte
+	var err error
+	for range readRetryAttempts {
+		data, err = os.ReadFile(path)
+		if err == nil || errors.Is(err, os.ErrNotExist) {
+			return data, err
+		}
+		time.Sleep(readRetryDelay)
+	}
+	return data, err
+}
+
 func readSnapshot(path string) (model.Snapshot, error) {
 	var snapshot model.Snapshot
-	data, err := os.ReadFile(path)
+	data, err := readFileWithRetry(path)
 	if err != nil {
 		return snapshot, err
 	}
