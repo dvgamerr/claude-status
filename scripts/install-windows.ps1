@@ -8,18 +8,13 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$RelayTaskName = "claude-status-relay"
 
-$ExistingRelayTask = Get-ScheduledTask -TaskName $RelayTaskName -ErrorAction SilentlyContinue
-if ($ExistingRelayTask -and $ExistingRelayTask.State -eq "Running") {
-    Stop-ScheduledTask -TaskName $RelayTaskName
-    for ($Attempt = 0; $Attempt -lt 50; $Attempt++) {
-        Start-Sleep -Milliseconds 100
-        if ((Get-ScheduledTask -TaskName $RelayTaskName).State -ne "Running") {
-            break
-        }
-    }
-}
+# The relay itself now runs as a real Windows Service (`claude-status
+# service install`, internal/service/manager_windows.go) instead of a
+# Scheduled Task — the same command also works unchanged on Linux
+# (systemd --user) and macOS (launchd). `service install` stops and
+# restarts an already-running instance on its own when re-run, so there's
+# no separate "stop before replacing the binary" step needed here anymore.
 
 if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = Join-Path $RepoDir "bin\claude-status.exe"
@@ -194,20 +189,12 @@ else {
 }
 Write-Utf8Atomic -Path $CodexConfigPath -Content $CodexConfig
 
-$StateDir = Join-Path $env:LOCALAPPDATA "claude-status"
-$RelayLog = Join-Path $StateDir "relay.log"
-$RelayArguments = 'relay --state-dir "' + $StateDir + '" --mirror-ssh ' + $MirrorHost + ' --remote-bin ' + $RemoteBinary + ' --refresh 1s --log-file "' + $RelayLog + '"'
-$RelayAction = New-ScheduledTaskAction -Execute $InstalledBinary -Argument $RelayArguments
-$RelayTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$RelaySettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
-$RelayPrincipal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $RelayTaskName -Action $RelayAction -Trigger $RelayTrigger -Settings $RelaySettings -Principal $RelayPrincipal -Description "Reliably mirrors sanitized Claude/Codex snapshots to the Raspberry Pi dashboard" -Force | Out-Null
-Start-ScheduledTask -TaskName $RelayTaskName
+# Registering a Windows Service requires an elevated (Administrator) shell,
+# unlike the old Scheduled Task registration this replaces.
+& $InstalledBinary service install --mirror-ssh $MirrorHost --remote-bin $RemoteBinary --refresh 1s
 
 Write-Host "installed binary: $InstalledBinary"
 Write-Host "configured Claude statusLine: $ClaudeSettingsPath"
 Write-Host "configured Codex notify: $CodexConfigPath"
-Write-Host "started snapshot relay task: $RelayTaskName"
-Write-Host "relay log: $RelayLog"
 if ($ClaudeBackup) { Write-Host "Claude backup: $ClaudeBackup" }
 if ($CodexBackup) { Write-Host "Codex backup: $CodexBackup" }

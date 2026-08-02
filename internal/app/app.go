@@ -55,6 +55,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runImport(args[1:], stdin, stderr)
 	case "relay":
 		return runRelay(ctx, args[1:], stderr)
+	case "service":
+		return runService(args[1:], stdout, stderr)
+	case "pi":
+		return runPi(args[1:], stdout, stderr)
 	case "tui":
 		return runTUI(ctx, args[1:], stdin, stdout, stderr)
 	case "gfx":
@@ -596,6 +600,8 @@ Usage:
   claude-status codex-notify [flags] Read a Codex turn-complete notification
   claude-status import [flags]       Import one sanitized snapshot
   claude-status relay [flags]        Retry local snapshot delivery over SSH
+  claude-status service <verb>       Install/remove/start/stop/status the relay as a background service
+  claude-status pi install [flags]   Set up the framebuffer dashboard service on this Raspberry Pi
   claude-status gfx [flags]          Render the 800x480 framebuffer dashboard
   claude-status preview [flags]      Save one framebuffer dashboard frame as PNG
   claude-status tui [flags]          Open the full-screen dashboard
