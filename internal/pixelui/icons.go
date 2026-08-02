@@ -25,30 +25,27 @@ const railIconSize = 120
 //go:embed assets/anthropic.svg
 var anthropicLogoSVG []byte
 
-//go:embed assets/clawd-sleeping.svg
-var clawdSleepingSVG []byte
-
-//go:embed assets/clawd-sleeping-2.svg
-var clawdSleeping2SVG []byte
-
 //go:embed assets/clawd-exclamation-mark.svg
 var clawdExclamationMarkSVG []byte
 
 //go:embed assets/clawd-exclamation-mark-2.svg
 var clawdExclamationMark2SVG []byte
 
-// gifFrameDuration is how long each frame of the five sequences below stays
-// on screen. They were traced from every 5th frame of a ~16.7fps (60ms)
-// source GIF, so 5*60ms reproduces the original's motion at the same speed.
+// gifFrameDuration is how long each frame of the sequences below stays on
+// screen. They were traced from every 5th frame of a ~16.7fps (60ms) source
+// GIF, so 5*60ms reproduces the original's motion at the same speed.
 const gifFrameDuration = 300 * time.Millisecond
 
-// These five states were traced frame-by-frame from real reference
-// animations (see internal/pixelui/assets/README.md) rather than given a
-// single pose plus procedural motion like the original three — each
-// directory glob below embeds one numbered SVG per frame of that GIF's
-// actual motion (thought bubble rising, hands typing, hammer swinging,
-// head bobbing to music, balls arcing), in playback order.
+// These six states were traced frame-by-frame from real reference animations
+// (see internal/pixelui/assets/README.md) rather than given a single pose
+// plus procedural motion — each glob below embeds one numbered SVG per frame
+// of that GIF's actual motion (standing and blinking, thought bubble rising,
+// hands typing, hammer swinging, head bobbing to music, balls arcing), in
+// playback order.
 //
+//go:embed assets/clawd-idle-*.svg
+var clawdIdleFrames embed.FS
+
 //go:embed assets/clawd-thinking-*.svg
 var clawdThinkingFrames embed.FS
 
@@ -64,22 +61,19 @@ var clawdHeadphonesGrooveFrames embed.FS
 //go:embed assets/clawd-juggling-*.svg
 var clawdJugglingFrames embed.FS
 
-// Each activity keeps two rasterized SVG frames — not just the whole-icon
-// bob/scale applied in render.go, but an actual second pose (typing hands,
-// drifted Zzz, a pulsing alert dot) baked into the artwork itself, so the
-// mascot's parts move independently instead of the whole icon rigidly
-// sliding as one block.
+// waiting_approval is the only state left on the original 2-rasterized-
+// frame alternation system (typing hands, drifted Zzz, a pulsing alert dot
+// baked into the artwork itself) — every other state now plays back a full
+// traced GIF sequence instead (see gifFrameDuration).
 type iconSet struct {
 	logo            *image.RGBA
-	idle            [2]*image.RGBA
 	waitingApproval [2]*image.RGBA
-	// thinking/typing/building/subagentOne/subagentMany are full traced GIF
-	// sequences (see gifFrameDuration) rather than a 2-frame alternation.
-	thinking     []*image.RGBA
-	typing       []*image.RGBA
-	building     []*image.RGBA
-	subagentOne  []*image.RGBA
-	subagentMany []*image.RGBA
+	idle            []*image.RGBA
+	thinking        []*image.RGBA
+	typing          []*image.RGBA
+	building        []*image.RGBA
+	subagentOne     []*image.RGBA
+	subagentMany    []*image.RGBA
 }
 
 func loadIconSet() (iconSet, error) {
@@ -96,12 +90,6 @@ func loadIconSet() (iconSet, error) {
 	if set.logo, err = load("Anthropic logo", anthropicLogoSVG, 30, 30); err != nil {
 		return iconSet{}, err
 	}
-	if set.idle[0], err = load("Clawd Sleeping", clawdSleepingSVG, railIconSize, railIconSize); err != nil {
-		return iconSet{}, err
-	}
-	if set.idle[1], err = load("Clawd Sleeping frame 2", clawdSleeping2SVG, railIconSize, railIconSize); err != nil {
-		return iconSet{}, err
-	}
 	if set.waitingApproval[0], err = load("Clawd Exclamation Mark", clawdExclamationMarkSVG, railIconSize, railIconSize); err != nil {
 		return iconSet{}, err
 	}
@@ -114,6 +102,7 @@ func loadIconSet() (iconSet, error) {
 		fsys        embed.FS
 		destination *[]*image.RGBA
 	}{
+		{"Clawd Idle", clawdIdleFrames, &set.idle},
 		{"Clawd Thinking", clawdThinkingFrames, &set.thinking},
 		{"Clawd Typing", clawdTypingFrames, &set.typing},
 		{"Clawd Building", clawdBuildingFrames, &set.building},

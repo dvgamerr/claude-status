@@ -361,16 +361,9 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 	centerX := bounds.Min.X + bounds.Dx()/2
 	mascotY := bounds.Min.Y + 100
 	radius := 54
-	r.drawMascot(canvas, centerX, mascotY, radius, now, activityState)
-	label, accent := activityLabel(activityState)
-	pillWidth := bounds.Dx() - 40
-	pillTop := mascotY + radius + 22
-	pillBounds := image.Rect(centerX-pillWidth/2, pillTop, centerX+pillWidth/2, pillTop+30)
-	fillRounded(canvas, pillBounds, 15, withAlpha(accent, 40))
-	fillCircle(canvas, centerX-pillWidth/2+16, pillTop+15, 5, accent)
-	r.textCentered(canvas, r.bold13, accent, centerX+8, pillTop+20, label)
+	r.drawMascot(canvas, centerX, mascotY, now, activityState)
 
-	captionTop := pillBounds.Max.Y + 20
+	captionTop := mascotY + radius + 34
 	if snapshot != nil {
 		r.textCentered(canvas, r.regular12, textFaint, centerX, captionTop, activityCaption(*snapshot, activityState, now))
 	} else {
@@ -517,34 +510,11 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 	}
 }
 
-// activityVisual gives each state a halo tint; period additionally drives
-// timing, but only for the two states that still use a single pose plus
-// procedural motion (idle, waiting_approval — see mascotPoseForActivity and
-// mascotFrameForActivity). Every GIF-driven state (the legacy working alias,
-// typing, thinking, building, subagent_one, subagent_many) gets its timing
-// entirely from gifFrameDuration instead, so period is left at its zero
-// value for them — only their halo matters.
-type activityVisual struct {
-	period time.Duration
-	halo   color.RGBA
-}
-
-func visualForActivity(state string) activityVisual {
-	switch state {
-	case model.ActivityWorking, model.ActivityTyping:
-		return activityVisual{halo: rgb(58, 40, 32)}
-	case model.ActivityThinking:
-		return activityVisual{halo: rgb(44, 38, 58)}
-	case model.ActivityBuilding:
-		return activityVisual{halo: rgb(58, 46, 24)}
-	case model.ActivitySubagentOne, model.ActivitySubagentMany:
-		return activityVisual{halo: rgb(34, 42, 58)}
-	case model.ActivityWaitingApproval:
-		return activityVisual{period: 780 * time.Millisecond, halo: rgb(58, 49, 24)}
-	default:
-		return activityVisual{period: 2800 * time.Millisecond, halo: rgb(42, 34, 30)}
-	}
-}
+// waitingApprovalPeriod is the beat of the one remaining pose+alternation
+// state (see mascotPoseForActivity/mascotFrameForActivity below) — every
+// other state now plays back a traced GIF sequence instead, timed by
+// gifFrameDuration.
+const waitingApprovalPeriod = 780 * time.Millisecond
 
 // mascotPose is a nearest-neighbor transform applied to the rasterized SVG.
 // Keeping it separate from the backdrop makes the invariant explicit: only
@@ -556,51 +526,22 @@ type mascotPose struct {
 	height  int
 }
 
-// mascotPoseForActivity only runs for the two states that still use a
-// single static pose plus procedural motion (idle, waiting_approval) — every
-// other state now has its motion traced frame-by-frame from a real GIF
-// instead (see gifFramesForActivity/gifFrameIndex), so drawMascot never
-// calls this for them.
-func mascotPoseForActivity(state string, now time.Time) mascotPose {
-	visual := visualForActivity(state)
-	periodMS := max(int64(1), visual.period.Milliseconds())
+// mascotPoseForActivity computes waiting_approval's shake — the only state
+// left on a single static pose plus procedural motion; every other state's
+// motion is traced frame-by-frame from a real GIF instead (see
+// gifFramesForActivity/gifFrameIndex), so drawMascot never calls this for
+// them.
+func mascotPoseForActivity(now time.Time) mascotPose {
+	periodMS := waitingApprovalPeriod.Milliseconds()
 	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
-	pose := mascotPose{width: railIconSize, height: railIconSize}
-
-	switch state {
-	case model.ActivityWaitingApproval:
-		// A tight three-beat shake matches the exclamation artwork and reads
-		// as urgent even from across the room.
-		shake := 3 * phase
-		pose.xOffset = int(math.Round(4 * math.Sin(shake)))
-		pose.yOffset = -int(math.Round(2 * math.Abs(math.Sin(shake))))
-	default:
-		// Sleeping Clawd expands slowly around a fixed baseline, like a calm
-		// breath. Nearest-neighbor scaling keeps its pixel edges crisp.
-		breath := (math.Sin(phase) + 1) / 2
-		pose.width = railIconSize - 2 + int(math.Round(4*breath))
-		pose.height = railIconSize - 2 + int(math.Round(4*breath))
-		pose.yOffset = railIconSize/2 - pose.height/2
-	}
-	return pose
-}
-
-func activityLabel(state string) (string, color.RGBA) {
-	switch state {
-	case model.ActivityWorking, model.ActivityTyping:
-		return "TYPING", claudeOrange
-	case model.ActivityThinking:
-		return "THINKING", purple
-	case model.ActivityBuilding:
-		return "BUILDING", yellow
-	case model.ActivitySubagentOne:
-		return "1 SUBAGENT", green
-	case model.ActivitySubagentMany:
-		return "2+ SUBAGENTS", green
-	case model.ActivityWaitingApproval:
-		return "NEEDS APPROVAL", yellow
-	default:
-		return "IDLE", textSecondary
+	// A tight three-beat shake matches the exclamation artwork and reads as
+	// urgent even from across the room.
+	shake := 3 * phase
+	return mascotPose{
+		width:   railIconSize,
+		height:  railIconSize,
+		xOffset: int(math.Round(4 * math.Sin(shake))),
+		yOffset: -int(math.Round(2 * math.Abs(math.Sin(shake)))),
 	}
 }
 
@@ -676,28 +617,24 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 	}
 }
 
-func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, state string) {
-	visual := visualForActivity(state)
-	fillCircle(canvas, centerX, centerY, radius+10, visual.halo)
-
+func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY int, now time.Time, state string) {
 	if frames := gifFramesForActivity(&r.icons, state); frames != nil {
 		icon := frames[gifFrameIndex(frames, now)]
 		drawIconScaledCentered(canvas, icon, centerX, centerY, railIconSize, railIconSize)
 		return
 	}
 
-	frames := r.icons.idle
-	if state == model.ActivityWaitingApproval {
-		frames = r.icons.waitingApproval
-	}
-	icon := frames[mascotFrameForActivity(state, now)]
-	pose := mascotPoseForActivity(state, now)
+	// Only waiting_approval reaches here — see gifFramesForActivity.
+	icon := r.icons.waitingApproval[mascotFrameForActivity(now)]
+	pose := mascotPoseForActivity(now)
 	drawIconScaledCentered(canvas, icon, centerX+pose.xOffset, centerY+pose.yOffset, pose.width, pose.height)
 }
 
-// gifFramesForActivity returns the traced GIF-sequence frames for state, or
-// nil when state instead uses the legacy 2-frame pose+alternation system
-// (idle, waiting_approval — see mascotPoseForActivity).
+// gifFramesForActivity returns the traced GIF-sequence frames for state.
+// waiting_approval is the only value that returns nil, signaling drawMascot
+// to fall back to the legacy 2-frame pose+alternation system instead (see
+// mascotPoseForActivity) — every other value, including an empty or
+// otherwise unrecognized state, defaults to idle.
 //
 // ActivityWorking is the pre-Typing/Building legacy value (see its doc
 // comment in internal/model/snapshot.go) and renders on the same traced
@@ -714,14 +651,15 @@ func gifFramesForActivity(icons *iconSet, state string) []*image.RGBA {
 		return icons.subagentOne
 	case model.ActivitySubagentMany:
 		return icons.subagentMany
-	default:
+	case model.ActivityWaitingApproval:
 		return nil
+	default:
+		return icons.idle
 	}
 }
 
 // gifFrameIndex advances through a traced GIF sequence at gifFrameDuration
-// per frame, looping. This is independent of visualForActivity's period,
-// which for these states now only picks the halo tint.
+// per frame, looping.
 func gifFrameIndex(frames []*image.RGBA, now time.Time) int {
 	durationMS := gifFrameDuration.Milliseconds()
 	index := int(now.UnixMilli() / durationMS % int64(len(frames)))
@@ -735,9 +673,8 @@ func gifFrameIndex(frames []*image.RGBA, now time.Time) int {
 // current state: a plain square-wave alternation on each state's own period,
 // so the second pose (typing hands, drifted Zzz, pulsing alert dot) reads as
 // a deliberate beat rather than a stray flicker.
-func mascotFrameForActivity(state string, now time.Time) int {
-	visual := visualForActivity(state)
-	periodMS := max(int64(1), visual.period.Milliseconds())
+func mascotFrameForActivity(now time.Time) int {
+	periodMS := waitingApprovalPeriod.Milliseconds()
 	if (now.UnixMilli()%periodMS)*2 >= periodMS {
 		return 1
 	}

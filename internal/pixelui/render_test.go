@@ -144,7 +144,7 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	centerX, centerY, radius := 100, 100, 54
+	centerX, centerY := 100, 100
 	start := time.Unix(0, 0)
 	tests := []struct {
 		name  string
@@ -156,7 +156,7 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 		gifSequence bool
 	}{
 		{name: "typing frames", state: model.ActivityTyping, later: start.Add(gifFrameDuration), gifSequence: true},
-		{name: "sleeping breath", state: model.ActivityIdle, later: start.Add(700 * time.Millisecond)},
+		{name: "idle frames", state: model.ActivityIdle, later: start.Add(gifFrameDuration), gifSequence: true},
 		{name: "approval shake", state: model.ActivityWaitingApproval, later: start.Add(65 * time.Millisecond)},
 	}
 
@@ -164,8 +164,8 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			first := image.NewRGBA(image.Rect(0, 0, 200, 200))
 			second := image.NewRGBA(first.Bounds())
-			renderer.drawMascot(first, centerX, centerY, radius, start, tt.state)
-			renderer.drawMascot(second, centerX, centerY, radius, tt.later, tt.state)
+			renderer.drawMascot(first, centerX, centerY, start, tt.state)
+			renderer.drawMascot(second, centerX, centerY, tt.later, tt.state)
 			if sameRegion(first, second, first.Bounds()) {
 				t.Fatal("mascot artwork did not move")
 			}
@@ -174,8 +174,8 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 			if tt.gifSequence {
 				movingBounds = iconDestination(centerX, centerY, railIconSize, railIconSize)
 			} else {
-				firstPose := mascotPoseForActivity(tt.state, start)
-				secondPose := mascotPoseForActivity(tt.state, tt.later)
+				firstPose := mascotPoseForActivity(start)
+				secondPose := mascotPoseForActivity(tt.later)
 				movingBounds = iconDestination(
 					centerX+firstPose.xOffset, centerY+firstPose.yOffset, firstPose.width, firstPose.height,
 				).Union(iconDestination(
@@ -243,31 +243,15 @@ func TestResolveActivityStates(t *testing.T) {
 	}
 }
 
-func TestActivityLabelsForNewStates(t *testing.T) {
-	cases := map[string]string{
-		model.ActivityTyping:       "TYPING",
-		model.ActivityThinking:     "THINKING",
-		model.ActivityBuilding:     "BUILDING",
-		model.ActivitySubagentOne:  "1 SUBAGENT",
-		model.ActivitySubagentMany: "2+ SUBAGENTS",
-	}
-	for state, want := range cases {
-		if label, _ := activityLabel(state); label != want {
-			t.Errorf("activityLabel(%q) = %q, want %q", state, label, want)
-		}
-	}
-}
-
-// TestNewActivityStatesRenderDistinctly covers Thinking/Building/Subagent-
-// count, which all reuse the Clawd Coding artwork (see
-// internal/pixelui/assets/README.md for why no bespoke SVG exists for them)
-// and rely entirely on procedural badges/timing to read as distinct states.
+// TestNewActivityStatesRenderDistinctly covers Typing/Thinking/Building/
+// Subagent-count, each of which plays back its own traced GIF frame
+// sequence (see internal/pixelui/assets/README.md).
 func TestNewActivityStatesRenderDistinctly(t *testing.T) {
 	renderer, err := NewRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	centerX, centerY, radius := 100, 100, 54
+	centerX, centerY := 100, 100
 	now := time.Unix(0, 0)
 
 	states := []string{
@@ -280,7 +264,7 @@ func TestNewActivityStatesRenderDistinctly(t *testing.T) {
 	frames := make(map[string]*image.RGBA, len(states))
 	for _, state := range states {
 		canvas := image.NewRGBA(image.Rect(0, 0, 200, 200))
-		renderer.drawMascot(canvas, centerX, centerY, radius, now, state)
+		renderer.drawMascot(canvas, centerX, centerY, now, state)
 		frames[state] = canvas
 	}
 	for i, a := range states {
@@ -298,11 +282,11 @@ func TestNewActivityStatesRenderDistinctly(t *testing.T) {
 	deltas := []time.Duration{150 * time.Millisecond, 300 * time.Millisecond, 470 * time.Millisecond}
 	for _, state := range states {
 		first := image.NewRGBA(image.Rect(0, 0, 200, 200))
-		renderer.drawMascot(first, centerX, centerY, radius, now, state)
+		renderer.drawMascot(first, centerX, centerY, now, state)
 		animated := false
 		for _, delta := range deltas {
 			second := image.NewRGBA(first.Bounds())
-			renderer.drawMascot(second, centerX, centerY, radius, now.Add(delta), state)
+			renderer.drawMascot(second, centerX, centerY, now.Add(delta), state)
 			if !sameRegion(first, second, first.Bounds()) {
 				animated = true
 				break
