@@ -14,17 +14,20 @@ import (
 )
 
 // Run reads one Claude Code hook payload from input and, if it maps to a
-// meaningful activity state, merges that state into the session's stored
-// snapshot. matched is false when the hook event is one the dashboard
-// ignores (for example an idle-nudge Notification); callers should treat
-// that as a no-op, not an error.
+// meaningful activity update, merges that update into the session's stored
+// snapshot. A hook event can carry a new discrete State (UserPromptSubmit,
+// PreToolUse, Stop, a permission Notification), a Subagents count delta
+// (SubagentStart/SubagentStop), or both being unset — matched is false only
+// when neither applies (for example an idle-nudge Notification); callers
+// should treat that as a no-op, not an error.
 func Run(input io.Reader, store *state.Store, now time.Time) (snapshot model.Snapshot, matched bool, err error) {
 	hook, err := claude.DecodeHook(input)
 	if err != nil {
 		return model.Snapshot{}, false, err
 	}
-	newState, ok := claude.ActivityForHook(hook)
-	if !ok {
+	newState, stateOK := claude.ActivityForHook(hook)
+	subagentDelta, deltaOK := claude.SubagentDeltaForHook(hook)
+	if !stateOK && !deltaOK {
 		return model.Snapshot{}, false, nil
 	}
 	sessionID := claude.CleanSessionID(hook.SessionID)
@@ -41,7 +44,15 @@ func Run(input io.Reader, store *state.Store, now time.Time) (snapshot model.Sna
 			Session:       model.Session{ID: sessionID},
 		}
 	}
-	snapshot.Activity = model.Activity{State: newState, UpdatedAt: now}
+	activity := snapshot.Activity
+	if stateOK {
+		activity.State = newState
+	}
+	if deltaOK {
+		activity.Subagents = max(0, activity.Subagents+subagentDelta)
+	}
+	activity.UpdatedAt = now
+	snapshot.Activity = activity
 	if err := store.Save(snapshot); err != nil {
 		return model.Snapshot{}, false, err
 	}

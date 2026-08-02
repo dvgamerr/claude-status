@@ -7,10 +7,20 @@ const CurrentSchemaVersion = 1
 // Activity states describe what the source session is doing right now, as
 // reported by Claude Code hooks. They are derived, boolean-ish signals only
 // — never the hook's raw message/prompt text.
+//
+// ActivityWorking predates the Typing/Building split and is kept only so
+// older persisted snapshots (and the statusLine-freshness fallback in
+// pixelui.resolveActivity) still resolve to a valid, known state; the
+// dashboard renders it identically to ActivityTyping.
 const (
 	ActivityWorking         = "working"
 	ActivityIdle            = "idle"
 	ActivityWaitingApproval = "waiting_approval"
+	ActivityThinking        = "thinking"
+	ActivityTyping          = "typing"
+	ActivityBuilding        = "building"
+	ActivitySubagentOne     = "subagent_one"
+	ActivitySubagentMany    = "subagent_many"
 )
 
 // Snapshot is the deliberately small, sanitized representation persisted by
@@ -40,6 +50,13 @@ type Snapshot struct {
 type Activity struct {
 	State     string    `json:"state,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	// Subagents is the number of Task-tool subagents currently running for
+	// this session (incremented on SubagentStart, decremented on
+	// SubagentStop, floored at 0). It takes rendering priority over State
+	// while positive — see pixelui.resolveActivity — so the dashboard shows
+	// "1 subagent"/"2+ subagents" instead of whatever the parent session's
+	// own last tool event happened to be.
+	Subagents int `json:"subagents,omitempty"`
 }
 
 type Session struct {

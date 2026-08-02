@@ -135,6 +135,11 @@ Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "UserPromptSubmit" -Co
 Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "PreToolUse" -Command $ActivityCommand -Matcher "*"
 Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "Stop" -Command $ActivityCommand
 Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "Notification" -Command $ActivityCommand
+# SubagentStart/SubagentStop track how many Task-tool subagents are running
+# concurrently, so the mascot can show "1 subagent" / "2+ subagents" instead
+# of whatever the parent session's own last tool event happened to be.
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "SubagentStart" -Command $ActivityCommand
+Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "SubagentStop" -Command $ActivityCommand
 
 $ClaudeJson = $ClaudeSettings | ConvertTo-Json -Depth 100
 Write-Utf8Atomic -Path $ClaudeSettingsPath -Content ($ClaudeJson + [Environment]::NewLine)

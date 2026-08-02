@@ -53,14 +53,22 @@ permission error.
 The header uses a bare white Anthropic logo with no background or frame, and
 deliberately omits Claude model and session identity. The left-hand status rail
 holds context-specific Clawd SVG artwork and is the dashboard's focal point
-(`internal/pixelui/render.go`'s `renderRail`): `working` uses Clawd Coding with
-a fast typing bob, `idle` uses Clawd Sleeping with a slow inhale/exhale scale,
-and `waiting_approval` uses Clawd Exclamation Mark with a tight urgent shake.
-The rail, card, and halo stay completely still in every state; only the mascot
-artwork moves. The embedded SVGs are rasterized once at renderer startup, not
+(`internal/pixelui/render.go`'s `renderRail`). Three SVG-backed base poses
+exist: Clawd Coding (fast typing bob), Clawd Sleeping (`idle`, slow
+inhale/exhale scale), and Clawd Exclamation Mark (`waiting_approval`, tight
+urgent shake). `thinking`, `typing`, `building`, `subagent_one`, and
+`subagent_many` all reuse the Clawd Coding artwork — there
+is no licensed Icons8 source art for those poses (see
+`internal/pixelui/assets/README.md`), so they're distinguished only by tempo,
+halo tint, motion (a slow sway for thinking, sharp downward taps for
+building), and a small procedurally drawn badge on top: a rising three-circle
+thought bubble for `thinking`, a pulsing ring for `building`, and 1 or 2 dots
+for `subagent_one`/`subagent_many`. The rail, card, and halo stay completely
+still in every state; only the mascot artwork (and its badge, where one
+exists) moves. The embedded SVGs are rasterized once at renderer startup, not
 on every frame. Activity state is independent of the statusLine refresh cycle
 — see below. The rail caption below the activity pill is just the activity
-duration ("working for 12s", "idle for 4m") — no session name or ID, matching
+duration ("typing for 12s", "idle for 4m") — no session name or ID, matching
 the header's own omission of session identity.
 
 ## Provider ingestion and Windows source
@@ -92,21 +100,38 @@ the header's own omission of session identity.
 
 - The statusLine refresh alone cannot tell whether Claude is working, idle, or
   blocked on a permission prompt, so `%USERPROFILE%\.claude\settings.json`
-  also registers four hooks — `UserPromptSubmit`, `PreToolUse` (matcher `*`),
-  `Stop`, and `Notification` — that all call `claude-status activity`
-  (`scripts/install-windows.ps1`'s `Set-ClaudeStatusHook`). That merge is
-  additive: it only ever replaces the `claude-status ... activity` hook group
-  it previously installed on each event and leaves every other tool's hook
-  group on that event untouched.
-- `claude-status activity` reads one hook payload from stdin, classifies it
-  with `claude.ActivityForHook`, and merges just the `Activity{State,
-  UpdatedAt}` field into that session's already-stored snapshot — it never
-  rebuilds the snapshot from scratch, so a hook firing before or after the
-  next statusLine event can't clobber the other's fields. For `Notification`
-  it inspects the hook's `message` text locally to detect a permission prompt
-  ("needs your permission to use ...") vs. an idle-nudge; either way the
-  message text itself is discarded, never persisted or mirrored, matching the
-  "never mirror raw payloads" rule above.
+  also registers six hooks — `UserPromptSubmit`, `PreToolUse` (matcher `*`),
+  `Stop`, `Notification`, `SubagentStart`, and `SubagentStop` — that all call
+  `claude-status activity` (`scripts/install-windows.ps1`'s
+  `Set-ClaudeStatusHook`). That merge is additive: it only ever replaces the
+  `claude-status ... activity` hook group it previously installed on each
+  event and leaves every other tool's hook group on that event untouched.
+- `claude-status activity` reads one hook payload from stdin and merges the
+  result of two independent classifications into that session's
+  already-stored snapshot — it never rebuilds the snapshot from scratch, so a
+  hook firing before or after the next statusLine event can't clobber the
+  other's fields:
+  - `claude.ActivityForHook` maps `UserPromptSubmit` → `thinking`, `Stop` →
+    `idle`, and `PreToolUse` → `typing` or `building` depending on
+    `tool_name` (`Bash` is `building`; everything else, including an empty
+    `tool_name`, is `typing`). For `Notification` it inspects the hook's
+    `message` text locally to detect a permission prompt ("needs your
+    permission to use ...") vs. an idle-nudge; either way the message text
+    itself is discarded, never persisted or mirrored, matching the "never
+    mirror raw payloads" rule above.
+  - `claude.SubagentDeltaForHook` maps `SubagentStart`/`SubagentStop` to a
+    `+1`/`-1` adjustment of `Activity.Subagents`, a running count of
+    concurrent Task-tool subagents for that session, floored at 0. This is
+    independent of `Activity.State`: a `SubagentStart`/`Stop` event never
+    touches `State`, and a `PreToolUse`/`Stop`/etc. event never touches
+    `Subagents`.
+  - `pixelui.resolveActivity` then decides what to actually render: a fresh
+    `waiting_approval` always wins; otherwise a positive `Subagents` count
+    overrides `State` with `subagent_one` (1) or `subagent_many` (2+); only
+    when `Subagents` is 0 does the stored `State` (`thinking`/`typing`/
+    `building`/`idle`) show through. `ActivityWorking` is kept only as a
+    legacy value some older/pre-tool_name snapshots may still carry, and
+    renders identically to `typing`.
 - This command must always exit 0. `PreToolUse` hooks can block the tool call
   if their hook exits non-zero, and this activity side channel must never be
   able to do that.

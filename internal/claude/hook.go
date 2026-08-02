@@ -21,6 +21,10 @@ type HookInput struct {
 	SessionID     string `json:"session_id"`
 	HookEventName string `json:"hook_event_name"`
 	Message       string `json:"message"`
+	// ToolName is only present on PreToolUse and only used to pick a
+	// specific visual (Typing vs Building) for the generic "a tool is
+	// running" state; it is never persisted.
+	ToolName string `json:"tool_name"`
 }
 
 func DecodeHook(r io.Reader) (HookInput, error) {
@@ -54,13 +58,16 @@ func DecodeHook(r io.Reader) (HookInput, error) {
 // It inspects the Notification message text only to detect a permission
 // prompt (e.g. "Claude needs your permission to use Bash"); the message
 // itself is discarded either way and never returned or persisted. Events
-// that don't map to a meaningful state (e.g. an idle-nudge notification)
-// report ok=false so the caller leaves the last known state untouched.
+// that don't map to a meaningful state (e.g. an idle-nudge notification, or
+// a subagent start/stop — see SubagentDeltaForHook) report ok=false so the
+// caller leaves the last known state untouched.
 func ActivityForHook(input HookInput) (state string, ok bool) {
 	switch input.HookEventName {
-	case "UserPromptSubmit", "PreToolUse":
-		return model.ActivityWorking, true
-	case "Stop", "SubagentStop":
+	case "UserPromptSubmit":
+		return model.ActivityThinking, true
+	case "PreToolUse":
+		return workingStateForTool(input.ToolName), true
+	case "Stop":
 		return model.ActivityIdle, true
 	case "Notification":
 		if strings.Contains(strings.ToLower(input.Message), "permission") {
@@ -69,5 +76,32 @@ func ActivityForHook(input HookInput) (state string, ok bool) {
 		return "", false
 	default:
 		return "", false
+	}
+}
+
+// workingStateForTool picks the Typing/Building visual for a PreToolUse
+// event. Bash is the one built-in tool whose animation should read as
+// "running a command" rather than "editing"; everything else (Edit/Write,
+// Read/Grep/Glob, WebFetch, Task, an empty/unrecognized tool_name, ...)
+// falls back to Typing, the more general "doing something" visual.
+func workingStateForTool(toolName string) string {
+	if toolName == "Bash" {
+		return model.ActivityBuilding
+	}
+	return model.ActivityTyping
+}
+
+// SubagentDeltaForHook reports how a hook event should adjust the running
+// count of concurrent Task-tool subagents for a session: +1 when one
+// starts, -1 when one stops. Every other event reports ok=false — the
+// caller must not touch the stored counter for those.
+func SubagentDeltaForHook(input HookInput) (delta int, ok bool) {
+	switch input.HookEventName {
+	case "SubagentStart":
+		return 1, true
+	case "SubagentStop":
+		return -1, true
+	default:
+		return 0, false
 	}
 }

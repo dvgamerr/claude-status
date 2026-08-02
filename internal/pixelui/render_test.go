@@ -202,6 +202,80 @@ func TestResolveActivityStates(t *testing.T) {
 	if got := resolveActivity(&stuck, now); got != model.ActivityIdle {
 		t.Fatalf("resolveActivity(stuck working) = %q, want idle fallback", got)
 	}
+
+	subagentOne := model.Snapshot{Activity: model.Activity{State: model.ActivityTyping, UpdatedAt: now.Add(-1 * time.Second), Subagents: 1}}
+	if got := resolveActivity(&subagentOne, now); got != model.ActivitySubagentOne {
+		t.Fatalf("resolveActivity(1 subagent) = %q", got)
+	}
+
+	subagentMany := model.Snapshot{Activity: model.Activity{State: model.ActivityBuilding, UpdatedAt: now.Add(-1 * time.Second), Subagents: 3}}
+	if got := resolveActivity(&subagentMany, now); got != model.ActivitySubagentMany {
+		t.Fatalf("resolveActivity(3 subagents) = %q, want the 2+ tier", got)
+	}
+
+	approvalOverridesSubagents := model.Snapshot{Activity: model.Activity{State: model.ActivityWaitingApproval, UpdatedAt: now.Add(-1 * time.Second), Subagents: 2}}
+	if got := resolveActivity(&approvalOverridesSubagents, now); got != model.ActivityWaitingApproval {
+		t.Fatalf("resolveActivity(approval + subagents) = %q, want a pending approval to win", got)
+	}
+}
+
+func TestActivityLabelsForNewStates(t *testing.T) {
+	cases := map[string]string{
+		model.ActivityTyping:       "TYPING",
+		model.ActivityThinking:     "THINKING",
+		model.ActivityBuilding:     "BUILDING",
+		model.ActivitySubagentOne:  "1 SUBAGENT",
+		model.ActivitySubagentMany: "2+ SUBAGENTS",
+	}
+	for state, want := range cases {
+		if label, _ := activityLabel(state); label != want {
+			t.Errorf("activityLabel(%q) = %q, want %q", state, label, want)
+		}
+	}
+}
+
+// TestNewActivityStatesRenderDistinctly covers Thinking/Building/Subagent-
+// count, which all reuse the Clawd Coding artwork (see
+// internal/pixelui/assets/README.md for why no bespoke SVG exists for them)
+// and rely entirely on procedural badges/timing to read as distinct states.
+func TestNewActivityStatesRenderDistinctly(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	centerX, centerY, radius := 100, 100, 54
+	now := time.Unix(0, 0)
+
+	states := []string{
+		model.ActivityTyping,
+		model.ActivityThinking,
+		model.ActivityBuilding,
+		model.ActivitySubagentOne,
+		model.ActivitySubagentMany,
+	}
+	frames := make(map[string]*image.RGBA, len(states))
+	for _, state := range states {
+		canvas := image.NewRGBA(image.Rect(0, 0, 200, 200))
+		renderer.drawMascot(canvas, centerX, centerY, radius, now, state)
+		frames[state] = canvas
+	}
+	for i, a := range states {
+		for _, b := range states[i+1:] {
+			if sameRegion(frames[a], frames[b], frames[a].Bounds()) {
+				t.Fatalf("%s and %s rendered identically", a, b)
+			}
+		}
+	}
+
+	for _, state := range states {
+		first := image.NewRGBA(image.Rect(0, 0, 200, 200))
+		second := image.NewRGBA(first.Bounds())
+		renderer.drawMascot(first, centerX, centerY, radius, now, state)
+		renderer.drawMascot(second, centerX, centerY, radius, now.Add(300*time.Millisecond), state)
+		if sameRegion(first, second, first.Bounds()) {
+			t.Fatalf("%s did not animate between frames", state)
+		}
+	}
 }
 
 func TestRenderUsesContextSpecificClawdIcons(t *testing.T) {

@@ -526,8 +526,17 @@ type activityVisual struct {
 
 func visualForActivity(state string) activityVisual {
 	switch state {
-	case model.ActivityWorking:
+	case model.ActivityWorking, model.ActivityTyping:
 		return activityVisual{period: 720 * time.Millisecond, halo: rgb(58, 40, 32)}
+	case model.ActivityThinking:
+		// Slower and cooler-toned than Typing — Clawd is pondering, not
+		// actively typing yet.
+		return activityVisual{period: 1600 * time.Millisecond, halo: rgb(44, 38, 58)}
+	case model.ActivityBuilding:
+		// Faster than Typing — a hammering cadence for "running a command".
+		return activityVisual{period: 480 * time.Millisecond, halo: rgb(58, 46, 24)}
+	case model.ActivitySubagentOne, model.ActivitySubagentMany:
+		return activityVisual{period: 620 * time.Millisecond, halo: rgb(34, 42, 58)}
 	case model.ActivityWaitingApproval:
 		return activityVisual{period: 780 * time.Millisecond, halo: rgb(58, 49, 24)}
 	default:
@@ -552,11 +561,18 @@ func mascotPoseForActivity(state string, now time.Time) mascotPose {
 	pose := mascotPose{width: railIconSize, height: railIconSize}
 
 	switch state {
-	case model.ActivityWorking:
+	case model.ActivityWorking, model.ActivityTyping, model.ActivitySubagentOne, model.ActivitySubagentMany:
 		// Two quick taps per cycle make Clawd Coding feel busy without moving
 		// the card or halo. The upward bob lands on each typing beat.
 		pose.xOffset = int(math.Round(2 * math.Sin(2*phase)))
 		pose.yOffset = -int(math.Round(3 * math.Abs(math.Sin(phase))))
+	case model.ActivityThinking:
+		// A slow side-to-side sway, not a bob — reads as pondering rather
+		// than actively typing.
+		pose.xOffset = int(math.Round(3 * math.Sin(phase)))
+	case model.ActivityBuilding:
+		// Sharp, fast downward taps read as hammering on something.
+		pose.yOffset = -int(math.Round(5 * math.Abs(math.Sin(2*phase))))
 	case model.ActivityWaitingApproval:
 		// A tight three-beat shake matches the exclamation artwork and reads
 		// as urgent even from across the room.
@@ -576,8 +592,16 @@ func mascotPoseForActivity(state string, now time.Time) mascotPose {
 
 func activityLabel(state string) (string, color.RGBA) {
 	switch state {
-	case model.ActivityWorking:
-		return "WORKING", claudeOrange
+	case model.ActivityWorking, model.ActivityTyping:
+		return "TYPING", claudeOrange
+	case model.ActivityThinking:
+		return "THINKING", purple
+	case model.ActivityBuilding:
+		return "BUILDING", yellow
+	case model.ActivitySubagentOne:
+		return "1 SUBAGENT", green
+	case model.ActivitySubagentMany:
+		return "2+ SUBAGENTS", green
 	case model.ActivityWaitingApproval:
 		return "NEEDS APPROVAL", yellow
 	default:
@@ -589,16 +613,32 @@ func activityLabel(state string) (string, color.RGBA) {
 // into the state the mascot should animate right now. When no snapshot
 // exists, or when hooks haven't been installed yet, it degrades gracefully
 // instead of leaving the mascot in a stuck or undefined state.
+//
+// A pending permission prompt always wins (a decision the user must make is
+// more important than "how many subagents are running"). Otherwise, while
+// Subagents is positive it takes priority over whatever the parent
+// session's own last tool event happened to be — matching this project's
+// reference for the mascot behavior, where subagent activity visually
+// dominates the parent's own state until every subagent finishes.
 func resolveActivity(snapshot *model.Snapshot, now time.Time) string {
 	if snapshot == nil {
 		return model.ActivityIdle
 	}
 	if snapshot.Activity.State != "" {
 		age := now.Sub(snapshot.Activity.UpdatedAt)
-		if age >= 0 && age <= activityStaleAfter {
-			return snapshot.Activity.State
+		if age < 0 || age > activityStaleAfter {
+			return model.ActivityIdle
 		}
-		return model.ActivityIdle
+		if snapshot.Activity.State == model.ActivityWaitingApproval {
+			return model.ActivityWaitingApproval
+		}
+		switch {
+		case snapshot.Activity.Subagents >= 2:
+			return model.ActivitySubagentMany
+		case snapshot.Activity.Subagents == 1:
+			return model.ActivitySubagentOne
+		}
+		return snapshot.Activity.State
 	}
 	age := now.Sub(snapshot.CapturedAt)
 	if age >= 0 && age < 3*time.Second {
@@ -616,8 +656,16 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 		elapsed = 0
 	}
 	switch state {
-	case model.ActivityWorking:
-		return "working for " + durationLabel(elapsed)
+	case model.ActivityWorking, model.ActivityTyping:
+		return "typing for " + durationLabel(elapsed)
+	case model.ActivityThinking:
+		return "thinking for " + durationLabel(elapsed)
+	case model.ActivityBuilding:
+		return "building for " + durationLabel(elapsed)
+	case model.ActivitySubagentOne:
+		return "1 subagent for " + durationLabel(elapsed)
+	case model.ActivitySubagentMany:
+		return "subagents for " + durationLabel(elapsed)
 	case model.ActivityWaitingApproval:
 		return "waiting " + durationLabel(elapsed)
 	default:
@@ -631,7 +679,8 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 
 	frames := r.icons.idle
 	switch state {
-	case model.ActivityWorking:
+	case model.ActivityWorking, model.ActivityTyping, model.ActivityThinking, model.ActivityBuilding,
+		model.ActivitySubagentOne, model.ActivitySubagentMany:
 		frames = r.icons.working
 	case model.ActivityWaitingApproval:
 		frames = r.icons.waitingApproval
@@ -639,6 +688,61 @@ func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY, radius int, 
 	icon := frames[mascotFrameForActivity(state, now)]
 	pose := mascotPoseForActivity(state, now)
 	drawIconScaledCentered(canvas, icon, centerX+pose.xOffset, centerY+pose.yOffset, pose.width, pose.height)
+
+	// Thinking/Building/Subagent-count share the Clawd Coding artwork above
+	// (no licensed source art exists for those poses — see
+	// internal/pixelui/assets/README.md), so a small procedurally drawn
+	// badge is what actually distinguishes them from Typing and from each
+	// other.
+	switch state {
+	case model.ActivityThinking:
+		drawThoughtBubble(canvas, centerX, centerY, radius, now)
+	case model.ActivityBuilding:
+		drawBuildingBadge(canvas, centerX, centerY, radius, now)
+	case model.ActivitySubagentOne:
+		drawSubagentBadge(canvas, centerX, centerY, radius, now, 1)
+	case model.ActivitySubagentMany:
+		drawSubagentBadge(canvas, centerX, centerY, radius, now, 2)
+	}
+}
+
+// drawThoughtBubble draws a small three-circle thought-bubble trail rising
+// from the mascot's head, gently bobbing — the Thinking state's only visual
+// distinction from Typing, since both reuse the Clawd Coding artwork.
+func drawThoughtBubble(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
+	phase := float64(now.UnixMilli()%2400) / 2400 * 2 * math.Pi
+	bob := int(math.Round(2 * math.Sin(phase)))
+	baseX := centerX + radius/2
+	baseY := centerY - radius - 4 + bob
+	fillCircle(canvas, baseX, baseY+16, 4, textPrimary)
+	fillCircle(canvas, baseX+9, baseY+5, 6, textPrimary)
+	fillCircle(canvas, baseX+20, baseY-10, 11, textPrimary)
+}
+
+// drawBuildingBadge draws a small pulsing ring badge (a stand-in for a gear)
+// at the mascot's lower-right — Building's only visual distinction from
+// Typing/Thinking.
+func drawBuildingBadge(canvas *image.RGBA, centerX, centerY, radius int, now time.Time) {
+	phase := float64(now.UnixMilli()%500) / 500 * 2 * math.Pi
+	pulse := (math.Sin(phase) + 1) / 2
+	badgeX := centerX + radius - 6
+	badgeY := centerY + radius - 6
+	fillCircle(canvas, badgeX, badgeY, 9, rgb(58, 40, 20))
+	blendRing(canvas, badgeX, badgeY, 7-int(2*pulse), 3, yellow, 255)
+}
+
+// drawSubagentBadge draws one dot per running subagent (capped at 2 — "2+"
+// doesn't need an exact count) below the mascot, gently bouncing.
+func drawSubagentBadge(canvas *image.RGBA, centerX, centerY, radius int, now time.Time, count int) {
+	phase := float64(now.UnixMilli()%900) / 900 * 2 * math.Pi
+	bounce := int(math.Round(2 * math.Abs(math.Sin(phase))))
+	const dotRadius, spacing = 6, 16
+	total := min(count, 2)
+	startX := centerX - (total-1)*spacing/2
+	y := centerY + radius + 4 - bounce
+	for i := range total {
+		fillCircle(canvas, startX+i*spacing, y, dotRadius, purple)
+	}
 }
 
 // mascotFrameForActivity picks between the two rasterized SVG poses for the
