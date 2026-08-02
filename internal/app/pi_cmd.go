@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/dvgamerr/claude-status/internal/logging"
 )
 
 // tty1UnitName is the systemd unit that owns /dev/tty1 on the Pi — see
@@ -34,7 +36,8 @@ func runPi(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Usage: claude-status pi install [flags]")
 		return 0
 	default:
-		fmt.Fprintf(stderr, "claude-status pi: unknown subcommand %q\n", args[0])
+		logger := logging.New(stderr, "pi")
+		logger.Error().Str("subcommand", args[0]).Msg("unknown subcommand")
 		return 2
 	}
 }
@@ -45,8 +48,9 @@ func runPi(args []string, stdout, stderr io.Writer) int {
 // git checkout at all, unlike the old scripts/install.sh + manual
 // `sudo systemctl enable` flow.
 func runPiInstall(args []string, stdout, stderr io.Writer) int {
+	logger := logging.New(stderr, "pi install")
 	if runtime.GOOS != "linux" {
-		fmt.Fprintln(stderr, "claude-status pi install: only supported on Linux (Raspberry Pi OS)")
+		logger.Error().Msg("only supported on Linux (Raspberry Pi OS)")
 		return 1
 	}
 
@@ -67,13 +71,13 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status pi install: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 
 	exePath, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status pi install: resolve executable path: %v\n", err)
+		logger.Error().Err(err).Msg("resolve executable path")
 		return 1
 	}
 	if resolved, err := filepath.EvalSymlinks(exePath); err == nil {
@@ -96,7 +100,7 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 	}
 	account, err := user.Lookup(targetUser)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status pi install: look up user %q: %v\n", targetUser, err)
+		logger.Error().Err(err).Str("user", targetUser).Msg("look up user")
 		return 1
 	}
 
@@ -135,15 +139,15 @@ WantedBy=multi-user.target
 
 	unitDestination := filepath.Join("/etc/systemd/system", tty1UnitName)
 	if err := os.WriteFile(unitDestination, []byte(unit), 0o644); err != nil {
-		fmt.Fprintf(stderr, "claude-status pi install: write %s: %v\n", unitDestination, err)
+		logger.Error().Err(err).Str("path", unitDestination).Msg("write unit file")
 		return 1
 	}
 	if err := runSystemCommand("systemctl", "daemon-reload"); err != nil {
-		fmt.Fprintf(stderr, "claude-status pi install: %v\n", err)
+		logger.Error().Err(err).Msg("systemctl daemon-reload")
 		return 1
 	}
 	if err := runSystemCommand("systemctl", "enable", "--now", tty1UnitName); err != nil {
-		fmt.Fprintf(stderr, "claude-status pi install: %v\n", err)
+		logger.Error().Err(err).Msg("systemctl enable")
 		return 1
 	}
 	fmt.Fprintf(stdout, "installed and started %s (binary: %s, user: %s)\n", tty1UnitName, exePath, account.Username)
@@ -164,7 +168,8 @@ func reExecWithSudo(exePath string, args []string, stderr io.Writer) int {
 		if errors.As(err, &exitErr) {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(stderr, "claude-status pi install: re-exec via sudo: %v\n", err)
+		logger := logging.New(stderr, "pi install")
+		logger.Error().Err(err).Msg("re-exec via sudo")
 		return 1
 	}
 	return 0

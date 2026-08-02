@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/logging"
 	"github.com/dvgamerr/claude-status/internal/mirror"
 	"github.com/dvgamerr/claude-status/internal/service"
 	"github.com/dvgamerr/claude-status/internal/state"
@@ -31,8 +32,9 @@ func runService(args []string, stdout, stderr io.Writer) int {
 	case "install":
 		return runServiceInstall(args[1:], stderr)
 	case "remove":
+		logger := logging.New(stderr, "service remove")
 		if err := service.Remove(RelayServiceName); err != nil {
-			fmt.Fprintf(stderr, "claude-status service remove: %v\n", err)
+			logger.Error().Err(err).Msg("remove service")
 			return 1
 		}
 		fmt.Fprintf(stdout, "removed %s\n", RelayServiceName)
@@ -44,7 +46,8 @@ func runService(args []string, stdout, stderr io.Writer) int {
 	case "status":
 		state, err := service.Status(RelayServiceName)
 		if err != nil {
-			fmt.Fprintf(stderr, "claude-status service status: %v\n", err)
+			logger := logging.New(stderr, "service status")
+			logger.Error().Err(err).Msg("service status")
 			return 1
 		}
 		fmt.Fprintf(stdout, "%s: %s\n", RelayServiceName, state)
@@ -53,7 +56,8 @@ func runService(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "Usage: claude-status service <install|remove|start|stop|status> [flags]")
 		return 0
 	default:
-		fmt.Fprintf(stderr, "claude-status service: unknown subcommand %q\n", args[0])
+		logger := logging.New(stderr, "service")
+		logger.Error().Str("subcommand", args[0]).Msg("unknown subcommand")
 		return 2
 	}
 }
@@ -62,9 +66,10 @@ func runService(args []string, stdout, stderr io.Writer) int {
 // relay as a background service and starts it — the cross-platform
 // replacement for install-windows.ps1's Scheduled Task registration.
 func runServiceInstall(args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "service install")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status service install: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("service install", flag.ContinueOnError)
@@ -84,11 +89,11 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status service install: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	if strings.TrimSpace(*mirrorSSH) == "" {
-		fmt.Fprintln(stderr, "claude-status service install: --mirror-ssh is required")
+		logger.Error().Msg("--mirror-ssh is required")
 		return 2
 	}
 
@@ -106,7 +111,7 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 		},
 	}
 	if err := service.Install(cfg); err != nil {
-		fmt.Fprintf(stderr, "claude-status service install: %v\n", err)
+		logger.Error().Err(err).Msg("install service")
 		return 1
 	}
 	fmt.Fprintf(stderr, "installed and started %s (log: %s)\n", RelayServiceName, *logFile)
@@ -115,7 +120,8 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 
 func runServiceControl(action func(string) error, verb string, stdout, stderr io.Writer) int {
 	if err := action(RelayServiceName); err != nil {
-		fmt.Fprintf(stderr, "claude-status service %s: %v\n", verb, err)
+		logger := logging.New(stderr, "service "+verb)
+		logger.Error().Err(err).Msg("service " + verb)
 		return 1
 	}
 	state, err := service.Status(RelayServiceName)

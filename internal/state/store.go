@@ -203,6 +203,9 @@ func readFileWithRetry(path string) ([]byte, error) {
 		}
 		time.Sleep(readRetryDelay)
 	}
+	if isTransientReadErr(err) {
+		err = fmt.Errorf("%w: %w", err, ErrTransientRead)
+	}
 	return data, err
 }
 

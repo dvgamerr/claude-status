@@ -266,6 +266,47 @@ installer จะสำรองไฟล์เดิมไว้ก่อนแ�
 บน Linux/macOS ยังต้องแก้ `~/.claude/settings.json` และ `~/.codex/config.toml`
 ตามตัวอย่าง JSON ด้านบนเอง ก่อนรัน `service install`
 
+### Windows: relay service รันเป็น LocalSystem — ต้อง seed SSH key ของ SYSTEM เอง
+
+`service install` บน Windows สร้าง Windows Service จริงผ่าน SCM ซึ่งรันด้วยบัญชี
+**LocalSystem** โดย default ไม่ใช่บัญชี user ที่สั่ง install — LocalSystem มี profile
+แยกต่างหาก (`%windir%\System32\config\systemprofile`) และ**ไม่มี** `.ssh` ของตัวเอง
+ต่อให้ `ssh pilab` จาก shell ของคุณเองใช้ได้ปกติ (มี key/`known_hosts`/`~/.ssh/config`
+อยู่แล้ว) service ก็ยังต่อ SSH ไม่ได้ เพราะ LocalSystem มองไม่เห็นไฟล์พวกนั้นเลย
+อาการที่เจอคือ `relay.log` ขึ้น `mirror failed` วนซ้ำด้วย
+`Host key verification failed.` หรือ `Connection closed by ... port 22`
+
+วิธีแก้คือ copy key + config entry + known_hosts เฉพาะ host ปลายทางไปไว้ใน profile
+ของ SYSTEM แล้วล็อก ACL ให้เหลือแค่ SYSTEM/Administrators (ต้องรันจาก
+Administrator shell):
+
+```powershell
+$sshDir = "$env:windir\System32\config\systemprofile\.ssh"
+New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+
+# แก้ HostName/User/IdentityFile ให้ตรงกับ ~/.ssh/config ของคุณเอง
+@'
+Host pilab
+    HostName 10.203.1.159
+    User pi
+    IdentityFile ~/.ssh/id_pilab
+    IdentitiesOnly yes
+'@ | Set-Content -Path "$sshDir\config" -Encoding ascii -NoNewline
+
+Copy-Item "$env:USERPROFILE\.ssh\id_pilab"     "$sshDir\id_pilab" -Force
+Copy-Item "$env:USERPROFILE\.ssh\id_pilab.pub" "$sshDir\id_pilab.pub" -Force
+Select-String -Path "$env:USERPROFILE\.ssh\known_hosts" -Pattern 'pilab' |
+    ForEach-Object { $_.Line } | Set-Content -Path "$sshDir\known_hosts" -Encoding ascii
+
+# OpenSSH ปฏิเสธ private key ที่ ACL กว้างกว่าเจ้าของ (เหมือนเช็ค 600 บน POSIX)
+icacls $sshDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
+icacls "$sshDir\id_pilab" /inheritance:r /grant:r "SYSTEM:F" "BUILTIN\Administrators:F" | Out-Null
+```
+
+ไม่ต้อง restart service — relay retry ทุก `--refresh` (default 1s) เองอยู่แล้ว
+พอ key พร้อมใช้ mirror จะ recover ทันทีในรอบถัดไป (`relay.log` ขึ้น
+`mirror recovered`) เช็คง่ายๆ ด้วย `Get-Content <log-file> -Tail 20 -Wait`
+
 โปรเจกต์ยังไม่เปิด HTTP collector โดยตั้งใจ เพราะการเปิด network endpoint เพิ่มภาระเรื่อง
 authentication/TLS โดยไม่จำเป็นสำหรับ MVP; SSH transport ปลอดภัยและดูแลง่ายกว่า
 

@@ -1,7 +1,9 @@
 package relay
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/state"
@@ -25,7 +29,7 @@ func TestSyncSendsLatestProviderSnapshotsOldestFirst(t *testing.T) {
 	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
 		got = append(got, snapshot.Session.ID)
 		return nil
-	}, nil)
+	}, zerolog.Nop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,13 +47,11 @@ func TestSyncSkipsDeliveredContentAndSendsChangedActivity(t *testing.T) {
 	snapshot := saveSnapshot(t, store, "claude", "current", now, "idle")
 
 	calls := 0
-	var logs []string
+	var buf bytes.Buffer
 	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
 		calls++
 		return nil
-	}, func(format string, args ...any) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	})
+	}, zerolog.New(&buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,8 +75,8 @@ func TestSyncSkipsDeliveredContentAndSendsChangedActivity(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("changed snapshot left call count at %d", calls)
 	}
-	wantLog := fmt.Sprintf("mirrored claude snapshot captured at %s", now.Format(time.RFC3339Nano))
-	if len(logs) != 1 || logs[0] != wantLog {
+	logs := parseLogs(t, &buf)
+	if len(logs) != 1 || logs[0]["level"] != "info" || logs[0]["message"] != "mirrored snapshot" || logs[0]["provider"] != "claude" {
 		t.Fatalf("successful refreshes logged repeatedly: %v", logs)
 	}
 }
@@ -84,16 +86,14 @@ func TestSyncRetriesFailureAndSuppressesRepeatedErrorLog(t *testing.T) {
 	saveSnapshot(t, store, "claude", "current", time.Now(), "working")
 
 	calls := 0
-	var logs []string
+	var buf bytes.Buffer
 	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
 		calls++
 		if calls < 3 {
 			return errors.New("network down")
 		}
 		return nil
-	}, func(format string, args ...any) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	})
+	}, zerolog.New(&buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,8 +103,15 @@ func TestSyncRetriesFailureAndSuppressesRepeatedErrorLog(t *testing.T) {
 	if calls != 3 {
 		t.Fatalf("sender called %d times", calls)
 	}
-	if len(logs) != 2 || !strings.Contains(logs[0], "mirror claude snapshot: network down") || !strings.Contains(logs[1], "mirror recovered for claude at ") {
+	logs := parseLogs(t, &buf)
+	if len(logs) != 2 {
 		t.Fatalf("unexpected log calls: %v", logs)
+	}
+	if logs[0]["level"] != "warn" || logs[0]["message"] != "mirror failed" || logs[0]["provider"] != "claude" || !strings.Contains(fmt.Sprint(logs[0]["error"]), "mirror claude snapshot: network down") {
+		t.Fatalf("unexpected failure log: %v", logs[0])
+	}
+	if logs[1]["level"] != "info" || logs[1]["message"] != "mirror recovered" || logs[1]["provider"] != "claude" {
+		t.Fatalf("unexpected recovery log: %v", logs[1])
 	}
 }
 
@@ -135,13 +142,11 @@ func TestSyncSendsValidSnapshotsAlongsideCorruptionAndLogsRecovery(t *testing.T)
 	}
 
 	calls := 0
-	var logs []string
+	var buf bytes.Buffer
 	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
 		calls++
 		return nil
-	}, func(format string, args ...any) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	})
+	}, zerolog.New(&buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +162,32 @@ func TestSyncSendsValidSnapshotsAlongsideCorruptionAndLogsRecovery(t *testing.T)
 	if err := relay.Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(logs) != 3 || !strings.Contains(logs[0], "load snapshots: ignored 1 invalid session snapshot") || !strings.HasPrefix(logs[1], "mirrored claude snapshot captured at ") || logs[2] != "snapshot store recovered" {
+	logs := parseLogs(t, &buf)
+	if len(logs) != 3 {
 		t.Fatalf("unexpected recovery logs: %v", logs)
+	}
+	if logs[0]["level"] != "warn" || logs[0]["message"] != "load snapshots" || !strings.Contains(fmt.Sprint(logs[0]["error"]), "ignored 1 invalid session snapshot") {
+		t.Fatalf("unexpected load-error log: %v", logs[0])
+	}
+	if logs[1]["level"] != "info" || logs[1]["message"] != "mirrored snapshot" || logs[1]["provider"] != "claude" {
+		t.Fatalf("unexpected mirrored log: %v", logs[1])
+	}
+	if logs[2]["level"] != "info" || logs[2]["message"] != "snapshot store recovered" {
+		t.Fatalf("unexpected recovery log: %v", logs[2])
+	}
+}
+
+// TestLogLoadErrorUsesDebugForTransientReadRace pins the log-noise fix: a
+// reader landing mid atomic-rename (state.ErrTransientRead) is expected and
+// self-resolving, so it must not log at the same visibility as real
+// corruption.
+func TestLogLoadErrorUsesDebugForTransientReadRace(t *testing.T) {
+	var buf bytes.Buffer
+	relay := &Relay{logger: zerolog.New(&buf)}
+	relay.logLoadError(fmt.Errorf("read session: %w", state.ErrTransientRead))
+	logs := parseLogs(t, &buf)
+	if len(logs) != 1 || logs[0]["level"] != "debug" || logs[0]["message"] != "load snapshots" {
+		t.Fatalf("transient read race should log at debug: %v", logs)
 	}
 }
 
@@ -184,4 +213,20 @@ func saveSnapshot(t *testing.T, store *state.Store, provider, sessionID string, 
 		t.Fatal(err)
 	}
 	return snapshot
+}
+
+func parseLogs(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var lines []map[string]any
+	for raw := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		if raw == "" {
+			continue
+		}
+		var line map[string]any
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			t.Fatalf("parse log line %q: %v", raw, err)
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

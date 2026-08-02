@@ -11,38 +11,35 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
+
+	"github.com/rs/zerolog"
 
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
 type Sender func(context.Context, model.Snapshot) error
-type LogFunc func(string, ...any)
 
 type Relay struct {
 	store         *state.Store
 	send          Sender
-	logf          LogFunc
+	logger        zerolog.Logger
 	sent          map[string][sha256.Size]byte
 	failures      map[string]string
 	lastLoadError string
 }
 
-func New(store *state.Store, send Sender, logf LogFunc) (*Relay, error) {
+func New(store *state.Store, send Sender, logger zerolog.Logger) (*Relay, error) {
 	if store == nil {
 		return nil, errors.New("snapshot store is nil")
 	}
 	if send == nil {
 		return nil, errors.New("snapshot sender is nil")
 	}
-	if logf == nil {
-		logf = func(string, ...any) {}
-	}
 	return &Relay{
 		store:    store,
 		send:     send,
-		logf:     logf,
+		logger:   logger,
 		sent:     make(map[string][sha256.Size]byte),
 		failures: make(map[string]string),
 	}, nil
@@ -87,15 +84,20 @@ func (r *Relay) Sync(ctx context.Context) error {
 		_, alreadyDelivered := r.sent[key]
 		r.sent[key] = fingerprint
 		if _, recovering := r.failures[key]; recovering {
-			r.logf("mirror recovered for %s at %s", key, snapshot.CapturedAt.Format(time.RFC3339Nano))
+			r.logger.Info().Str("provider", key).Time("captured_at", snapshot.CapturedAt).Msg("mirror recovered")
 		} else if !alreadyDelivered {
-			r.logf("mirrored %s snapshot captured at %s", key, snapshot.CapturedAt.Format(time.RFC3339Nano))
+			r.logger.Info().Str("provider", key).Time("captured_at", snapshot.CapturedAt).Msg("mirrored snapshot")
 		}
 		delete(r.failures, key)
 	}
 	return errors.Join(syncErrors...)
 }
 
+// logLoadError logs a change in the local snapshot store's load health, and
+// nothing on repeat failures/recoveries so a stuck condition doesn't spam
+// one line per Sync tick. A read race clearing mid-rename (state.
+// ErrTransientRead) logs at Debug rather than Warn: it always resolves on
+// the very next Sync and isn't actionable the way real corruption is.
 func (r *Relay) logLoadError(err error) {
 	detail := ""
 	if err != nil {
@@ -105,11 +107,15 @@ func (r *Relay) logLoadError(err error) {
 		return
 	}
 	r.lastLoadError = detail
-	if detail != "" {
-		r.logf("load snapshots: %s", detail)
-	} else {
-		r.logf("snapshot store recovered")
+	if err == nil {
+		r.logger.Info().Msg("snapshot store recovered")
+		return
 	}
+	event := r.logger.Warn()
+	if errors.Is(err, state.ErrTransientRead) {
+		event = r.logger.Debug()
+	}
+	event.Err(err).Msg("load snapshots")
 }
 
 func (r *Relay) logFailure(key string, err error) {
@@ -118,7 +124,7 @@ func (r *Relay) logFailure(key string, err error) {
 		return
 	}
 	r.failures[key] = detail
-	r.logf("%s", detail)
+	r.logger.Warn().Str("provider", key).Err(err).Msg("mirror failed")
 }
 
 func latestProviders(snapshots []model.Snapshot) []model.Snapshot {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image/png"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/dashboard"
 	"github.com/dvgamerr/claude-status/internal/framebuffer"
 	"github.com/dvgamerr/claude-status/internal/ingest"
+	"github.com/dvgamerr/claude-status/internal/logging"
 	"github.com/dvgamerr/claude-status/internal/mirror"
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/pixelui"
@@ -79,9 +79,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func runIngest(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	logger := logging.New(stderr, "ingest")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("ingest", flag.ContinueOnError)
@@ -97,17 +98,17 @@ func runIngest(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status ingest: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	_, err = ingest.Run(stdin, stdout, store, time.Now())
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status ingest: %v\n", err)
+		logger.Error().Err(err).Msg("ingest")
 		return 1
 	}
 	return 0
@@ -118,9 +119,10 @@ func runIngest(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // always exits 0: some of these hook events (PreToolUse) can block the tool
 // call if the hook exits non-zero, and this side channel must never do that.
 func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
+	logger := logging.New(stderr, "activity")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 0
 	}
 	flags := flag.NewFlagSet("activity", flag.ContinueOnError)
@@ -136,17 +138,17 @@ func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status activity: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 0
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 0
 	}
 	_, _, err = activity.Run(stdin, store, time.Now())
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status activity: %v\n", err)
+		logger.Error().Err(err).Msg("record activity")
 		return 0
 	}
 	return 0
@@ -157,9 +159,10 @@ func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
 // seen the VS Code extension chat panel) where statusLine never fires so
 // claude-status never sees real numbers on its own.
 func runUsage(args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "usage")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("usage", flag.ContinueOnError)
@@ -180,30 +183,31 @@ func runUsage(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status usage: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	if *fiveHour < 0 || *sevenDay < 0 {
-		fmt.Fprintln(stderr, "claude-status usage: --five-hour and --seven-day are required")
+		logger.Error().Msg("--five-hour and --seven-day are required")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	_, err = usage.Run(store, *sessionID, *fiveHour, *sevenDay, *fiveHourReset, *sevenDayReset, time.Now())
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status usage: %v\n", err)
+		logger.Error().Err(err).Msg("usage")
 		return 1
 	}
 	return 0
 }
 
 func runImport(args []string, stdin io.Reader, stderr io.Writer) int {
+	logger := logging.New(stderr, "import")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status import: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("import", flag.ContinueOnError)
@@ -219,21 +223,21 @@ func runImport(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status import: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status import: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	snapshot, err := state.DecodeSnapshot(stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status import: %v\n", err)
+		logger.Error().Err(err).Msg("decode snapshot")
 		return 1
 	}
 	if err := store.Save(snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status import: %v\n", err)
+		logger.Error().Err(err).Msg("save snapshot")
 		return 1
 	}
 	return 0
@@ -248,14 +252,15 @@ func (values *stringList) Set(value string) error {
 }
 
 func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "codex-notify")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	defaultCodexHome, err := codex.DefaultHome()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("resolve codex home")
 		return 1
 	}
 	flags := flag.NewFlagSet("codex-notify", flag.ContinueOnError)
@@ -275,41 +280,42 @@ func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "claude-status codex-notify: expected one Codex notification JSON argument")
+		logger.Error().Msg("expected one Codex notification JSON argument")
 		return 2
 	}
 	rawNotification := flags.Arg(0)
 	if *forward != "" {
 		if err := forwardNotification(ctx, *forward, forwardArgs, rawNotification); err != nil {
-			fmt.Fprintf(stderr, "claude-status codex-notify: warning: %v\n", err)
+			logger.Warn().Err(err).Msg("forward codex notification")
 		}
 	}
 	notification, err := codex.DecodeNotification(rawNotification)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("decode notification")
 		return 1
 	}
 	snapshot, err := codex.SnapshotFromNotification(notification, *codexHome, time.Now())
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("build snapshot from notification")
 		return 1
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	if err := store.Save(snapshot); err != nil {
-		fmt.Fprintf(stderr, "claude-status codex-notify: %v\n", err)
+		logger.Error().Err(err).Msg("save snapshot")
 		return 1
 	}
 	return 0
 }
 
 func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "relay")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status relay: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("relay", flag.ContinueOnError)
@@ -330,44 +336,49 @@ func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status relay: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	if strings.TrimSpace(*mirrorSSH) == "" {
-		fmt.Fprintln(stderr, "claude-status relay: --mirror-ssh is required")
+		logger.Error().Msg("--mirror-ssh is required")
 		return 2
 	}
 	if *refresh < 100*time.Millisecond {
-		fmt.Fprintln(stderr, "claude-status relay: --refresh must be at least 100ms")
+		logger.Error().Msg("--refresh must be at least 100ms")
 		return 2
 	}
 
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status relay: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	logOutput := stderr
 	var file *os.File
 	if strings.TrimSpace(*logFile) != "" {
 		if err := os.MkdirAll(filepath.Dir(*logFile), 0o700); err != nil {
-			fmt.Fprintf(stderr, "claude-status relay: create log directory: %v\n", err)
+			logger.Error().Err(err).Msg("create log directory")
 			return 1
 		}
 		file, err = os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			fmt.Fprintf(stderr, "claude-status relay: open log file: %v\n", err)
+			logger.Error().Err(err).Msg("open log file")
 			return 1
 		}
 		defer file.Close()
-		logOutput = io.MultiWriter(stderr, file)
+		// file first: io.MultiWriter aborts at the first writer that errors
+		// without trying the rest, and a real Windows/systemd service has no
+		// console — writes to stderr there can fail outright. Putting file
+		// first means the durable log still gets written even when stderr
+		// can't be, instead of the write being silently skipped entirely.
+		logOutput = io.MultiWriter(file, stderr)
 	}
-	logger := log.New(logOutput, "claude-status relay: ", log.LstdFlags|log.Lmicroseconds)
+	relayLogger := logging.New(logOutput, "relay")
 	worker, err := relay.New(store, func(sendCtx context.Context, snapshot model.Snapshot) error {
 		return mirror.SSH(sendCtx, *mirrorSSH, *remoteBinary, snapshot)
-	}, logger.Printf)
+	}, relayLogger)
 	if err != nil {
-		logger.Printf("%v", err)
+		relayLogger.Error().Err(err).Msg("start relay")
 		return 1
 	}
 
@@ -407,9 +418,10 @@ func forwardNotification(ctx context.Context, program string, args []string, pay
 }
 
 func runTUI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	logger := logging.New(stderr, "tui")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status tui: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("tui", flag.ContinueOnError)
@@ -429,20 +441,20 @@ func runTUI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status tui: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	if *refresh < 250*time.Millisecond {
-		fmt.Fprintln(stderr, "claude-status tui: --refresh must be at least 250ms")
+		logger.Error().Msg("--refresh must be at least 250ms")
 		return 2
 	}
 	if *staleAfter <= 0 {
-		fmt.Fprintln(stderr, "claude-status tui: --stale-after must be greater than zero")
+		logger.Error().Msg("--stale-after must be greater than zero")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status tui: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	config := dashboard.Config{
@@ -452,16 +464,17 @@ func runTUI(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		Inline:          *inline,
 	}
 	if err := dashboard.Run(ctx, stdin, stdout, store, systeminfo.NewReader("/"), config); err != nil {
-		fmt.Fprintf(stderr, "claude-status tui: %v\n", err)
+		logger.Error().Err(err).Msg("tui")
 		return 1
 	}
 	return 0
 }
 
 func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "gfx")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("gfx", flag.ContinueOnError)
@@ -482,39 +495,39 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status gfx: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	if *refresh < 20*time.Millisecond {
-		fmt.Fprintln(stderr, "claude-status gfx: --refresh must be at least 20ms")
+		logger.Error().Msg("--refresh must be at least 20ms")
 		return 2
 	}
 	if *staleAfter <= 0 {
-		fmt.Fprintln(stderr, "claude-status gfx: --stale-after must be greater than zero")
+		logger.Error().Msg("--stale-after must be greater than zero")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	renderer, err := pixelui.NewRenderer()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		logger.Error().Err(err).Msg("create renderer")
 		return 1
 	}
 	screen, err := framebuffer.Open(*framebufferPath, *ttyPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		logger.Error().Err(err).Msg("open framebuffer")
 		return 1
 	}
 	defer func() {
 		if err := screen.Close(); err != nil {
-			fmt.Fprintf(stderr, "claude-status gfx: close display: %v\n", err)
+			logger.Warn().Err(err).Msg("close display")
 		}
 	}()
 	if size := screen.Size(); size.X != pixelui.Width || size.Y != pixelui.Height {
-		fmt.Fprintf(stderr, "claude-status gfx: display is %dx%d; expected %dx%d\n", size.X, size.Y, pixelui.Width, pixelui.Height)
+		logger.Error().Int("width", size.X).Int("height", size.Y).Msg("unexpected display size")
 		return 1
 	}
 	var touches <-chan touch.Point
@@ -523,7 +536,7 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 		if err != nil {
 			// Touch feedback is a nice-to-have; the dashboard's real job
 			// (showing usage) must keep working without it.
-			fmt.Fprintf(stderr, "claude-status gfx: warning: touch input disabled: %v\n", err)
+			logger.Warn().Err(err).Msg("touch input disabled")
 		} else {
 			touches = opened
 		}
@@ -531,16 +544,17 @@ func runGFX(ctx context.Context, args []string, stderr io.Writer) int {
 
 	config := pixelui.RunConfig{RefreshInterval: *refresh, StaleAfter: *staleAfter}
 	if err := pixelui.Run(ctx, store, systeminfo.NewReader("/"), screen, renderer, config, touches); err != nil {
-		fmt.Fprintf(stderr, "claude-status gfx: %v\n", err)
+		logger.Error().Err(err).Msg("gfx")
 		return 1
 	}
 	return 0
 }
 
 func runPreview(args []string, stderr io.Writer) int {
+	logger := logging.New(stderr, "preview")
 	defaultDir, err := state.DefaultDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
 	flags := flag.NewFlagSet("preview", flag.ContinueOnError)
@@ -557,34 +571,34 @@ func runPreview(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "claude-status preview: unexpected positional arguments")
+		logger.Error().Msg("unexpected positional arguments")
 		return 2
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
 	snapshots, loadErr := store.LoadAll()
 	claude, codex := pixelui.LatestProviders(snapshots)
 	renderer, err := pixelui.NewRenderer()
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status preview: %v\n", err)
+		logger.Error().Err(err).Msg("create renderer")
 		return 1
 	}
 	frame := renderer.Render(pixelui.View{Claude: claude, Codex: codex, Now: time.Now(), StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
 	file, err := os.Create(*outputPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "claude-status preview: create output: %v\n", err)
+		logger.Error().Err(err).Msg("create output")
 		return 1
 	}
 	if err := png.Encode(file, frame); err != nil {
 		file.Close()
-		fmt.Fprintf(stderr, "claude-status preview: encode PNG: %v\n", err)
+		logger.Error().Err(err).Msg("encode png")
 		return 1
 	}
 	if err := file.Close(); err != nil {
-		fmt.Fprintf(stderr, "claude-status preview: close output: %v\n", err)
+		logger.Error().Err(err).Msg("close output")
 		return 1
 	}
 	return 0
