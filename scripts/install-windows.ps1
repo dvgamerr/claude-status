@@ -20,8 +20,89 @@ if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = Join-Path $RepoDir "bin\claude-status.exe"
 }
 $BinaryPath = (Resolve-Path -LiteralPath $BinaryPath).Path
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+$Principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "install-windows.ps1 must run from an Administrator shell"
+}
+if ($MirrorHost -notmatch '^[A-Za-z0-9._@:-]+$' -or $MirrorHost.StartsWith('-')) {
+    throw "invalid SSH mirror host: $MirrorHost"
+}
+if ($RemoteBinary -notmatch '^[A-Za-z0-9_./~-]+$') {
+    throw "invalid remote binary path: $RemoteBinary"
+}
+
 $InstalledBinary = Join-Path $InstallDir "claude-status.exe"
+$ClaudeSettingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
+if (Test-Path -LiteralPath $ClaudeSettingsPath) {
+    $ClaudeSettings = Get-Content -Raw -LiteralPath $ClaudeSettingsPath | ConvertFrom-Json -AsHashtable
+}
+else {
+    $ClaudeSettings = [ordered]@{}
+}
+if ($ClaudeSettings -isnot [Collections.IDictionary]) {
+    throw "Claude settings root must be a JSON object"
+}
+if ($ClaudeSettings.Contains("hooks") -and $ClaudeSettings["hooks"] -isnot [Collections.IDictionary]) {
+    throw "Claude settings hooks value must be a JSON object"
+}
+
+# Parse both user configs before copying the binary or creating backups. In
+# particular, a multiline or otherwise unsupported TOML notify value must fail
+# closed instead of silently adding a second notify assignment.
+$CodexConfigPath = Join-Path $env:USERPROFILE ".codex\config.toml"
+if (-not (Test-Path -LiteralPath $CodexConfigPath)) {
+    throw "Codex config was not found at $CodexConfigPath"
+}
+$CodexConfig = Get-Content -Raw -LiteralPath $CodexConfigPath
+$NotifyMatches = [regex]::Matches($CodexConfig, '(?m)^\s*notify\s*=\s*(?<array>\[[^\r\n]*\])\s*(?:#.*)?$')
+$AnyNotifyMatch = [regex]::Match($CodexConfig, '(?m)^\s*notify\s*=')
+if ($NotifyMatches.Count -gt 1) {
+    throw "Codex config contains multiple notify assignments"
+}
+if ($AnyNotifyMatch.Success -and $NotifyMatches.Count -eq 0) {
+    throw "Codex notify must be a single-line TOML array before this installer can preserve it"
+}
+$NotifyMatch = $null
+$ExistingNotify = @()
+if ($NotifyMatches.Count -eq 1) {
+    $NotifyMatch = $NotifyMatches[0]
+    try {
+        $ExistingNotify = @($NotifyMatch.Groups["array"].Value | ConvertFrom-Json)
+    }
+    catch {
+        throw "Codex notify is not a JSON-compatible TOML string array: $($_.Exception.Message)"
+    }
+    if (@($ExistingNotify | Where-Object { $_ -isnot [string] }).Count -gt 0) {
+        throw "Codex notify may contain only string arguments"
+    }
+}
+
+$ForwardProgram = ""
+$ForwardArguments = @()
+if ($ExistingNotify.Count -ge 2 -and $ExistingNotify[0] -eq $InstalledBinary -and $ExistingNotify[1] -eq "codex-notify") {
+    for ($Index = 2; $Index -lt $ExistingNotify.Count; $Index++) {
+        if ($ExistingNotify[$Index] -eq "--forward" -and $Index + 1 -lt $ExistingNotify.Count) {
+            $ForwardProgram = $ExistingNotify[++$Index]
+        }
+        elseif ($ExistingNotify[$Index] -eq "--forward-arg" -and $Index + 1 -lt $ExistingNotify.Count) {
+            $ForwardArguments += $ExistingNotify[++$Index]
+        }
+        else {
+            throw "existing claude-status Codex notify wrapper contains an unsupported or incomplete argument: $($ExistingNotify[$Index])"
+        }
+    }
+    if ($ForwardArguments.Count -gt 0 -and [string]::IsNullOrWhiteSpace($ForwardProgram)) {
+        throw "existing claude-status Codex notify wrapper has forward arguments but no forward program"
+    }
+}
+elseif ($ExistingNotify.Count -gt 0) {
+    $ForwardProgram = $ExistingNotify[0]
+    if ($ExistingNotify.Count -gt 1) {
+        $ForwardArguments = @($ExistingNotify[1..($ExistingNotify.Count - 1)])
+    }
+}
+
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $StagedBinary = Join-Path $InstallDir ("claude-status." + [guid]::NewGuid().ToString("N") + ".exe")
 Copy-Item -LiteralPath $BinaryPath -Destination $StagedBinary
 try {
@@ -80,14 +161,7 @@ function Write-Utf8Atomic {
     }
 }
 
-$ClaudeSettingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 $ClaudeBackup = Backup-ConfigFile -Path $ClaudeSettingsPath
-if (Test-Path -LiteralPath $ClaudeSettingsPath) {
-    $ClaudeSettings = Get-Content -Raw -LiteralPath $ClaudeSettingsPath | ConvertFrom-Json -AsHashtable
-}
-else {
-    $ClaudeSettings = [ordered]@{}
-}
 $ClaudeCommand = '"' + $InstalledBinary + '" ingest'
 $ClaudeSettings["statusLine"] = [ordered]@{
     type = "command"
@@ -97,7 +171,7 @@ $ClaudeSettings["statusLine"] = [ordered]@{
 }
 
 # The activity command turns hook events into the dashboard's working / idle /
-# needs-approval mascot state. It is registered on four hooks and is additive:
+# needs-approval mascot state. It is registered on six hooks and is additive:
 # any other hook already configured on the same event is left in place.
 $ActivityCommand = '"' + $InstalledBinary + '" activity'
 
@@ -144,36 +218,7 @@ Set-ClaudeStatusHook -Settings $ClaudeSettings -EventName "SubagentStop" -Comman
 $ClaudeJson = $ClaudeSettings | ConvertTo-Json -Depth 100
 Write-Utf8Atomic -Path $ClaudeSettingsPath -Content ($ClaudeJson + [Environment]::NewLine)
 
-$CodexConfigPath = Join-Path $env:USERPROFILE ".codex\config.toml"
-if (-not (Test-Path -LiteralPath $CodexConfigPath)) {
-    throw "Codex config was not found at $CodexConfigPath"
-}
 $CodexBackup = Backup-ConfigFile -Path $CodexConfigPath
-$CodexConfig = Get-Content -Raw -LiteralPath $CodexConfigPath
-$NotifyMatch = [regex]::Match($CodexConfig, '(?m)^\s*notify\s*=\s*(?<array>\[[^\r\n]*\])\s*$')
-$ExistingNotify = @()
-if ($NotifyMatch.Success) {
-    $ExistingNotify = @($NotifyMatch.Groups["array"].Value | ConvertFrom-Json)
-}
-
-$ForwardProgram = ""
-$ForwardArguments = @()
-if ($ExistingNotify.Count -ge 2 -and $ExistingNotify[0] -eq $InstalledBinary -and $ExistingNotify[1] -eq "codex-notify") {
-    for ($Index = 2; $Index -lt $ExistingNotify.Count; $Index++) {
-        if ($ExistingNotify[$Index] -eq "--forward" -and $Index + 1 -lt $ExistingNotify.Count) {
-            $ForwardProgram = $ExistingNotify[++$Index]
-        }
-        elseif ($ExistingNotify[$Index] -eq "--forward-arg" -and $Index + 1 -lt $ExistingNotify.Count) {
-            $ForwardArguments += $ExistingNotify[++$Index]
-        }
-    }
-}
-elseif ($ExistingNotify.Count -gt 0) {
-    $ForwardProgram = $ExistingNotify[0]
-    if ($ExistingNotify.Count -gt 1) {
-        $ForwardArguments = @($ExistingNotify[1..($ExistingNotify.Count - 1)])
-    }
-}
 
 $NewNotify = @(
     $InstalledBinary,
@@ -186,7 +231,7 @@ if (-not [string]::IsNullOrWhiteSpace($ForwardProgram)) {
     }
 }
 $NotifyLine = "notify = " + ($NewNotify | ConvertTo-Json -Compress -AsArray)
-if ($NotifyMatch.Success) {
+if ($null -ne $NotifyMatch) {
     $CodexConfig = $CodexConfig.Remove($NotifyMatch.Index, $NotifyMatch.Length).Insert($NotifyMatch.Index, $NotifyLine)
 }
 else {
