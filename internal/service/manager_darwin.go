@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/dvgamerr/claude-status/internal/atomicfile"
 )
 
 // macOS runs the relay as a per-user LaunchAgent. `launchctl load/unload`
@@ -16,6 +18,9 @@ import (
 // this package has not been exercised on real macOS hardware, so it
 // deliberately avoids the newer API's version-specific edge cases.
 func plistPath(name string) (string, error) {
+	if err := validateName(name); err != nil {
+		return "", err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
@@ -23,7 +28,11 @@ func plistPath(name string) (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", name+".plist"), nil
 }
 
+// Install writes and loads a per-user launchd LaunchAgent.
 func Install(cfg Config) error {
+	if err := validateConfig(cfg); err != nil {
+		return err
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
@@ -36,7 +45,10 @@ func Install(cfg Config) error {
 		return fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
 
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory for logs: %w", err)
+	}
 	logPath := filepath.Join(home, "Library", "Logs", cfg.Name+".log")
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("create log directory: %w", err)
@@ -65,7 +77,7 @@ func Install(cfg Config) error {
 </plist>
 `, cfg.Name, plistArgumentList(args), logPath, logPath)
 
-	if err := os.WriteFile(path, []byte(plist), 0o644); err != nil {
+	if err := atomicfile.Write(path, []byte(plist), 0o644); err != nil {
 		return fmt.Errorf("write launchd plist: %w", err)
 	}
 
@@ -76,6 +88,7 @@ func Install(cfg Config) error {
 	return launchctl("load", "-w", path)
 }
 
+// Remove unloads and deletes a launchd LaunchAgent.
 func Remove(name string) error {
 	path, err := plistPath(name)
 	if err != nil {
@@ -88,21 +101,33 @@ func Remove(name string) error {
 	return nil
 }
 
+// Start asks launchd to start an installed agent.
 func Start(name string) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
 	return launchctl("start", name)
 }
 
+// Stop asks launchd to stop an installed agent.
 func Stop(name string) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
 	return launchctl("stop", name)
 }
 
+// Status queries a launchd agent's installation and running state.
 func Status(name string) (State, error) {
 	path, err := plistPath(name)
 	if err != nil {
 		return StateNotInstalled, err
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return StateNotInstalled, nil
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return StateNotInstalled, nil
+		}
+		return StateNotInstalled, fmt.Errorf("inspect launchd plist: %w", err)
 	}
 	out, err := exec.Command("launchctl", "list", name).Output()
 	if err != nil {
@@ -142,6 +167,8 @@ func plistEscape(value string) string {
 		"&", "&amp;",
 		"<", "&lt;",
 		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&apos;",
 	)
 	return replacer.Replace(value)
 }

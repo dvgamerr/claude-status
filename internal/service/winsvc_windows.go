@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -30,6 +31,12 @@ func IsWindowsService() bool {
 // request cancels its context and waits (up to 10s) for it to return before
 // reporting StopPending -> Stopped back to SCM.
 func RunAsService(name string, run func(ctx context.Context) error) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
+	if run == nil {
+		return errors.New("service run function is nil")
+	}
 	return svc.Run(name, &handler{run: run})
 }
 
@@ -49,22 +56,42 @@ func (h *handler) Execute(_ []string, requests <-chan svc.ChangeRequest, statusC
 
 	for {
 		select {
-		case <-done:
+		case err := <-done:
 			cancel()
 			statusChan <- svc.Status{State: svc.StopPending}
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return false, 1
+			}
 			return false, 0
-		case req := <-requests:
+		case req, ok := <-requests:
+			if !ok {
+				cancel()
+				statusChan <- svc.Status{State: svc.StopPending}
+				return false, 1
+			}
 			switch req.Cmd {
 			case svc.Interrogate:
 				statusChan <- req.CurrentStatus
 			case svc.Stop, svc.Shutdown:
 				cancel()
+				timer := time.NewTimer(10 * time.Second)
 				select {
-				case <-done:
-				case <-time.After(10 * time.Second):
+				case err := <-done:
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					statusChan <- svc.Status{State: svc.StopPending}
+					if err != nil && !errors.Is(err, context.Canceled) {
+						return false, 1
+					}
+					return false, 0
+				case <-timer.C:
+					statusChan <- svc.Status{State: svc.StopPending}
+					return false, 1
 				}
-				statusChan <- svc.Status{State: svc.StopPending}
-				return false, 0
 			default:
 				// Unexpected control requests are ignored, not fatal.
 			}
