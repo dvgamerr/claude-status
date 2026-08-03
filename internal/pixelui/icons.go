@@ -15,7 +15,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-const railIconSize = 120
+const railIconSize = 150
 
 // The SVGs stay as the source assets and are rasterized once when the
 // renderer starts. That keeps the framebuffer render loop allocation-free

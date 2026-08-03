@@ -366,8 +366,8 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 	card(canvas, bounds, 20)
 
 	centerX := bounds.Min.X + bounds.Dx()/2
-	mascotY := bounds.Min.Y + 100
-	radius := 54
+	radius := railIconSize / 2
+	mascotY := bounds.Min.Y + 40 + radius
 	r.drawMascot(canvas, centerX, mascotY, now, activityState)
 
 	captionTop := mascotY + radius + 34
