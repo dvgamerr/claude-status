@@ -110,8 +110,8 @@ func TestRunPreservesExistingSnapshotFields(t *testing.T) {
 		Model:         model.Model{DisplayName: "Opus"},
 		Context:       model.Context{UsedPercentage: &pct},
 	}
-	if err := store.Save(seeded); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(seeded); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 
 	snapshot, matched, err := Run(strings.NewReader(`{"session_id":"abc","hook_event_name":"Stop"}`), store, time.Now())
@@ -126,5 +126,29 @@ func TestRunPreservesExistingSnapshotFields(t *testing.T) {
 	}
 	if snapshot.Session.Name != "demo" || snapshot.Model.DisplayName != "Opus" || *snapshot.Context.UsedPercentage != pct {
 		t.Fatalf("Run() clobbered existing snapshot fields: %+v", snapshot)
+	}
+}
+
+func TestRunValidatesDependenciesAndNormalizesTime(t *testing.T) {
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.FixedZone("ICT", 7*60*60))
+	store, err := state.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, runErr := Run(nil, store, now); runErr == nil {
+		t.Fatal("Run() accepted nil input")
+	}
+	if _, _, runErr := Run(strings.NewReader(`{}`), nil, now); runErr == nil {
+		t.Fatal("Run() accepted nil store")
+	}
+	if _, _, runErr := Run(strings.NewReader(`{}`), store, time.Time{}); runErr == nil {
+		t.Fatal("Run() accepted zero time")
+	}
+	snapshot, _, err := Run(strings.NewReader(`{"session_id":"tz","hook_event_name":"Stop"}`), store, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.CapturedAt.Location() != time.UTC || snapshot.Activity.UpdatedAt.Location() != time.UTC {
+		t.Fatalf("times were not normalized to UTC: captured=%v activity=%v", snapshot.CapturedAt, snapshot.Activity.UpdatedAt)
 	}
 }

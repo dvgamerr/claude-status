@@ -4,6 +4,7 @@
 package activity
 
 import (
+	"errors"
 	"io"
 	"os"
 	"time"
@@ -21,6 +22,16 @@ import (
 // when neither applies (for example an idle-nudge Notification); callers
 // should treat that as a no-op, not an error.
 func Run(input io.Reader, store *state.Store, now time.Time) (snapshot model.Snapshot, matched bool, err error) {
+	if input == nil {
+		return model.Snapshot{}, false, errors.New("hook input is nil")
+	}
+	if store == nil {
+		return model.Snapshot{}, false, errors.New("snapshot store is nil")
+	}
+	if now.IsZero() {
+		return model.Snapshot{}, false, errors.New("activity time is empty")
+	}
+	now = now.UTC()
 	hook, err := claude.DecodeHook(input)
 	if err != nil {
 		return model.Snapshot{}, false, err
@@ -40,7 +51,7 @@ func Run(input io.Reader, store *state.Store, now time.Time) (snapshot model.Sna
 		snapshot = model.Snapshot{
 			SchemaVersion: model.CurrentSchemaVersion,
 			CapturedAt:    now,
-			Provider:      "claude",
+			Provider:      model.ProviderClaude,
 			Session:       model.Session{ID: sessionID},
 		}
 	}

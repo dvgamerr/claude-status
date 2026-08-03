@@ -1,8 +1,11 @@
+// Package ingest converts Claude statusLine input into sanitized local state.
 package ingest
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/claude"
@@ -10,7 +13,17 @@ import (
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
+// Run decodes, persists, and formats one Claude statusLine event.
 func Run(input io.Reader, output io.Writer, store *state.Store, now time.Time) (model.Snapshot, error) {
+	if input == nil {
+		return model.Snapshot{}, errors.New("statusLine input is nil")
+	}
+	if output == nil {
+		return model.Snapshot{}, errors.New("status line output is nil")
+	}
+	if store == nil {
+		return model.Snapshot{}, errors.New("snapshot store is nil")
+	}
 	payload, err := claude.Decode(input)
 	if err != nil {
 		return model.Snapshot{}, err
@@ -21,6 +34,8 @@ func Run(input io.Reader, output io.Writer, store *state.Store, now time.Time) (
 	// statusLine event doesn't erase working/idle/waiting-approval.
 	if previous, err := store.LoadSession(snapshot.Session.ID); err == nil {
 		snapshot.Activity = previous.Activity
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return model.Snapshot{}, fmt.Errorf("load prior activity: %w", err)
 	}
 	if err := store.Save(snapshot); err != nil {
 		return model.Snapshot{}, err

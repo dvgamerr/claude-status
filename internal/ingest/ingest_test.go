@@ -3,6 +3,8 @@ package ingest
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,8 +28,8 @@ func TestRunPersistsSanitizedSnapshotAndWritesStatusLine(t *testing.T) {
 	var output bytes.Buffer
 	now := time.Date(2026, 7, 31, 14, 0, 0, 0, time.UTC)
 
-	if _, err := Run(input, &output, store, now); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if _, runErr := Run(input, &output, store, now); runErr != nil {
+		t.Fatalf("Run() error = %v", runErr)
 	}
 	if got := strings.TrimSpace(output.String()); got != "[Opus] ctx 42%" {
 		t.Fatalf("status line = %q", got)
@@ -48,21 +50,21 @@ func TestRunPreservesActivityAcrossStatusLineRefresh(t *testing.T) {
 	}
 	now := time.Date(2026, 7, 31, 14, 0, 0, 0, time.UTC)
 	first := strings.NewReader(`{"session_id":"activity-test","context_window":{"used_percentage":10}}`)
-	if _, err := Run(first, &bytes.Buffer{}, store, now); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if _, runErr := Run(first, &bytes.Buffer{}, store, now); runErr != nil {
+		t.Fatalf("Run() error = %v", runErr)
 	}
 	snapshot, err := store.LoadSession("activity-test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	snapshot.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now}
-	if err := store.Save(snapshot); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(snapshot); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 
 	second := strings.NewReader(`{"session_id":"activity-test","context_window":{"used_percentage":20}}`)
-	if _, err := Run(second, &bytes.Buffer{}, store, now.Add(5*time.Second)); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if _, runErr := Run(second, &bytes.Buffer{}, store, now.Add(5*time.Second)); runErr != nil {
+		t.Fatalf("Run() error = %v", runErr)
 	}
 	after, err := store.LoadSession("activity-test")
 	if err != nil {
@@ -85,6 +87,46 @@ func TestRunReturnsDecodeAndOutputErrors(t *testing.T) {
 	valid := strings.NewReader(`{"session_id":"output-error"}`)
 	if _, err := Run(valid, errorWriter{}, store, time.Now()); err == nil || !strings.Contains(err.Error(), "write status line") {
 		t.Fatalf("Run() output error = %v", err)
+	}
+}
+
+func TestRunRejectsNilDependencies(t *testing.T) {
+	store, err := state.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := strings.NewReader(`{"session_id":"session"}`)
+	if _, err := Run(nil, io.Discard, store, time.Now()); err == nil {
+		t.Fatal("Run() accepted nil input")
+	}
+	if _, err := Run(valid, nil, store, time.Now()); err == nil {
+		t.Fatal("Run() accepted nil output")
+	}
+	if _, err := Run(strings.NewReader(`{"session_id":"session"}`), io.Discard, nil, time.Now()); err == nil {
+		t.Fatal("Run() accepted nil store")
+	}
+}
+
+func TestRunSurfacesCorruptPriorActivity(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := model.Snapshot{SchemaVersion: model.CurrentSchemaVersion, CapturedAt: time.Now(), Session: model.Session{ID: "session"}}
+	if saveErr := store.Save(seed); saveErr != nil {
+		t.Fatal(saveErr)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "sessions"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("ReadDir() entries=%d error=%v", len(entries), err)
+	}
+	if writeErr := os.WriteFile(filepath.Join(dir, "sessions", entries[0].Name()), []byte("broken"), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	_, err = Run(strings.NewReader(`{"session_id":"session"}`), io.Discard, store, time.Now())
+	if err == nil || !strings.Contains(err.Error(), "load prior activity") {
+		t.Fatalf("Run() error = %v", err)
 	}
 }
 
