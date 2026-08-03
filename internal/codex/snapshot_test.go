@@ -46,6 +46,7 @@ func TestDecodeNotificationRejectsInvalidInput(t *testing.T) {
 		{name: "multiple", raw: `{"thread-id":"x"} {}`, want: "multiple"},
 		{name: "missing thread", raw: `{}`, want: "thread-id"},
 		{name: "unsafe thread", raw: `{"thread-id":"../../secret"}`, want: "thread-id"},
+		{name: "unsupported type", raw: `{"type":"other","thread-id":"thread_123"}`, want: "notification type"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,6 +136,21 @@ func TestSnapshotFromNotificationHandlesMissingAndReorderedWindows(t *testing.T)
 
 func TestSnapshotFromNotificationReportsMissingRollout(t *testing.T) {
 	_, err := SnapshotFromNotification(Notification{ThreadID: "thread-404"}, t.TempDir(), time.Now())
+	if err == nil || !strings.Contains(err.Error(), "no Codex rollout") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestSnapshotFromNotificationDoesNotMatchThreadSubstring(t *testing.T) {
+	home := t.TempDir()
+	sessions := filepath.Join(home, "sessions")
+	if err := os.MkdirAll(sessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessions, "rollout-prefix-thread_123-suffix.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := SnapshotFromNotification(Notification{ThreadID: "thread_123"}, home, time.Now())
 	if err == nil || !strings.Contains(err.Error(), "no Codex rollout") {
 		t.Fatalf("error = %v", err)
 	}

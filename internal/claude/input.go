@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/sanitize"
 )
 
 const (
@@ -34,11 +34,13 @@ type Input struct {
 	Thinking      *Thinking      `json:"thinking"`
 }
 
+// Model is the model identity subset accepted from statusLine input.
 type Model struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
 }
 
+// Cost is the optional aggregate metrics subset accepted from statusLine input.
 type Cost struct {
 	TotalCostUSD       *float64 `json:"total_cost_usd"`
 	TotalDurationMS    *int64   `json:"total_duration_ms"`
@@ -47,6 +49,7 @@ type Cost struct {
 	TotalLinesRemoved  *int64   `json:"total_lines_removed"`
 }
 
+// ContextWindow is the optional context usage subset accepted from statusLine.
 type ContextWindow struct {
 	TotalInputTokens    *int64      `json:"total_input_tokens"`
 	TotalOutputTokens   *int64      `json:"total_output_tokens"`
@@ -56,6 +59,7 @@ type ContextWindow struct {
 	CurrentUsage        *TokenUsage `json:"current_usage"`
 }
 
+// TokenUsage is the provider's current token breakdown.
 type TokenUsage struct {
 	InputTokens              *int64 `json:"input_tokens"`
 	OutputTokens             *int64 `json:"output_tokens"`
@@ -63,24 +67,29 @@ type TokenUsage struct {
 	CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
 }
 
+// RateLimits contains optional five-hour and seven-day quota windows.
 type RateLimits struct {
 	FiveHour *RateWindow `json:"five_hour"`
 	SevenDay *RateWindow `json:"seven_day"`
 }
 
+// RateWindow contains one optional quota percentage and reset time.
 type RateWindow struct {
 	UsedPercentage *float64 `json:"used_percentage"`
 	ResetsAt       *int64   `json:"resets_at"`
 }
 
+// Effort contains the provider-reported reasoning level.
 type Effort struct {
 	Level string `json:"level"`
 }
 
+// Thinking reports whether extended thinking is enabled.
 type Thinking struct {
 	Enabled *bool `json:"enabled"`
 }
 
+// Decode reads one size-limited statusLine payload and rejects trailing values.
 func Decode(r io.Reader) (Input, error) {
 	var input Input
 	data, err := io.ReadAll(io.LimitReader(r, maxInputBytes+1))
@@ -112,40 +121,41 @@ func Decode(r io.Reader) (Input, error) {
 // input is sanitized, so hook events and statusLine events agree on which
 // session a snapshot belongs to.
 func CleanSessionID(value string) string {
-	sessionID := cleanText(value, maxSessionIDRunes)
+	sessionID := sanitize.Text(value, maxSessionIDRunes)
 	if sessionID == "" {
 		sessionID = "unknown"
 	}
 	return sessionID
 }
 
+// ToSnapshot converts provider input into the allowlisted persisted schema.
 func ToSnapshot(input Input, now time.Time) model.Snapshot {
 	sessionID := CleanSessionID(input.SessionID)
 
 	snapshot := model.Snapshot{
 		SchemaVersion:     model.CurrentSchemaVersion,
 		CapturedAt:        now.UTC(),
-		Provider:          "claude",
-		ClientVersion:     cleanText(input.Version, 80),
-		Session:           model.Session{ID: sessionID, Name: cleanText(input.SessionName, 120)},
-		Model:             model.Model{ID: cleanText(input.Model.ID, 120), DisplayName: cleanText(input.Model.DisplayName, 120)},
-		ClaudeCodeVersion: cleanText(input.Version, 80),
-		Context:           model.Context{Exceeds200KTokens: copyBool(input.Exceeds200K)},
+		Provider:          model.ProviderClaude,
+		ClientVersion:     sanitize.Text(input.Version, 80),
+		Session:           model.Session{ID: sessionID, Name: sanitize.Text(input.SessionName, 120)},
+		Model:             model.Model{ID: sanitize.Text(input.Model.ID, 120), DisplayName: sanitize.Text(input.Model.DisplayName, 120)},
+		ClaudeCodeVersion: sanitize.Text(input.Version, 80),
+		Context:           model.Context{Exceeds200KTokens: sanitize.Bool(input.Exceeds200K)},
 	}
 
 	if input.ContextWindow != nil {
 		context := input.ContextWindow
-		snapshot.Context.UsedPercentage = percentage(context.UsedPercentage)
-		snapshot.Context.RemainingPercentage = percentage(context.RemainingPercentage)
-		snapshot.Context.WindowSize = nonNegativeInt(context.ContextWindowSize)
-		snapshot.Context.TotalInputTokens = nonNegativeInt(context.TotalInputTokens)
-		snapshot.Context.TotalOutputTokens = nonNegativeInt(context.TotalOutputTokens)
+		snapshot.Context.UsedPercentage = sanitize.Percentage(context.UsedPercentage)
+		snapshot.Context.RemainingPercentage = sanitize.Percentage(context.RemainingPercentage)
+		snapshot.Context.WindowSize = sanitize.NonNegativeInt64(context.ContextWindowSize)
+		snapshot.Context.TotalInputTokens = sanitize.NonNegativeInt64(context.TotalInputTokens)
+		snapshot.Context.TotalOutputTokens = sanitize.NonNegativeInt64(context.TotalOutputTokens)
 		if context.CurrentUsage != nil {
 			snapshot.Context.CurrentUsage = model.TokenUsage{
-				InputTokens:              nonNegativeInt(context.CurrentUsage.InputTokens),
-				OutputTokens:             nonNegativeInt(context.CurrentUsage.OutputTokens),
-				CacheCreationInputTokens: nonNegativeInt(context.CurrentUsage.CacheCreationInputTokens),
-				CacheReadInputTokens:     nonNegativeInt(context.CurrentUsage.CacheReadInputTokens),
+				InputTokens:              sanitize.NonNegativeInt64(context.CurrentUsage.InputTokens),
+				OutputTokens:             sanitize.NonNegativeInt64(context.CurrentUsage.OutputTokens),
+				CacheCreationInputTokens: sanitize.NonNegativeInt64(context.CurrentUsage.CacheCreationInputTokens),
+				CacheReadInputTokens:     sanitize.NonNegativeInt64(context.CurrentUsage.CacheReadInputTokens),
 			}
 		}
 	}
@@ -157,23 +167,24 @@ func ToSnapshot(input Input, now time.Time) model.Snapshot {
 
 	if input.Cost != nil {
 		snapshot.Cost = model.Cost{
-			TotalCostUSD:       nonNegativeFloat(input.Cost.TotalCostUSD),
-			TotalDurationMS:    nonNegativeInt(input.Cost.TotalDurationMS),
-			TotalAPIDurationMS: nonNegativeInt(input.Cost.TotalAPIDurationMS),
-			TotalLinesAdded:    nonNegativeInt(input.Cost.TotalLinesAdded),
-			TotalLinesRemoved:  nonNegativeInt(input.Cost.TotalLinesRemoved),
+			TotalCostUSD:       sanitize.NonNegativeFloat64(input.Cost.TotalCostUSD),
+			TotalDurationMS:    sanitize.NonNegativeInt64(input.Cost.TotalDurationMS),
+			TotalAPIDurationMS: sanitize.NonNegativeInt64(input.Cost.TotalAPIDurationMS),
+			TotalLinesAdded:    sanitize.NonNegativeInt64(input.Cost.TotalLinesAdded),
+			TotalLinesRemoved:  sanitize.NonNegativeInt64(input.Cost.TotalLinesRemoved),
 		}
 	}
 	if input.Effort != nil {
-		snapshot.Effort = cleanText(input.Effort.Level, 24)
+		snapshot.Effort = sanitize.Text(input.Effort.Level, 24)
 	}
 	if input.Thinking != nil {
-		snapshot.ThinkingEnabled = copyBool(input.Thinking.Enabled)
+		snapshot.ThinkingEnabled = sanitize.Bool(input.Thinking.Enabled)
 	}
 
 	return snapshot
 }
 
+// StatusLine formats the short line returned to Claude Code.
 func StatusLine(snapshot model.Snapshot) string {
 	name := snapshot.Model.DisplayName
 	if name == "" {
@@ -204,62 +215,7 @@ func convertRateWindow(input *RateWindow) model.RateWindow {
 		return model.RateWindow{}
 	}
 	return model.RateWindow{
-		UsedPercentage: percentage(input.UsedPercentage),
-		ResetsAt:       positiveInt(input.ResetsAt),
+		UsedPercentage: sanitize.Percentage(input.UsedPercentage),
+		ResetsAt:       sanitize.PositiveInt64(input.ResetsAt),
 	}
-}
-
-func percentage(value *float64) *float64 {
-	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
-		return nil
-	}
-	v := min(100, max(0, *value))
-	return &v
-}
-
-func nonNegativeFloat(value *float64) *float64 {
-	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0 {
-		return nil
-	}
-	v := *value
-	return &v
-}
-
-func nonNegativeInt(value *int64) *int64 {
-	if value == nil || *value < 0 {
-		return nil
-	}
-	v := *value
-	return &v
-}
-
-func positiveInt(value *int64) *int64 {
-	if value == nil || *value <= 0 {
-		return nil
-	}
-	v := *value
-	return &v
-}
-
-func copyBool(value *bool) *bool {
-	if value == nil {
-		return nil
-	}
-	v := *value
-	return &v
-}
-
-func cleanText(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	value = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, value)
-	runes := []rune(value)
-	if len(runes) > limit {
-		value = string(runes[:limit])
-	}
-	return value
 }

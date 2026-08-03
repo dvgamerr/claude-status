@@ -1,3 +1,4 @@
+// Package claude decodes and sanitizes Claude Code status-line and hook input.
 package claude
 
 import (
@@ -27,6 +28,7 @@ type HookInput struct {
 	ToolName string `json:"tool_name"`
 }
 
+// DecodeHook reads one size-limited hook payload and rejects trailing values.
 func DecodeHook(r io.Reader) (HookInput, error) {
 	var input HookInput
 	data, err := io.ReadAll(io.LimitReader(r, maxHookInputBytes+1))

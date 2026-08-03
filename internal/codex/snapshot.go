@@ -1,3 +1,4 @@
+// Package codex extracts allowlisted usage metadata from Codex notifications.
 package codex
 
 import (
@@ -7,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/sanitize"
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 
 var threadIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
+// Notification is the safe subset of an agent-turn-complete notification.
 type Notification struct {
 	Type     string `json:"type"`
 	ThreadID string `json:"thread-id"`
@@ -56,30 +58,34 @@ type rolloutValues struct {
 	Unlimited     *bool
 }
 
+// DecodeNotification reads one notification and validates its supported type.
 func DecodeNotification(value string) (Notification, error) {
 	var notification Notification
 	if len(value) > maxNotificationBytes {
-		return notification, fmt.Errorf("Codex notification exceeds %d bytes", maxNotificationBytes)
+		return notification, fmt.Errorf("codex notification exceeds %d bytes", maxNotificationBytes)
 	}
 	if strings.TrimSpace(value) == "" {
-		return notification, errors.New("Codex notification is empty")
+		return notification, errors.New("codex notification is empty")
 	}
 	decoder := json.NewDecoder(strings.NewReader(value))
 	if err := decoder.Decode(&notification); err != nil {
-		return notification, fmt.Errorf("decode Codex notification JSON: %w", err)
+		return notification, fmt.Errorf("decode codex notification JSON: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return notification, errors.New("Codex notification contains multiple JSON values")
+			return notification, errors.New("codex notification contains multiple JSON values")
 		}
-		return notification, fmt.Errorf("decode trailing Codex notification data: %w", err)
+		return notification, fmt.Errorf("decode trailing codex notification data: %w", err)
 	}
-	notification.Type = cleanText(notification.Type, 80)
-	notification.ThreadID = cleanText(notification.ThreadID, 128)
-	notification.TurnID = cleanText(notification.TurnID, 128)
+	notification.Type = sanitize.Text(notification.Type, 80)
+	notification.ThreadID = sanitize.Text(notification.ThreadID, 128)
+	notification.TurnID = sanitize.Text(notification.TurnID, 128)
 	if !threadIDPattern.MatchString(notification.ThreadID) {
-		return notification, errors.New("Codex notification has no valid thread-id")
+		return notification, errors.New("codex notification has no valid thread-id")
+	}
+	if notification.Type != "agent-turn-complete" {
+		return notification, fmt.Errorf("unsupported codex notification type %q", notification.Type)
 	}
 	return notification, nil
 }
@@ -89,7 +95,7 @@ func DecodeNotification(value string) (Notification, error) {
 // paths, tool calls, and arbitrary rollout fields are never retained.
 func SnapshotFromNotification(notification Notification, codexHome string, now time.Time) (model.Snapshot, error) {
 	if !threadIDPattern.MatchString(notification.ThreadID) {
-		return model.Snapshot{}, errors.New("Codex notification has no valid thread-id")
+		return model.Snapshot{}, errors.New("codex notification has no valid thread-id")
 	}
 	rolloutPath, err := findRollout(codexHome, notification.ThreadID)
 	if err != nil {
@@ -106,28 +112,28 @@ func SnapshotFromNotification(notification Notification, codexHome string, now t
 	snapshot := model.Snapshot{
 		SchemaVersion: model.CurrentSchemaVersion,
 		CapturedAt:    now.UTC(),
-		Provider:      "codex",
-		ClientVersion: cleanText(values.ClientVersion, 80),
-		Session:       model.Session{ID: cleanText(values.SessionID, 128)},
+		Provider:      model.ProviderCodex,
+		ClientVersion: sanitize.Text(values.ClientVersion, 80),
+		Session:       model.Session{ID: sanitize.Text(values.SessionID, 128)},
 		Model: model.Model{
-			ID:          cleanText(values.Model, 120),
-			DisplayName: cleanText(values.Model, 120),
+			ID:          sanitize.Text(values.Model, 120),
+			DisplayName: sanitize.Text(values.Model, 120),
 		},
-		Effort: cleanText(values.Effort, 24),
+		Effort: sanitize.Text(values.Effort, 24),
 	}
 
-	snapshot.Context.WindowSize = nonNegativeInt(values.ContextWindow)
-	snapshot.Context.TotalInputTokens = nonNegativeInt(values.Usage.InputTokens)
-	snapshot.Context.TotalOutputTokens = nonNegativeInt(values.Usage.OutputTokens)
-	snapshot.Context.CurrentUsage.InputTokens = nonNegativeInt(values.Usage.InputTokens)
-	snapshot.Context.CurrentUsage.OutputTokens = nonNegativeInt(values.Usage.OutputTokens)
-	snapshot.Context.CurrentUsage.CacheReadInputTokens = nonNegativeInt(values.Usage.CachedInputTokens)
+	snapshot.Context.WindowSize = sanitize.NonNegativeInt64(values.ContextWindow)
+	snapshot.Context.TotalInputTokens = sanitize.NonNegativeInt64(values.Usage.InputTokens)
+	snapshot.Context.TotalOutputTokens = sanitize.NonNegativeInt64(values.Usage.OutputTokens)
+	snapshot.Context.CurrentUsage.InputTokens = sanitize.NonNegativeInt64(values.Usage.InputTokens)
+	snapshot.Context.CurrentUsage.OutputTokens = sanitize.NonNegativeInt64(values.Usage.OutputTokens)
+	snapshot.Context.CurrentUsage.CacheReadInputTokens = sanitize.NonNegativeInt64(values.Usage.CachedInputTokens)
 	usedTokens := values.Usage.TotalTokens
 	if usedTokens == nil {
 		usedTokens = sum(values.Usage.InputTokens, values.Usage.OutputTokens)
 	}
 	if usedTokens != nil && values.ContextWindow != nil && *values.ContextWindow > 0 {
-		used := clampPercentage(float64(*usedTokens) / float64(*values.ContextWindow) * 100)
+		used := sanitize.ClampPercentage(float64(*usedTokens) / float64(*values.ContextWindow) * 100)
 		remaining := 100 - used
 		snapshot.Context.UsedPercentage = &used
 		snapshot.Context.RemainingPercentage = &remaining
@@ -135,7 +141,7 @@ func SnapshotFromNotification(notification Notification, codexHome string, now t
 
 	assignRateWindow(&snapshot.RateLimits, values.Primary, true)
 	assignRateWindow(&snapshot.RateLimits, values.Secondary, false)
-	snapshot.RateLimits.Plan = cleanText(values.Plan, 40)
+	snapshot.RateLimits.Plan = sanitize.Text(values.Plan, 40)
 	if values.Unlimited != nil {
 		unlimited := *values.Unlimited
 		snapshot.RateLimits.Unlimited = &unlimited
@@ -143,6 +149,7 @@ func SnapshotFromNotification(notification Notification, codexHome string, now t
 	return snapshot, nil
 }
 
+// DefaultHome resolves CODEX_HOME or the conventional user configuration path.
 func DefaultHome() (string, error) {
 	if value := strings.TrimSpace(os.Getenv("CODEX_HOME")); value != "" {
 		return filepath.Clean(value), nil
@@ -162,7 +169,8 @@ func findRollout(codexHome, threadID string) (string, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" || !strings.Contains(entry.Name(), threadID) {
+		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" || (name != threadID && !strings.HasSuffix(name, "-"+threadID)) {
 			return nil
 		}
 		info, err := entry.Info()
@@ -187,13 +195,17 @@ func findRollout(codexHome, threadID string) (string, error) {
 	return selected, nil
 }
 
-func readRollout(path string) (rolloutValues, error) {
-	var values rolloutValues
+func readRollout(path string) (values rolloutValues, returnErr error) {
+	// #nosec G304 -- path is selected by walking CODEX_HOME/sessions for an exact thread ID.
 	file, err := os.Open(path)
 	if err != nil {
 		return values, fmt.Errorf("open Codex rollout: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close codex rollout: %w", closeErr))
+		}
+	}()
 
 	err = forEachLimitedLine(file, maxRolloutLineBytes, func(line []byte) {
 		var probe struct {
@@ -214,8 +226,8 @@ func readRollout(path string) (rolloutValues, error) {
 				} `json:"payload"`
 			}
 			if json.Unmarshal(line, &record) == nil {
-				values.SessionID = cleanText(record.Payload.ID, 128)
-				values.ClientVersion = cleanText(record.Payload.CLIVersion, 80)
+				values.SessionID = sanitize.Text(record.Payload.ID, 128)
+				values.ClientVersion = sanitize.Text(record.Payload.CLIVersion, 80)
 			}
 		case "turn_context":
 			var record struct {
@@ -225,8 +237,8 @@ func readRollout(path string) (rolloutValues, error) {
 				} `json:"payload"`
 			}
 			if json.Unmarshal(line, &record) == nil {
-				values.Model = cleanText(record.Payload.Model, 120)
-				values.Effort = cleanText(record.Payload.Effort, 24)
+				values.Model = sanitize.Text(record.Payload.Model, 120)
+				values.Effort = sanitize.Text(record.Payload.Effort, 24)
 			}
 		case "event_msg":
 			if probe.Payload.Type != "token_count" {
@@ -305,8 +317,8 @@ func assignRateWindow(limits *model.RateLimits, input *rateWindow, primary bool)
 		return
 	}
 	window := model.RateWindow{
-		UsedPercentage: percentage(input.UsedPercent),
-		ResetsAt:       positiveInt(input.ResetsAt),
+		UsedPercentage: sanitize.Percentage(input.UsedPercent),
+		ResetsAt:       sanitize.PositiveInt64(input.ResetsAt),
 	}
 	minutes := int64(0)
 	if input.WindowMinutes != nil {
@@ -337,47 +349,4 @@ func sum(values ...*int64) *int64 {
 		return nil
 	}
 	return &total
-}
-
-func percentage(value *float64) *float64 {
-	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
-		return nil
-	}
-	result := clampPercentage(*value)
-	return &result
-}
-
-func clampPercentage(value float64) float64 {
-	return min(100, max(0, value))
-}
-
-func nonNegativeInt(value *int64) *int64 {
-	if value == nil || *value < 0 {
-		return nil
-	}
-	result := *value
-	return &result
-}
-
-func positiveInt(value *int64) *int64 {
-	if value == nil || *value <= 0 {
-		return nil
-	}
-	result := *value
-	return &result
-}
-
-func cleanText(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	value = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, value)
-	runes := []rune(value)
-	if len(runes) > limit {
-		return string(runes[:limit])
-	}
-	return value
 }

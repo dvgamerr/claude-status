@@ -7,11 +7,12 @@
 package usage
 
 import (
+	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/sanitize"
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
@@ -20,13 +21,22 @@ import (
 // and saves it back — model, context, session, and activity are left
 // exactly as they were.
 func Run(store *state.Store, sessionID string, fiveHourPercent, sevenDayPercent float64, fiveHourReset, sevenDayReset time.Duration, now time.Time) (model.Snapshot, error) {
+	if store == nil {
+		return model.Snapshot{}, errors.New("snapshot store is nil")
+	}
+	if now.IsZero() {
+		return model.Snapshot{}, errors.New("usage time is empty")
+	}
+	if fiveHourReset <= 0 || sevenDayReset <= 0 {
+		return model.Snapshot{}, errors.New("rate-limit reset durations must be greater than zero")
+	}
 	snapshot, err := load(store, sessionID)
 	if err != nil {
 		return model.Snapshot{}, fmt.Errorf("load existing snapshot: %w", err)
 	}
 
-	five := clampPercent(fiveHourPercent)
-	seven := clampPercent(sevenDayPercent)
+	five := sanitize.ClampPercentage(fiveHourPercent)
+	seven := sanitize.ClampPercentage(sevenDayPercent)
 	fiveResetAt := now.Add(fiveHourReset).Unix()
 	sevenResetAt := now.Add(sevenDayReset).Unix()
 	snapshot.RateLimits.FiveHour = model.RateWindow{UsedPercentage: &five, ResetsAt: &fiveResetAt}
@@ -43,11 +53,4 @@ func load(store *state.Store, sessionID string) (model.Snapshot, error) {
 		return store.LoadLatest()
 	}
 	return store.LoadSession(sessionID)
-}
-
-func clampPercent(value float64) float64 {
-	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return 0
-	}
-	return min(100, max(0, value))
 }

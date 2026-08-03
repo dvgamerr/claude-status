@@ -21,8 +21,8 @@ func TestRunMergesRateLimitsWithoutTouchingOtherFields(t *testing.T) {
 		Model:         model.Model{DisplayName: "Sonnet 5"},
 		Activity:      model.Activity{State: model.ActivityWorking, UpdatedAt: time.Now()},
 	}
-	if err := store.Save(seeded); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(seeded); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 
 	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
@@ -59,10 +59,10 @@ func TestRunDefaultsToTheMostRecentlyUpdatedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save(model.Snapshot{
+	if saveErr := store.Save(model.Snapshot{
 		SchemaVersion: model.CurrentSchemaVersion, CapturedAt: time.Now(), Session: model.Session{ID: "latest-one"},
-	}); err != nil {
-		t.Fatal(err)
+	}); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 
 	snapshot, err := Run(store, "", 10, 20, time.Hour, 24*time.Hour, time.Now())
@@ -79,8 +79,8 @@ func TestRunClampsOutOfRangePercentages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save(model.Snapshot{SchemaVersion: model.CurrentSchemaVersion, CapturedAt: time.Now(), Session: model.Session{ID: "abc"}}); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(model.Snapshot{SchemaVersion: model.CurrentSchemaVersion, CapturedAt: time.Now(), Session: model.Session{ID: "abc"}}); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 	snapshot, err := Run(store, "abc", 150, -5, time.Hour, time.Hour, time.Now())
 	if err != nil {
@@ -101,5 +101,22 @@ func TestRunReturnsErrorWhenNoSnapshotExists(t *testing.T) {
 	}
 	if _, err := Run(store, "missing", 1, 1, time.Hour, time.Hour, time.Now()); err == nil {
 		t.Fatal("expected an error when the target session has no existing snapshot")
+	}
+}
+
+func TestRunValidatesDependenciesAndResetDurations(t *testing.T) {
+	now := time.Now()
+	if _, err := Run(nil, "", 1, 1, time.Hour, time.Hour, now); err == nil {
+		t.Fatal("Run() accepted nil store")
+	}
+	store, err := state.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(store, "", 1, 1, time.Hour, time.Hour, time.Time{}); err == nil {
+		t.Fatal("Run() accepted zero time")
+	}
+	if _, err := Run(store, "", 1, 1, 0, time.Hour, now); err == nil {
+		t.Fatal("Run() accepted a non-positive reset duration")
 	}
 }
