@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/rs/zerolog"
 
@@ -18,8 +17,10 @@ import (
 	"github.com/dvgamerr/claude-status/internal/state"
 )
 
+// Sender delivers one sanitized snapshot.
 type Sender func(context.Context, model.Snapshot) error
 
+// Relay retries changed provider snapshots and remembers successful deliveries.
 type Relay struct {
 	store         *state.Store
 	send          Sender
@@ -29,6 +30,7 @@ type Relay struct {
 	lastLoadError string
 }
 
+// New validates dependencies and constructs a relay worker.
 func New(store *state.Store, send Sender, logger zerolog.Logger) (*Relay, error) {
 	if store == nil {
 		return nil, errors.New("snapshot store is nil")
@@ -132,7 +134,7 @@ func latestProviders(snapshots []model.Snapshot) []model.Snapshot {
 	for _, snapshot := range snapshots {
 		key := providerKey(snapshot)
 		current, ok := latest[key]
-		if !ok || snapshotIsNewer(snapshot, current) {
+		if !ok || model.SnapshotIsNewer(snapshot, current) {
 			latest[key] = snapshot
 		}
 	}
@@ -143,18 +145,8 @@ func latestProviders(snapshots []model.Snapshot) []model.Snapshot {
 	return selected
 }
 
-func snapshotIsNewer(candidate, current model.Snapshot) bool {
-	if !candidate.CapturedAt.Equal(current.CapturedAt) {
-		return candidate.CapturedAt.After(current.CapturedAt)
-	}
-	if !candidate.Activity.UpdatedAt.Equal(current.Activity.UpdatedAt) {
-		return candidate.Activity.UpdatedAt.After(current.Activity.UpdatedAt)
-	}
-	return candidate.Session.ID > current.Session.ID
-}
-
 func providerKey(snapshot model.Snapshot) string {
-	provider := strings.ToLower(strings.TrimSpace(snapshot.Provider))
+	provider := model.CanonicalProvider(snapshot.Provider)
 	if provider != "" {
 		return provider
 	}

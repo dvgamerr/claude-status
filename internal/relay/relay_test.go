@@ -48,7 +48,7 @@ func TestSyncSkipsDeliveredContentAndSendsChangedActivity(t *testing.T) {
 
 	calls := 0
 	var buf bytes.Buffer
-	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
+	relay, err := New(store, func(_ context.Context, _ model.Snapshot) error {
 		calls++
 		return nil
 	}, zerolog.New(&buf))
@@ -87,7 +87,7 @@ func TestSyncRetriesFailureAndSuppressesRepeatedErrorLog(t *testing.T) {
 
 	calls := 0
 	var buf bytes.Buffer
-	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
+	relay, err := New(store, func(_ context.Context, _ model.Snapshot) error {
 		calls++
 		if calls < 3 {
 			return errors.New("network down")
@@ -143,7 +143,7 @@ func TestSyncSendsValidSnapshotsAlongsideCorruptionAndLogsRecovery(t *testing.T)
 
 	calls := 0
 	var buf bytes.Buffer
-	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
+	relay, err := New(store, func(_ context.Context, _ model.Snapshot) error {
 		calls++
 		return nil
 	}, zerolog.New(&buf))

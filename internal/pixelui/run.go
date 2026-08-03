@@ -2,9 +2,9 @@ package pixelui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
-	"strings"
 	"time"
 
 	"github.com/dvgamerr/claude-status/internal/model"
@@ -12,18 +12,22 @@ import (
 	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
+// SnapshotLoader supplies sanitized snapshots to the renderer loop.
 type SnapshotLoader interface {
 	LoadAll() ([]model.Snapshot, error)
 }
 
+// MetricsReader supplies host metrics to the renderer loop.
 type MetricsReader interface {
 	Read() systeminfo.Stats
 }
 
+// Screen presents complete native dashboard frames.
 type Screen interface {
 	Present(image.Image) error
 }
 
+// RunConfig controls render frequency and snapshot staleness.
 type RunConfig struct {
 	RefreshInterval time.Duration
 	StaleAfter      time.Duration
@@ -40,6 +44,18 @@ const statsInterval = 500 * time.Millisecond
 // always blocks in a select with a default case, so touch feedback is
 // simply absent rather than a special case to handle.
 func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, screen Screen, renderer *Renderer, config RunConfig, touches <-chan touch.Point) error {
+	if loader == nil {
+		return errors.New("snapshot loader is nil")
+	}
+	if metrics == nil {
+		return errors.New("metrics reader is nil")
+	}
+	if screen == nil {
+		return errors.New("screen is nil")
+	}
+	if renderer == nil {
+		return errors.New("renderer is nil")
+	}
 	if config.RefreshInterval <= 0 {
 		config.RefreshInterval = time.Second
 	}
@@ -78,7 +94,11 @@ func Run(ctx context.Context, loader SnapshotLoader, metrics MetricsReader, scre
 func drainTouches(touches <-chan touch.Point, active []touch.Point, now time.Time) []touch.Point {
 	for {
 		select {
-		case point := <-touches:
+		case point, ok := <-touches:
+			if !ok {
+				touches = nil
+				continue
+			}
 			active = append(active, point)
 		default:
 			kept := active[:0]
@@ -117,16 +137,16 @@ func LatestProviders(snapshots []model.Snapshot) (*model.Snapshot, *model.Snapsh
 	var claude, codex *model.Snapshot
 	for index := range snapshots {
 		snapshot := snapshots[index]
-		switch strings.ToLower(strings.TrimSpace(snapshot.Provider)) {
-		case "claude":
-			if claude == nil || snapshot.CapturedAt.After(claude.CapturedAt) {
-				copy := snapshot
-				claude = &copy
+		switch model.CanonicalProvider(snapshot.Provider) {
+		case model.ProviderClaude:
+			if claude == nil || model.SnapshotIsNewer(snapshot, *claude) {
+				selected := snapshot
+				claude = &selected
 			}
-		case "codex":
-			if codex == nil || snapshot.CapturedAt.After(codex.CapturedAt) {
-				copy := snapshot
-				codex = &copy
+		case model.ProviderCodex:
+			if codex == nil || model.SnapshotIsNewer(snapshot, *codex) {
+				selected := snapshot
+				codex = &selected
 			}
 		}
 	}

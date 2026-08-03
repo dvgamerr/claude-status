@@ -106,18 +106,47 @@ func TestDrainTouchesCollectsAndExpiresPoints(t *testing.T) {
 	}
 }
 
+func TestDrainTouchesHandlesClosedChannel(t *testing.T) {
+	channel := make(chan touch.Point)
+	close(channel)
+	if got := drainTouches(channel, nil, time.Now()); len(got) != 0 {
+		t.Fatalf("drainTouches() added zero values from a closed channel: %+v", got)
+	}
+}
+
+func TestRunRejectsNilDependencies(t *testing.T) {
+	tests := []struct {
+		name    string
+		loader  SnapshotLoader
+		metrics MetricsReader
+		screen  Screen
+	}{
+		{name: "loader", metrics: testMetrics{}, screen: &testScreen{}},
+		{name: "metrics", loader: testLoader{}, screen: &testScreen{}},
+		{name: "screen", loader: testLoader{}, metrics: testMetrics{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := Run(context.Background(), tt.loader, tt.metrics, tt.screen, nil, RunConfig{}, nil); err == nil {
+				t.Fatal("Run() accepted a nil dependency")
+			}
+		})
+	}
+}
+
 func TestLatestProvidersKeepsClaudePrimaryWhenCodexIsNewer(t *testing.T) {
 	now := time.Now()
 	snapshots := []model.Snapshot{
 		{Provider: "codex", CapturedAt: now, Session: model.Session{ID: "codex-new"}},
 		{Provider: "claude", CapturedAt: now.Add(-time.Hour), Session: model.Session{ID: "claude-old"}},
 		{Provider: "claude", CapturedAt: now.Add(-time.Minute), Session: model.Session{ID: "claude-current"}},
+		{Provider: "openai", CapturedAt: now.Add(time.Minute), Session: model.Session{ID: "codex-alias"}},
 	}
 	claude, codex := LatestProviders(snapshots)
 	if claude == nil || claude.Session.ID != "claude-current" {
 		t.Fatalf("Claude selection = %+v", claude)
 	}
-	if codex == nil || codex.Session.ID != "codex-new" {
+	if codex == nil || codex.Session.ID != "codex-alias" {
 		t.Fatalf("Codex selection = %+v", codex)
 	}
 }

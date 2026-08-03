@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -266,6 +267,35 @@ func TestClearTerminalWritesEraseBeforeRenderSequence(t *testing.T) {
 	}
 	if got := output.String(); got != clearScreenSequence {
 		t.Fatalf("clearTerminal() = %q, want %q", got, clearScreenSequence)
+	}
+}
+
+func TestModelCommandsLoadDataAndTick(t *testing.T) {
+	want := []statusmodel.Snapshot{{SchemaVersion: modelSchema(), CapturedAt: time.Now(), Session: statusmodel.Session{ID: "loaded"}}}
+	m := NewModel(fakeLoader{snapshots: want, err: errors.New("partial")}, fakeMetrics{}, Config{RefreshInterval: time.Millisecond})
+	message := m.loadData()()
+	loaded, ok := message.(dataMsg)
+	if !ok || len(loaded.snapshots) != 1 || loaded.err == nil {
+		t.Fatalf("loadData message = %#v", message)
+	}
+	if _, ok := m.nextTick()().(tickMsg); !ok {
+		t.Fatalf("nextTick returned unexpected message")
+	}
+	if m.Init() == nil {
+		t.Fatal("Init returned nil command")
+	}
+}
+
+func TestRunHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	err := Run(ctx, strings.NewReader(""), &output, fakeLoader{}, fakeMetrics{}, Config{Inline: true})
+	if err == nil {
+		t.Fatal("Run unexpectedly succeeded with canceled context")
+	}
+	if !strings.HasPrefix(output.String(), clearScreenSequence) {
+		t.Fatalf("output did not start with terminal clear: %q", output.String())
 	}
 }
 

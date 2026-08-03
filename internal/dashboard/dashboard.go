@@ -1,3 +1,4 @@
+// Package dashboard provides the terminal fallback user interface.
 package dashboard
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 )
 
+// Config controls terminal refresh, staleness, selection, and screen mode.
 type Config struct {
 	RefreshInterval time.Duration
 	StaleAfter      time.Duration
@@ -31,6 +33,7 @@ type metricsReader interface {
 	Read() systeminfo.Stats
 }
 
+// Model is the Bubble Tea state for the terminal dashboard.
 type Model struct {
 	loader          snapshotLoader
 	metrics         metricsReader
@@ -72,6 +75,7 @@ var (
 
 const clearScreenSequence = "\x1b[2J\x1b[H"
 
+// Run starts the terminal dashboard until cancellation or user exit.
 func Run(ctx context.Context, input io.Reader, output io.Writer, loader snapshotLoader, metrics metricsReader, config Config) error {
 	// Linux consoles do not provide a reliable alternate screen buffer. Clear
 	// tty1 synchronously before Bubble Tea can paint its initial View so boot
@@ -96,6 +100,7 @@ func clearTerminal(output io.Writer) error {
 	return nil
 }
 
+// NewModel applies defaults and constructs terminal dashboard state.
 func NewModel(loader snapshotLoader, metrics metricsReader, config Config) Model {
 	if config.RefreshInterval <= 0 {
 		config.RefreshInterval = time.Second
@@ -113,10 +118,12 @@ func NewModel(loader snapshotLoader, metrics metricsReader, config Config) Model
 	}
 }
 
+// Init requests the initial data load and refresh timer.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.loadData(), m.nextTick())
 }
 
+// Update applies one Bubble Tea message.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
@@ -130,44 +137,53 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastError = msg.err
 		m.reconcileSelection()
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "s":
-			m.showSessions = !m.showSessions
-			m.reconcileSelection()
+		return m.updateKey(msg.String())
+	}
+	return m, nil
+}
+
+func (m Model) updateKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+	case "s":
+		m.showSessions = !m.showSessions
+		m.reconcileSelection()
+		return m, tea.ClearScreen
+	case "esc":
+		if m.showSessions {
+			m.showSessions = false
 			return m, tea.ClearScreen
-		case "esc":
-			if m.showSessions {
-				m.showSessions = false
-				return m, tea.ClearScreen
-			}
-		case "r":
-			return m, tea.Sequence(tea.ClearScreen, m.loadData())
-		case "a":
-			m.selectionPinned = false
-			m.reconcileSelection()
+		}
+	case "r":
+		return m, tea.Sequence(tea.ClearScreen, m.loadData())
+	case "a":
+		m.selectionPinned = false
+		m.reconcileSelection()
+		return m, tea.ClearScreen
+	case "up", "k":
+		m.moveSessionCursor(-1)
+	case "down", "j":
+		m.moveSessionCursor(1)
+	case "enter":
+		if m.showSessions && len(m.snapshots) > 0 {
+			m.selectedID = m.snapshots[m.sessionCursor].Session.ID
+			m.selectionPinned = true
+			m.showSessions = false
 			return m, tea.ClearScreen
-		case "up", "k":
-			if m.showSessions && len(m.snapshots) > 0 {
-				m.sessionCursor = (m.sessionCursor - 1 + len(m.snapshots)) % len(m.snapshots)
-			}
-		case "down", "j":
-			if m.showSessions && len(m.snapshots) > 0 {
-				m.sessionCursor = (m.sessionCursor + 1) % len(m.snapshots)
-			}
-		case "enter":
-			if m.showSessions && len(m.snapshots) > 0 {
-				m.selectedID = m.snapshots[m.sessionCursor].Session.ID
-				m.selectionPinned = true
-				m.showSessions = false
-				return m, tea.ClearScreen
-			}
 		}
 	}
 	return m, nil
 }
 
+func (m *Model) moveSessionCursor(delta int) {
+	if !m.showSessions || len(m.snapshots) == 0 {
+		return
+	}
+	m.sessionCursor = (m.sessionCursor + delta + len(m.snapshots)) % len(m.snapshots)
+}
+
+// View renders the current terminal frame.
 func (m Model) View() string {
 	if m.showSessions {
 		return m.sessionsView()
@@ -255,8 +271,8 @@ func (m Model) fullDashboardFrame(snapshot statusmodel.Snapshot, now time.Time, 
 
 	contextSummary := labelStyle.Render("CONTEXT  ") +
 		lipgloss.NewStyle().Bold(true).Foreground(contextColor(snapshot.Context.UsedPercentage)).Render(percentageText(snapshot.Context.UsedPercentage)+" USED")
-	tokens := labelStyle.Render("INPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+tokenText(contextInputTokens(snapshot.Context))) +
-		labelStyle.Render("     OUTPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+tokenText(contextOutputTokens(snapshot.Context)))
+	tokens := labelStyle.Render("INPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+tokenText(snapshot.Context.InputTokens())) +
+		labelStyle.Render("     OUTPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+tokenText(snapshot.Context.OutputTokens()))
 
 	modelDetail := snapshot.Model.ID
 	if modelDetail == "" {
@@ -572,8 +588,8 @@ func displayModelName(snapshot statusmodel.Snapshot) string {
 }
 
 func providerTitle(snapshot statusmodel.Snapshot) string {
-	switch strings.ToLower(strings.TrimSpace(snapshot.Provider)) {
-	case "codex", "openai":
+	switch statusmodel.CanonicalProvider(snapshot.Provider) {
+	case statusmodel.ProviderCodex:
 		return "CODEX"
 	default:
 		return "CLAUDE"
@@ -594,32 +610,8 @@ func activityText(snapshot statusmodel.Snapshot) string {
 	}, "  ·  ")
 }
 
-func contextInputTokens(context statusmodel.Context) *int64 {
-	if context.TotalInputTokens != nil {
-		return context.TotalInputTokens
-	}
-	usage := context.CurrentUsage
-	if usage.InputTokens == nil && usage.CacheCreationInputTokens == nil && usage.CacheReadInputTokens == nil {
-		return nil
-	}
-	value := int64(0)
-	for _, part := range []*int64{usage.InputTokens, usage.CacheCreationInputTokens, usage.CacheReadInputTokens} {
-		if part != nil {
-			value += *part
-		}
-	}
-	return &value
-}
-
-func contextOutputTokens(context statusmodel.Context) *int64 {
-	if context.TotalOutputTokens != nil {
-		return context.TotalOutputTokens
-	}
-	return context.CurrentUsage.OutputTokens
-}
-
 func compactTokenText(context statusmodel.Context) string {
-	return "↑ " + tokenText(contextInputTokens(context)) + " input  ↓ " + tokenText(contextOutputTokens(context)) + " output"
+	return "↑ " + tokenText(context.InputTokens()) + " input  ↓ " + tokenText(context.OutputTokens()) + " output"
 }
 
 func tokenText(value *int64) string {
@@ -679,11 +671,11 @@ func contextText(context statusmodel.Context) string {
 		return "tokens --"
 	}
 	var used int64
-	if context.TotalInputTokens != nil {
-		used += *context.TotalInputTokens
+	if input := context.InputTokens(); input != nil {
+		used += *input
 	}
-	if context.TotalOutputTokens != nil {
-		used += *context.TotalOutputTokens
+	if output := context.OutputTokens(); output != nil {
+		used += *output
 	}
 	if used == 0 && context.UsedPercentage != nil {
 		used = int64(math.Round(float64(*context.WindowSize) * *context.UsedPercentage / 100))
