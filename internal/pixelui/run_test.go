@@ -64,16 +64,23 @@ func TestRunThrottlesStatsSamplingIndependentlyOfRefresh(t *testing.T) {
 	}
 	metrics := &countingMetrics{}
 	screen := &testScreen{}
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	// The window is generous relative to the 10ms refresh interval because
+	// drawMascot now evaluates and rasterizes a rig's SMIL animation on every
+	// tick instead of blitting a pre-rasterized frame (see icons.go); under
+	// -race on a loaded CI runner a single tick can cost tens of ms, so a
+	// tight window flakes on frame count even though throttling itself is
+	// working. 800ms stays comfortably under two 500ms stats-interval
+	// boundaries, so metrics.reads is still expected to land at 1-2.
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
 	if err := Run(ctx, testLoader{}, metrics, screen, renderer, RunConfig{RefreshInterval: 10 * time.Millisecond}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if screen.frames < 8 {
-		t.Fatalf("frames = %d, want several at a 10ms refresh over 150ms", screen.frames)
+		t.Fatalf("frames = %d, want several at a 10ms refresh over 800ms", screen.frames)
 	}
 	if metrics.reads > 2 {
-		t.Fatalf("Stats.Read() called %d times in 150ms; want throttling to ~1-2 calls at the 500ms stats interval", metrics.reads)
+		t.Fatalf("Stats.Read() called %d times in 800ms; want throttling to ~1-2 calls at the 500ms stats interval", metrics.reads)
 	}
 }
 
