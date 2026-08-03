@@ -7,14 +7,21 @@ if [ "$#" -ne 1 ]; then
 fi
 
 VERSION=$1
+case "$VERSION" in
+  ""|"."|".."|*[!A-Za-z0-9._+-]*)
+    echo "invalid version: $VERSION" >&2
+    exit 2
+    ;;
+esac
+
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-DIST_DIR="$REPO_DIR/dist"
+DIST_DIR=${CLAUDE_STATUS_DIST_DIR:-"$REPO_DIR/dist"}
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/claude-status-package.XXXXXX")
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
+OUTPUT_DIR="$WORK_DIR/output"
 
-mkdir -p "$DIST_DIR"
-rm -f "$DIST_DIR/SHA256SUMS"
+mkdir -p "$OUTPUT_DIR"
 
 COMMIT=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo none)
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -30,11 +37,11 @@ for ARCH in arm64 amd64; do
   )
   cp "$REPO_DIR/README.md" "$PACKAGE_DIR/README.md"
   cp "$REPO_DIR/configs/claude-settings.json" "$PACKAGE_DIR/claude-settings.json"
-  tar -C "$WORK_DIR" -czf "$DIST_DIR/$NAME.tar.gz" "$NAME"
+  tar -C "$WORK_DIR" -czf "$OUTPUT_DIR/$NAME.tar.gz" "$NAME"
 done
 
 (
-  cd "$DIST_DIR"
+  cd "$OUTPUT_DIR"
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum \
       "./claude-status_${VERSION}_linux_amd64.tar.gz" \
@@ -45,5 +52,11 @@ done
       "./claude-status_${VERSION}_linux_arm64.tar.gz" > SHA256SUMS
   fi
 )
+
+mkdir -p "$DIST_DIR"
+for PACKAGE in "$OUTPUT_DIR"/*.tar.gz; do
+  mv -f "$PACKAGE" "$DIST_DIR/"
+done
+mv -f "$OUTPUT_DIR/SHA256SUMS" "$DIST_DIR/SHA256SUMS"
 
 echo "packages written to $DIST_DIR"

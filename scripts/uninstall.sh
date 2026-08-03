@@ -10,9 +10,6 @@ if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--purge" ]; }; then
   exit 2
 fi
 
-rm -f "$DESTINATION"
-echo "removed $DESTINATION"
-
 if [ "$#" -eq 1 ] && [ "$1" = "--purge" ]; then
   NORMALIZED_STATE_DIR=${STATE_DIR%/}
   case "$NORMALIZED_STATE_DIR" in
@@ -25,6 +22,12 @@ if [ "$#" -eq 1 ] && [ "$1" = "--purge" ]; then
     echo "refusing to purge a directory not named claude-status: $STATE_DIR" >&2
     exit 1
   fi
+fi
+
+rm -f "$DESTINATION"
+echo "removed $DESTINATION"
+
+if [ "$#" -eq 1 ] && [ "$1" = "--purge" ]; then
   rm -rf -- "$NORMALIZED_STATE_DIR"
   echo "removed state $NORMALIZED_STATE_DIR"
 else
