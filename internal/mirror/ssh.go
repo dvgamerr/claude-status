@@ -1,3 +1,4 @@
+// Package mirror transports already-sanitized snapshots to another host.
 package mirror
 
 import (
@@ -11,14 +12,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/limitio"
 	"github.com/dvgamerr/claude-status/internal/model"
 )
 
+// DefaultRemoteBinary is the conventional Raspberry Pi installation path.
 const DefaultRemoteBinary = "/home/pi/.local/bin/claude-status"
 
 var (
 	hostPattern      = regexp.MustCompile(`^[A-Za-z0-9._@:-]+$`)
 	remoteBinPattern = regexp.MustCompile(`^[A-Za-z0-9_./~-]+$`)
+	commandContext   = exec.CommandContext
 )
 
 // SSH sends only the already-sanitized Snapshot to a trusted SSH target. The
@@ -44,14 +48,14 @@ func SSH(ctx context.Context, host, remoteBinary string, snapshot model.Snapshot
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	command := exec.CommandContext(timeoutCtx, "ssh",
+	command := commandContext(timeoutCtx, "ssh",
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=3",
 		host, remoteBinary, "import",
 	)
 	command.Stdin = bytes.NewReader(data)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
+	stderr := limitio.NewBuffer(limitio.DiagnosticLimit)
+	command.Stderr = stderr
 	if err := command.Run(); err != nil {
 		if timeoutCtx.Err() != nil {
 			return fmt.Errorf("mirror sanitized snapshot to %s: %w", host, timeoutCtx.Err())

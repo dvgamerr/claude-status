@@ -2,6 +2,9 @@ package mirror
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -27,4 +30,39 @@ func TestSSHRejectsUnsafeTargetsBeforeLaunching(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSSHInvokesExpectedCommandAndReportsBoundedFailure(t *testing.T) {
+	original := commandContext
+	defer func() { commandContext = original }()
+	var captured []string
+	mode := "success"
+	commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		captured = append([]string{name}, args...)
+		return exec.CommandContext(ctx, os.Args[0], "-test.run=TestSSHHelperProcess", "--", mode)
+	}
+	snapshot := model.Snapshot{SchemaVersion: model.CurrentSchemaVersion, Session: model.Session{ID: "test"}}
+	if err := SSH(context.Background(), "pi@example:22", "/opt/status", snapshot); err != nil {
+		t.Fatalf("SSH() success error = %v", err)
+	}
+	want := []string{"ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", "pi@example:22", "/opt/status", "import"}
+	if strings.Join(captured, "|") != strings.Join(want, "|") {
+		t.Fatalf("command args = %q, want %q", captured, want)
+	}
+
+	mode = "fail"
+	if err := SSH(context.Background(), "pilab", DefaultRemoteBinary, snapshot); err == nil || !strings.Contains(err.Error(), "helper failure") {
+		t.Fatalf("SSH() failure error = %v", err)
+	}
+}
+
+func TestSSHHelperProcess(_ *testing.T) {
+	if len(os.Args) < 2 || os.Args[len(os.Args)-2] != "--" {
+		return
+	}
+	if os.Args[len(os.Args)-1] == "fail" {
+		fmt.Fprintln(os.Stderr, "helper failure")
+		os.Exit(9)
+	}
+	os.Exit(0)
 }
