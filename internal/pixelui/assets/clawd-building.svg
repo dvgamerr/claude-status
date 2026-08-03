@@ -1,36 +1,48 @@
 <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
   <title>Clawd Building</title>
-  <g id="legs" fill="#1E5C84">
-    <rect x="34" y="78" width="10" height="14"/>
-    <rect x="56" y="78" width="10" height="14"/>
-  </g>
-  <g id="torso" fill="#D77757">
-    <rect x="30" y="38" width="40" height="40"/>
-  </g>
-  <g id="leftArm" fill="#D77757">
-    <rect x="16" y="44" width="14" height="30"/>
-  </g>
-  <g id="armHammer" fill="#D77757">
-    <rect x="70" y="44" width="14" height="30"/>
-    <rect x="74" y="70" width="4" height="16"/>
-    <rect x="66" y="82" width="20" height="10"/>
-    <animateTransform attributeName="transform" type="rotate"
-      values="-35 77 46;15 77 46;-35 77 46" dur="0.8s" repeatCount="indefinite"/>
-  </g>
-  <g id="head" fill="#D77757">
-    <rect x="35" y="8" width="30" height="30"/>
-    <g id="ears" fill="#1E5C84">
-      <rect x="33" y="2" width="6" height="8"/>
-      <rect x="61" y="2" width="6" height="8"/>
+  <g id="upperBody">
+    <g id="hat" fill="#E8A93F">
+      <rect x="28" y="16" width="44" height="11"/>
+      <rect x="34" y="9" width="32" height="8"/>
+      <rect x="46" y="4" width="8" height="6"/>
+    </g>
+    <g id="body" fill="#D77757">
+      <rect x="22" y="33" width="56" height="34"/>
     </g>
     <g id="eyes" fill="#000">
-      <rect x="42" y="20" width="4" height="6"/>
-      <rect x="54" y="20" width="4" height="6"/>
+      <rect x="36" y="41" width="5" height="10"/>
+      <rect x="59" y="41" width="5" height="10"/>
       <animate attributeName="opacity" calcMode="discrete"
         values="1;1;0;1" keyTimes="0;0.9;0.95;1" dur="3.2s" repeatCount="indefinite"/>
     </g>
-    <g fill="#000">
-      <rect x="46" y="30" width="8" height="3"/>
+    <g id="leftArm" fill="#D77757">
+      <rect x="12" y="43" width="10" height="14"/>
     </g>
+    <g id="legs" fill="#D77757">
+      <rect x="30" y="67" width="6" height="15"/>
+      <rect x="40" y="67" width="6" height="15"/>
+      <rect x="54" y="67" width="6" height="15"/>
+      <rect x="64" y="67" width="6" height="15"/>
+    </g>
+    <g id="shoes" fill="#000">
+      <rect x="30" y="82" width="40" height="4"/>
+    </g>
+  </g>
+  <g id="armHammer">
+    <animateTransform attributeName="transform" type="rotate"
+      values="-45 82 50;20 82 50;-45 82 50" dur="0.9s" repeatCount="indefinite"/>
+    <g fill="#D77757">
+      <rect x="77" y="43" width="10" height="14"/>
+    </g>
+    <g fill="#8B5E3C">
+      <rect x="80" y="20" width="4" height="24"/>
+    </g>
+    <g fill="#9AA0A6">
+      <rect x="72" y="12" width="20" height="10"/>
+    </g>
+  </g>
+  <g id="nail" fill="#9AA0A6">
+    <rect x="85" y="88" width="12" height="4"/>
+    <rect x="88" y="84" width="6" height="4" fill="#D9544A"/>
   </g>
 </svg>
