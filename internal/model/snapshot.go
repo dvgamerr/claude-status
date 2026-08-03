@@ -183,3 +183,28 @@ func SnapshotIsNewer(candidate, current Snapshot) bool {
 	}
 	return candidate.Session.ID > current.Session.ID
 }
+
+// TodayTokenTotals sums input and output tokens across every snapshot —
+// Claude and Codex alike — captured on now's local calendar day. Each stored
+// snapshot already carries its own session's cumulative totals, so this is
+// a sum across sessions/providers, not a running per-turn accumulator; a
+// Codex snapshot in particular only ever reflects its latest reported turn
+// (see internal/codex), so a long Codex session that keeps overwriting its
+// one stored file under-counts relative to a Claude session of equivalent
+// length.
+func TodayTokenTotals(snapshots []Snapshot, now time.Time) (input, output int64) {
+	year, month, day := now.Local().Date()
+	for _, snapshot := range snapshots {
+		capturedYear, capturedMonth, capturedDay := snapshot.CapturedAt.Local().Date()
+		if capturedYear != year || capturedMonth != month || capturedDay != day {
+			continue
+		}
+		if value := snapshot.Context.InputTokens(); value != nil {
+			input += *value
+		}
+		if value := snapshot.Context.OutputTokens(); value != nil {
+			output += *value
+		}
+	}
+	return input, output
+}

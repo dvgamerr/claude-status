@@ -30,7 +30,11 @@ Keep the warm Claude-first theme with a
 flat dark background, high-contrast type, equal Claude 5-hour/7-day limit
 rows (each with its reset countdown), and a Codex card that deliberately
 never shows a session id/name — only its model, reasoning effort, and
-context %, since Codex is "the other tool" here, not a session to track.
+total tokens (input+output) with an estimated USD cost from
+`codexPricingTable` (`internal/pixelui/codex_pricing.go`), since Codex is
+"the other tool" here, not a session to track, and per-model pricing
+varies enough that a raw context-window percentage was less useful than
+knowing what it's actually costing.
 Provider selection is independent: a newer Codex event must never displace
 Claude from the primary UI. The display follows the newest snapshot for each
 provider without local input, except for the touch ripple below — touch
@@ -259,3 +263,51 @@ References:
 - Pre-existing worktree changes in Claude/state/system-info tests and reader
   code, plus untracked mascot GIFs in top-level `assets/`, were deliberately
   left intact and are not part of this maintenance pass.
+
+### 2026-08-03 — theme unification, daily token totals, mascot clip fix, Codex cost
+
+- `internal/dashboard` (the terminal fallback) used an unrelated
+  Dracula-style palette (`#FFB86B` amber, `#7DD3FC` blue, `#34415D`
+  border, etc.) instead of the warm Claude-brand palette `internal/pixelui`
+  already implements. Its `colorOrange`/`colorBlue`/`colorGreen`/
+  `colorYellow`/`colorRed`/`colorMuted`/`colorBorder` constants now reuse the
+  exact hexes of pixelui's `claudeOrange`/`claudePeach`/`green`/`yellow`/
+  `red`/`textSecondary`/`trackColor`, so both UIs read as one theme.
+  Separately, every mascot SVG under `internal/pixelui/assets` filled the
+  Clawd body with `#D77757`, a one-digit drift from the actual brand hex
+  `#D97757` used everywhere else — corrected across all twelve rigs.
+- Added `model.TodayTokenTotals(snapshots, now)`: sums input+output tokens
+  across every stored snapshot — both Claude and Codex — captured on `now`'s
+  local calendar day. The pixel dashboard's INPUT/OUTPUT chips
+  (`renderClaudePanel`) and the terminal fallback's INPUT/OUTPUT line
+  (`fullDashboardFrame`) both switched from one session's own counts to this
+  combined daily total; `runPreview` (`claude-status preview`) needed the
+  same wiring since it builds its `pixelui.View` directly rather than going
+  through `pixelui.Run`. Caveat documented on the function itself: a Codex
+  snapshot only ever carries its latest turn's usage (see
+  `internal/codex`), so a long-running Codex session under-counts relative
+  to an equivalent Claude session until Codex ingestion tracks a running
+  total of its own.
+- Fixed three mascot rigs whose animated `<animateTransform>` keyframes
+  pushed content outside the shared `viewBox="0 0 100 100"`, which
+  `rasterizeSVG` rasterizes 1:1 with no margin — the overflowing portion was
+  hard-clipped at the canvas edge, visible as a flat line slicing through
+  the shape mid-loop: `clawd-thinking.svg`'s thought-bubble group (peak
+  translate pushed the biggest circle 6 units above y=0), `clawd-juggling
+  .svg`'s `ball2` (base position 10 units higher than `ball1`/`ball3`, so
+  its throw peak went well above y=0), and `clawd-building.svg`'s
+  `armHammer` (rotating to 20° pushed the hammer head's corner past
+  x=100). All three were retuned to stay inside the viewBox while keeping
+  the same motion character (thought bubble still rises, ball2 still
+  throws to the same height as the other two balls, the hammer still swings
+  a full arc, just capped at 10° instead of 20°).
+- The Codex card no longer shows a context-window percentage — Codex's
+  card is about "the other tool"'s usage/spend, and the context bar was
+  redundant with the Claude panel's own. `codexCard` now calls
+  `codexUsageBlock`, which reports total tokens (input+output) and an
+  estimated USD cost from the new `internal/pixelui/codex_pricing.go`
+  (`codexPricingTable`, matched by exact model ID then longest prefix, with
+  a flagship-tier fallback rate for unrecognized models) — different
+  Codex-served model families are priced differently, so the estimate is
+  keyed by `snapshot.Model.ID`, not a single flat rate. `contextBlock` was
+  deleted as dead code once this was its only remaining caller.

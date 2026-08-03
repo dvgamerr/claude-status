@@ -6,7 +6,7 @@
       <rect x="34" y="9" width="32" height="8"/>
       <rect x="46" y="4" width="8" height="6"/>
     </g>
-    <g id="body" fill="#D77757">
+    <g id="body" fill="#D97757">
       <rect x="22" y="33" width="56" height="34"/>
     </g>
     <g id="eyes" fill="#000">
@@ -15,10 +15,10 @@
       <animate attributeName="opacity" calcMode="discrete"
         values="1;1;0;1" keyTimes="0;0.9;0.95;1" dur="3.2s" repeatCount="indefinite"/>
     </g>
-    <g id="leftArm" fill="#D77757">
+    <g id="leftArm" fill="#D97757">
       <rect x="12" y="43" width="10" height="14"/>
     </g>
-    <g id="legs" fill="#D77757">
+    <g id="legs" fill="#D97757">
       <rect x="30" y="67" width="6" height="15"/>
       <rect x="40" y="67" width="6" height="15"/>
       <rect x="54" y="67" width="6" height="15"/>
@@ -30,8 +30,8 @@
   </g>
   <g id="armHammer">
     <animateTransform attributeName="transform" type="rotate"
-      values="-45 82 50;20 82 50;-45 82 50" dur="0.9s" repeatCount="indefinite"/>
-    <g fill="#D77757">
+      values="-45 82 50;10 82 50;-45 82 50" dur="0.9s" repeatCount="indefinite"/>
+    <g fill="#D97757">
       <rect x="77" y="43" width="10" height="14"/>
     </g>
     <g fill="#8B5E3C">

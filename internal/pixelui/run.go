@@ -115,15 +115,18 @@ func drainTouches(touches <-chan touch.Point, active []touch.Point, now time.Tim
 func renderFrame(loader SnapshotLoader, screen Screen, renderer *Renderer, config RunConfig, now time.Time, touches []touch.Point, stats systeminfo.Stats) error {
 	snapshots, loadErr := loader.LoadAll()
 	claude, codex := LatestProviders(snapshots)
+	todayInput, todayOutput := model.TodayTokenTotals(snapshots, now)
 	frame := renderer.Render(View{
-		Claude:       claude,
-		Codex:        codex,
-		Stats:        stats,
-		Now:          now,
-		StaleAfter:   config.StaleAfter,
-		SessionCount: len(snapshots),
-		LoadError:    loadErr,
-		Touches:      touches,
+		Claude:            claude,
+		Codex:             codex,
+		Stats:             stats,
+		Now:               now,
+		StaleAfter:        config.StaleAfter,
+		SessionCount:      len(snapshots),
+		TodayInputTokens:  todayInput,
+		TodayOutputTokens: todayOutput,
+		LoadError:         loadErr,
+		Touches:           touches,
 	})
 	if err := screen.Present(frame); err != nil {
 		return fmt.Errorf("present pixel dashboard: %w", err)

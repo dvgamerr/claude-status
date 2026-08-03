@@ -58,14 +58,18 @@ type dataMsg struct {
 	err       error
 }
 
+// These hexes are the same warm Claude-brand palette internal/pixelui uses
+// (claudeOrange, claudePeach, green, yellow, red, textSecondary, trackColor
+// in render.go) so this terminal fallback and the physical Pi dashboard
+// read as one consistent theme instead of two unrelated color schemes.
 var (
-	colorOrange = lipgloss.Color("#FFB86B")
-	colorBlue   = lipgloss.Color("#7DD3FC")
-	colorGreen  = lipgloss.Color("#6EE7A8")
-	colorYellow = lipgloss.Color("#FDE68A")
-	colorRed    = lipgloss.Color("#FCA5A5")
-	colorMuted  = lipgloss.Color("#7E8AA6")
-	colorBorder = lipgloss.Color("#34415D")
+	colorOrange = lipgloss.Color("#D97757")
+	colorBlue   = lipgloss.Color("#EBA687")
+	colorGreen  = lipgloss.Color("#34D399")
+	colorYellow = lipgloss.Color("#FACC15")
+	colorRed    = lipgloss.Color("#F87171")
+	colorMuted  = lipgloss.Color("#BCB2A4")
+	colorBorder = lipgloss.Color("#3C3731")
 
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorOrange)
 	labelStyle = lipgloss.NewStyle().Foreground(colorMuted)
@@ -271,8 +275,9 @@ func (m Model) fullDashboardFrame(snapshot statusmodel.Snapshot, now time.Time, 
 
 	contextSummary := labelStyle.Render("CONTEXT  ") +
 		lipgloss.NewStyle().Bold(true).Foreground(contextColor(snapshot.Context.UsedPercentage)).Render(percentageText(snapshot.Context.UsedPercentage)+" USED")
-	tokens := labelStyle.Render("INPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+tokenText(snapshot.Context.InputTokens())) +
-		labelStyle.Render("     OUTPUT ") + lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+tokenText(snapshot.Context.OutputTokens()))
+	todayInput, todayOutput := statusmodel.TodayTokenTotals(m.snapshots, now)
+	tokens := labelStyle.Render("INPUT TODAY ") + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("↑ "+humanTokens(todayInput)) +
+		labelStyle.Render("     OUTPUT TODAY ") + lipgloss.NewStyle().Bold(true).Foreground(colorOrange).Render("↓ "+humanTokens(todayOutput))
 
 	modelDetail := snapshot.Model.ID
 	if modelDetail == "" {

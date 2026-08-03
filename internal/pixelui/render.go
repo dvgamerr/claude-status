@@ -78,8 +78,14 @@ type View struct {
 	Now          time.Time
 	StaleAfter   time.Duration
 	SessionCount int
-	LoadError    error
-	Touches      []touch.Point
+	// TodayInputTokens/TodayOutputTokens are the combined Claude+Codex token
+	// totals for every snapshot captured today (see model.TodayTokenTotals),
+	// not just the latest Claude session — the INPUT/OUTPUT chips read as a
+	// daily total across both tools rather than one session's own count.
+	TodayInputTokens  int64
+	TodayOutputTokens int64
+	LoadError         error
+	Touches           []touch.Point
 }
 
 // Renderer owns preloaded fonts and vector assets reused across frames.
@@ -187,7 +193,7 @@ func (r *Renderer) renderDashboard(canvas *image.RGBA, view View, snapshot model
 	r.renderHeader(canvas, view)
 	r.renderRail(canvas, image.Rect(railLeft, sectionsTop, railRight, sectionsBottom), activity, &snapshot, view.Stats, view.Now)
 	r.renderLimitsRow(canvas, snapshot, view.Now)
-	r.renderClaudePanel(canvas, snapshot)
+	r.renderClaudePanel(canvas, snapshot, view.TodayInputTokens, view.TodayOutputTokens)
 	r.codexCard(canvas, image.Rect(contentSplit+14, codexTop, contentRight, codexBottom), view.Codex)
 
 	footer := fmt.Sprintf("AUTO  •  %d SESSION", max(1, view.SessionCount))
@@ -222,7 +228,7 @@ func (r *Renderer) renderLimitsRow(canvas *image.RGBA, snapshot model.Snapshot, 
 // than another boxed widget competing for attention. The header still
 // deliberately omits session/model identity (see CLAUDE.md); this panel is
 // where that identity — model name and reasoning level — actually lives.
-func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot) {
+func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot, todayInput, todayOutput int64) {
 	panelWidth := contentSplit - contentLeft
 
 	// Model + reasoning level get their own small header, styled exactly
@@ -254,9 +260,9 @@ func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot
 	chipWidth := (panelWidth - 14) / 2
 	chipTop := codexBottom - 58
 	chipBounds := image.Rect(contentLeft, chipTop, contentLeft+chipWidth, codexBottom)
-	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(snapshot.Context.InputTokens()), claudePeach)
+	metricChip(canvas, r, chipBounds, "INPUT TODAY", tokenLabel(&todayInput), claudePeach)
 	chipBounds = image.Rect(contentLeft+chipWidth+14, chipTop, contentSplit, codexBottom)
-	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(snapshot.Context.OutputTokens()), purple)
+	metricChip(canvas, r, chipBounds, "OUTPUT TODAY", tokenLabel(&todayOutput), purple)
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
@@ -310,18 +316,6 @@ func (r *Renderer) limitLine(canvas *image.RGBA, x, top, width int, label string
 		progress(canvas, image.Rect(x, top+14, x+width, top+22), pct, thresholdColor(pct, accent))
 		r.text(canvas, r.bold22, textPrimary, x, percentBaseline, percentLabel(window.UsedPercentage))
 	}
-}
-
-// contextBlock draws percent+USED, the token fraction, and a bar with no
-// card background, reused by both the Claude panel (bigger percentFace) and
-// the Codex card (smaller one) so the two read as the same kind of number.
-func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context model.Context, accent color.RGBA, percentFace font.Face) {
-	percentText := percentLabel(context.UsedPercentage)
-	r.text(canvas, percentFace, textPrimary, x, top, percentText)
-	usedX := x + font.MeasureString(percentFace, percentText).Ceil() + 10
-	r.text(canvas, r.bold13, accent, usedX, centeredBaseline(top, percentFace, r.bold13), "USED")
-	r.text(canvas, r.regular12, textFaint, x, top+22, fitText(r.regular12, contextFraction(context), width))
-	progress(canvas, image.Rect(x, top+34, x+width, top+42), percentValue(context.UsedPercentage), accent)
 }
 
 // renderHeader intentionally contains no model, session ID/name, or effort:
@@ -419,7 +413,7 @@ func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapsho
 	r.text(canvas, r.bold13, green, bounds.Min.X+18, bounds.Min.Y+24, "CODEX")
 	if snapshot == nil {
 		r.text(canvas, r.bold16, textPrimary, bounds.Min.X+18, bounds.Min.Y+52, "NO SESSION")
-		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+76, "context unavailable")
+		r.text(canvas, r.regular12, textFaint, bounds.Min.X+18, bounds.Min.Y+76, "usage unavailable")
 		return
 	}
 
@@ -427,8 +421,38 @@ func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapsho
 	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+18, bounds.Min.Y+52, fitText(r.bold18, strings.ToUpper(modelLabel(*snapshot)), innerWidth))
 	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+74, modePrimary(*snapshot))
 
-	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "CONTEXT")
-	r.contextBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, snapshot.Context, green, r.bold30)
+	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "TOKENS & EST. COST")
+	r.codexUsageBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, *snapshot)
+}
+
+// codexUsageBlock replaces the context-percentage block Codex used to share
+// with the Claude panel: Codex's card cares about spend, not context
+// headroom (that's the Claude panel's own concern), so this leads with the
+// estimated dollar cost — computed from reported input/output tokens and
+// codexPricingTable's per-model rate, since providers price models
+// differently — with the raw token counts as supporting detail beneath it.
+func (r *Renderer) codexUsageBlock(canvas *image.RGBA, x, top, width int, snapshot model.Snapshot) {
+	var inputTokens, outputTokens int64
+	if value := snapshot.Context.InputTokens(); value != nil {
+		inputTokens = *value
+	}
+	if value := snapshot.Context.OutputTokens(); value != nil {
+		outputTokens = *value
+	}
+	cost, exact := codexEstimatedCostUSD(snapshot.Model.ID, inputTokens, outputTokens)
+
+	costText := fmt.Sprintf("$%.2f", cost)
+	r.text(canvas, r.bold30, textPrimary, x, top, costText)
+	tagX := x + font.MeasureString(r.bold30, costText).Ceil() + 10
+	tag := "EST. COST"
+	if !exact {
+		tag = "EST. COST*"
+	}
+	r.text(canvas, r.bold13, green, tagX, centeredBaseline(top, r.bold30, r.bold13), tag)
+
+	total := inputTokens + outputTokens
+	detail := fmt.Sprintf("%s tokens (%s in / %s out)", tokenLabel(&total), tokenLabel(&inputTokens), tokenLabel(&outputTokens))
+	r.text(canvas, r.regular12, textFaint, x, top+22, fitText(r.regular12, detail, width))
 }
 
 func metricChip(canvas *image.RGBA, r *Renderer, bounds image.Rectangle, label, value string, accent color.RGBA) {

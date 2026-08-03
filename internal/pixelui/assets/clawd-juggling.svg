@@ -1,19 +1,19 @@
 <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
   <title>Clawd Juggling</title>
-  <g id="leftArm" fill="#D77757">
+  <g id="leftArm" fill="#D97757">
     <rect x="10" y="46" width="12" height="12"/>
     <animateTransform attributeName="transform" type="translate"
       values="0,0;0,-4;0,0" dur="0.4s" begin="0s" repeatCount="indefinite"/>
   </g>
-  <g id="rightArm" fill="#D77757">
+  <g id="rightArm" fill="#D97757">
     <rect x="78" y="46" width="12" height="12"/>
     <animateTransform attributeName="transform" type="translate"
       values="0,-4;0,0;0,-4" dur="0.4s" begin="0s" repeatCount="indefinite"/>
   </g>
-  <g id="body" fill="#D77757">
+  <g id="body" fill="#D97757">
     <rect x="22" y="33" width="56" height="34"/>
   </g>
-  <g id="legs" fill="#D77757">
+  <g id="legs" fill="#D97757">
     <rect x="30" y="67" width="6" height="15"/>
     <rect x="40" y="67" width="6" height="15"/>
     <rect x="54" y="67" width="6" height="15"/>
@@ -33,7 +33,7 @@
     <animateTransform attributeName="transform" type="translate"
       values="0,0;0,-24;0,0" dur="1.2s" begin="0s" repeatCount="indefinite"/>
   </g>
-  <g id="ball2" fill="#E8A93F" transform="translate(50,20)">
+  <g id="ball2" fill="#E8A93F" transform="translate(50,30)">
     <circle cx="0" cy="0" r="5"/>
     <animateTransform attributeName="transform" type="translate"
       values="0,0;0,-24;0,0" dur="1.2s" begin="0.4s" repeatCount="indefinite"/>

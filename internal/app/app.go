@@ -599,12 +599,22 @@ func runPreview(args []string, stderr io.Writer) int {
 	}
 	snapshots, loadErr := store.LoadAll()
 	claude, codex := pixelui.LatestProviders(snapshots)
+	todayInput, todayOutput := model.TodayTokenTotals(snapshots, now)
 	renderer, err := pixelui.NewRenderer()
 	if err != nil {
 		logger.Error().Err(err).Msg("create renderer")
 		return 1
 	}
-	frame := renderer.Render(pixelui.View{Claude: claude, Codex: codex, Now: now, StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
+	frame := renderer.Render(pixelui.View{
+		Claude:            claude,
+		Codex:             codex,
+		Now:               now,
+		StaleAfter:        15 * time.Second,
+		SessionCount:      len(snapshots),
+		TodayInputTokens:  todayInput,
+		TodayOutputTokens: todayOutput,
+		LoadError:         loadErr,
+	})
 	file, err := os.Create(*outputPath)
 	if err != nil {
 		logger.Error().Err(err).Msg("create output")
