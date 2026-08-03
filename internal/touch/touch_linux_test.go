@@ -69,6 +69,7 @@ func TestWatchRejectsNilContextAndClosesOnCancellation(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	//lint:ignore SA1012 verifying Watch's own nil-context guard requires passing a literal nil
 	if _, err := Watch(nil, path); err == nil {
 		t.Fatal("expected nil context error")
 	}
