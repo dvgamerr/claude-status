@@ -23,7 +23,9 @@ const RelayServiceName = "claude-status-relay"
 // service manager is driven underneath.
 func runService(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: claude-status service <install|remove|start|stop|status> [flags]")
+		if _, err := fmt.Fprintln(stderr, "Usage: claude-status service <install|remove|start|stop|status> [flags]"); err != nil {
+			return 1
+		}
 		return 2
 	}
 	switch args[0] {
@@ -35,12 +37,14 @@ func runService(args []string, stdout, stderr io.Writer) int {
 			logger.Error().Err(err).Msg("remove service")
 			return 1
 		}
-		fmt.Fprintf(stdout, "removed %s\n", RelayServiceName)
+		if _, err := fmt.Fprintf(stdout, "removed %s\n", RelayServiceName); err != nil {
+			return 1
+		}
 		return 0
 	case "start":
-		return runServiceControl(service.Start, "start", stdout, stderr)
+		return runServiceControl(service.Start, service.Status, "start", stdout, stderr)
 	case "stop":
-		return runServiceControl(service.Stop, "stop", stdout, stderr)
+		return runServiceControl(service.Stop, service.Status, "stop", stdout, stderr)
 	case "status":
 		state, err := service.Status(RelayServiceName)
 		if err != nil {
@@ -48,10 +52,14 @@ func runService(args []string, stdout, stderr io.Writer) int {
 			logger.Error().Err(err).Msg("service status")
 			return 1
 		}
-		fmt.Fprintf(stdout, "%s: %s\n", RelayServiceName, state)
+		if _, err := fmt.Fprintf(stdout, "%s: %s\n", RelayServiceName, state); err != nil {
+			return 1
+		}
 		return 0
 	case "help", "--help", "-h":
-		fmt.Fprintln(stdout, "Usage: claude-status service <install|remove|start|stop|status> [flags]")
+		if _, err := fmt.Fprintln(stdout, "Usage: claude-status service <install|remove|start|stop|status> [flags]"); err != nil {
+			return 1
+		}
 		return 0
 	default:
 		logger := logging.New(stderr, "service")
@@ -87,6 +95,10 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 		logger.Error().Msg("--mirror-ssh is required")
 		return 2
 	}
+	if *refresh < 100*time.Millisecond {
+		logger.Error().Msg("--refresh must be at least 100ms")
+		return 2
+	}
 
 	cfg := service.Config{
 		Name:        RelayServiceName,
@@ -105,21 +117,27 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("install service")
 		return 1
 	}
-	fmt.Fprintf(stderr, "installed and started %s (log: %s)\n", RelayServiceName, *logFile)
+	if _, err := fmt.Fprintf(stderr, "installed and started %s (log: %s)\n", RelayServiceName, *logFile); err != nil {
+		return 1
+	}
 	return 0
 }
 
-func runServiceControl(action func(string) error, verb string, stdout, stderr io.Writer) int {
+func runServiceControl(action func(string) error, status func(string) (service.State, error), verb string, stdout, stderr io.Writer) int {
 	if err := action(RelayServiceName); err != nil {
 		logger := logging.New(stderr, "service "+verb)
 		logger.Error().Err(err).Msg("service " + verb)
 		return 1
 	}
-	state, err := service.Status(RelayServiceName)
+	state, err := status(RelayServiceName)
 	if err != nil {
-		fmt.Fprintf(stdout, "%s: %s requested\n", RelayServiceName, verb)
+		if _, writeErr := fmt.Fprintf(stdout, "%s: %s requested\n", RelayServiceName, verb); writeErr != nil {
+			return 1
+		}
 		return 0
 	}
-	fmt.Fprintf(stdout, "%s: %s\n", RelayServiceName, state)
+	if _, err := fmt.Fprintf(stdout, "%s: %s\n", RelayServiceName, state); err != nil {
+		return 1
+	}
 	return 0
 }

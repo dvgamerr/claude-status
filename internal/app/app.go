@@ -1,7 +1,7 @@
+// Package app implements claude-status command dispatch and lifecycle.
 package app
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -19,6 +19,7 @@ import (
 	"github.com/dvgamerr/claude-status/internal/dashboard"
 	"github.com/dvgamerr/claude-status/internal/framebuffer"
 	"github.com/dvgamerr/claude-status/internal/ingest"
+	"github.com/dvgamerr/claude-status/internal/limitio"
 	"github.com/dvgamerr/claude-status/internal/logging"
 	"github.com/dvgamerr/claude-status/internal/mirror"
 	"github.com/dvgamerr/claude-status/internal/model"
@@ -31,9 +32,12 @@ import (
 )
 
 var (
+	// Version is the release version injected at build time.
 	Version = "dev"
-	Commit  = "none"
-	Date    = "unknown"
+	// Commit is the source revision injected at build time.
+	Commit = "none"
+	// Date is the UTC build timestamp injected at build time.
+	Date = "unknown"
 )
 
 // newCommandFlagSet centralizes the output and usage setup shared by every
@@ -42,7 +46,7 @@ var (
 func newCommandFlagSet(name, usage string, stderr io.Writer) *flag.FlagSet {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	flags.Usage = func() { fmt.Fprintln(stderr, usage) }
+	flags.Usage = func() { _, _ = fmt.Fprintln(stderr, usage) }
 	return flags
 }
 
@@ -58,9 +62,12 @@ func parseCommandFlags(flags *flag.FlagSet, args []string) (exitCode int, parsed
 	return 0, true
 }
 
+// Run executes one CLI invocation and returns its process exit code.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		printUsage(stdout)
+		if err := printUsage(stdout); err != nil {
+			return 1
+		}
 		return 0
 	}
 
@@ -88,14 +95,22 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case "preview":
 		return runPreview(args[1:], stderr)
 	case "version", "--version", "-version":
-		fmt.Fprintf(stdout, "claude-status %s (commit %s, built %s)\n", Version, Commit, Date)
+		if _, err := fmt.Fprintf(stdout, "claude-status %s (commit %s, built %s)\n", Version, Commit, Date); err != nil {
+			return 1
+		}
 		return 0
 	case "help", "--help", "-h":
-		printUsage(stdout)
+		if err := printUsage(stdout); err != nil {
+			return 1
+		}
 		return 0
 	default:
-		fmt.Fprintf(stderr, "claude-status: unknown command %q\n\n", args[0])
-		printUsage(stderr)
+		if _, err := fmt.Fprintf(stderr, "claude-status: unknown command %q\n\n", args[0]); err != nil {
+			return 1
+		}
+		if err := printUsage(stderr); err != nil {
+			return 1
+		}
 		return 2
 	}
 }
@@ -142,8 +157,8 @@ func runActivity(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	flags := newCommandFlagSet("activity", "Usage: claude-status activity [--state-dir DIR]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory used for sanitized snapshots")
-	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
-		return exitCode
+	if _, parsed := parseCommandFlags(flags, args); !parsed {
+		return 0
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
@@ -189,6 +204,10 @@ func runUsage(args []string, stderr io.Writer) int {
 	}
 	if *fiveHour < 0 || *sevenDay < 0 {
 		logger.Error().Msg("--five-hour and --seven-day are required")
+		return 2
+	}
+	if *fiveHourReset <= 0 || *sevenDayReset <= 0 {
+		logger.Error().Msg("--five-hour-reset and --seven-day-reset must be positive")
 		return 2
 	}
 	store, err := state.New(*stateDir)
@@ -272,8 +291,8 @@ func runCodexNotify(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 	rawNotification := flags.Arg(0)
 	if *forward != "" {
-		if err := forwardNotification(ctx, *forward, forwardArgs, rawNotification); err != nil {
-			logger.Warn().Err(err).Msg("forward codex notification")
+		if forwardErr := forwardNotification(ctx, *forward, forwardArgs, rawNotification); forwardErr != nil {
+			logger.Warn().Err(forwardErr).Msg("forward codex notification")
 		}
 	}
 	notification, err := codex.DecodeNotification(rawNotification)
@@ -305,68 +324,42 @@ func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := newCommandFlagSet("relay", "Usage: claude-status relay --mirror-ssh HOST [--refresh 1s] [--once] [--log-file FILE]", stderr)
-	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
-	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives sanitized snapshots")
-	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
-	refresh := flags.Duration("refresh", time.Second, "interval between local snapshot checks")
-	once := flags.Bool("once", false, "send pending snapshots once and exit")
-	logFile := flags.String("log-file", "", "append relay diagnostics to this file")
-	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+	options, exitCode, parsed := parseRelayOptions(args, stderr, defaultDir)
+	if !parsed {
 		return exitCode
 	}
-	if flags.NArg() != 0 {
-		logger.Error().Msg("unexpected positional arguments")
-		return 2
-	}
-	if strings.TrimSpace(*mirrorSSH) == "" {
-		logger.Error().Msg("--mirror-ssh is required")
-		return 2
-	}
-	if *refresh < 100*time.Millisecond {
-		logger.Error().Msg("--refresh must be at least 100ms")
-		return 2
-	}
 
-	store, err := state.New(*stateDir)
+	store, err := state.New(options.stateDir)
 	if err != nil {
 		logger.Error().Err(err).Msg("open state store")
 		return 1
 	}
-	logOutput := stderr
-	var file *os.File
-	if strings.TrimSpace(*logFile) != "" {
-		if err := os.MkdirAll(filepath.Dir(*logFile), 0o700); err != nil {
-			logger.Error().Err(err).Msg("create log directory")
-			return 1
-		}
-		file, err = os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			logger.Error().Err(err).Msg("open log file")
-			return 1
-		}
-		defer file.Close()
-		// file first: io.MultiWriter aborts at the first writer that errors
-		// without trying the rest, and a real Windows/systemd service has no
-		// console — writes to stderr there can fail outright. Putting file
-		// first means the durable log still gets written even when stderr
-		// can't be, instead of the write being silently skipped entirely.
-		logOutput = io.MultiWriter(file, stderr)
+	logOutput, file, err := openRelayLog(options.logFile, stderr)
+	if err != nil {
+		logger.Error().Err(err).Msg("open log file")
+		return 1
+	}
+	if file != nil {
+		defer func() {
+			if closeErr := file.Close(); closeErr != nil {
+				logger.Error().Err(closeErr).Msg("close log file")
+			}
+		}()
 	}
 	relayLogger := logging.New(logOutput, "relay")
 	worker, err := relay.New(store, func(sendCtx context.Context, snapshot model.Snapshot) error {
-		return mirror.SSH(sendCtx, *mirrorSSH, *remoteBinary, snapshot)
+		return mirror.SSH(sendCtx, options.mirrorSSH, options.remoteBinary, snapshot)
 	}, relayLogger)
 	if err != nil {
 		relayLogger.Error().Err(err).Msg("start relay")
 		return 1
 	}
 
-	ticker := time.NewTicker(*refresh)
+	ticker := time.NewTicker(options.refresh)
 	defer ticker.Stop()
 	for {
 		syncErr := worker.Sync(ctx)
-		if *once {
+		if options.once {
 			if syncErr != nil {
 				return 1
 			}
@@ -380,13 +373,69 @@ func runRelay(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 }
 
+type relayOptions struct {
+	stateDir     string
+	mirrorSSH    string
+	remoteBinary string
+	refresh      time.Duration
+	once         bool
+	logFile      string
+}
+
+func parseRelayOptions(args []string, stderr io.Writer, defaultDir string) (relayOptions, int, bool) {
+	var options relayOptions
+	logger := logging.New(stderr, "relay")
+	flags := newCommandFlagSet("relay", "Usage: claude-status relay --mirror-ssh HOST [--refresh 1s] [--once] [--log-file FILE]", stderr)
+	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
+	mirrorSSH := flags.String("mirror-ssh", "", "SSH host that receives sanitized snapshots")
+	remoteBinary := flags.String("remote-bin", mirror.DefaultRemoteBinary, "claude-status binary on the SSH mirror")
+	refresh := flags.Duration("refresh", time.Second, "interval between local snapshot checks")
+	once := flags.Bool("once", false, "send pending snapshots once and exit")
+	logFile := flags.String("log-file", "", "append relay diagnostics to this file")
+	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
+		return options, exitCode, false
+	}
+	if flags.NArg() != 0 {
+		logger.Error().Msg("unexpected positional arguments")
+		return options, 2, false
+	}
+	if strings.TrimSpace(*mirrorSSH) == "" {
+		logger.Error().Msg("--mirror-ssh is required")
+		return options, 2, false
+	}
+	if *refresh < 100*time.Millisecond {
+		logger.Error().Msg("--refresh must be at least 100ms")
+		return options, 2, false
+	}
+	options = relayOptions{stateDir: *stateDir, mirrorSSH: *mirrorSSH, remoteBinary: *remoteBinary, refresh: *refresh, once: *once, logFile: *logFile}
+	return options, 0, true
+}
+
+func openRelayLog(path string, stderr io.Writer) (io.Writer, *os.File, error) {
+	if strings.TrimSpace(path) == "" {
+		return stderr, nil, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, nil, fmt.Errorf("create log directory: %w", err)
+	}
+	// #nosec G304 -- --log-file deliberately accepts an operator-selected path.
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, nil, err
+	}
+	// File comes first because MultiWriter stops on the first error. A service
+	// may have no usable console, but its durable file must still receive logs.
+	return io.MultiWriter(file, stderr), file, nil
+}
+
 func forwardNotification(ctx context.Context, program string, args []string, payload string) error {
 	forwardCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	commandArgs := append(append([]string{}, args...), payload)
+	// #nosec G204 -- the notifier is explicitly user-configured and argv is not shell-expanded.
 	command := exec.CommandContext(forwardCtx, program, commandArgs...)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
+	stderr := limitio.NewBuffer(limitio.DiagnosticLimit)
+	command.Stderr = stderr
 	if err := command.Run(); err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {
@@ -552,7 +601,7 @@ func runPreview(args []string, stderr io.Writer) int {
 		return 1
 	}
 	if err := png.Encode(file, frame); err != nil {
-		file.Close()
+		err = errors.Join(err, file.Close())
 		logger.Error().Err(err).Msg("encode png")
 		return 1
 	}
@@ -563,8 +612,8 @@ func runPreview(args []string, stderr io.Writer) int {
 	return 0
 }
 
-func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `AI Usage Terminal for Raspberry Pi
+func printUsage(w io.Writer) error {
+	_, err := fmt.Fprintln(w, `AI Usage Terminal for Raspberry Pi
 
 Usage:
   claude-status ingest [flags]       Read Claude Code statusLine JSON from stdin
@@ -581,4 +630,5 @@ Usage:
   claude-status version              Print build information
 
 Run "claude-status <command> --help" for command flags.`)
+	return err
 }

@@ -1,3 +1,4 @@
+// Command claude-status ingests provider usage and renders local dashboards.
 package main
 
 import (
