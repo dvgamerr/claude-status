@@ -10,8 +10,8 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
 
 ## หน้าตาปัจจุบันของ dashboard
 
-- ซ้าย: rail มี mascot (Clawd) เป็นจุดสนใจหลัก ใต้ pill สถานะ (WORKING/IDLE/NEEDS
-  APPROVAL) มีแค่ระยะเวลา ("working for 12s") — ไม่แสดงชื่อหรือ ID ของ session
+- ซ้าย: rail มี mascot (Clawd) เป็นจุดสนใจหลัก ใต้ mascot มีแค่ระยะเวลา
+  ("working for 12s") — ไม่แสดงชื่อหรือ ID ของ session
   เลย ต่อด้วย Pi health (CPU/MEM/GPU)
 - ขวาบน: "5 HOUR LIMIT" และ "7 DAY LIMIT" วางเต็มความกว้างซ้อนกันคนละแถว
   (label+เวลารีเซ็ตแถวเดียวกัน ตามด้วย bar แล้วเลขเปอร์เซ็นต์ใหญ่)
@@ -27,7 +27,7 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
 - `claude-status ingest` อ่าน Claude JSON จาก stdin, sanitize, เขียน state แบบ atomic
   แล้วพิมพ์ status line สั้นกลับให้ Claude Code
 - `claude-status activity` อ่าน Claude Code hook event (`UserPromptSubmit`,
-  `PreToolUse`, `Stop`, `Notification`) จาก stdin แล้วอัปเดตแค่สถานะ
+  `PreToolUse`, `Stop`, `Notification`, `SubagentStart`, `SubagentStop`) จาก stdin แล้วอัปเดตสถานะ
   working/idle/waiting-approval ของ session นั้น โดยไม่แตะ field อื่นและไม่เก็บ
   ข้อความ hook ดิบไว้เลย ใช้ขับ animation ของ mascot บนหน้าจอ
 - `claude-status usage --five-hour PCT --seven-day PCT` เขียนแค่ 5h/7d limit
@@ -64,10 +64,11 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
    `activity`, `usage`, `codex-notify` แต่ละตัวเป็น process สั้น ๆ ที่ถูกเรียก
    ต่อ event เดียว (statusLine refresh, hook, หรือ turn-complete notify) อ่าน
    input, sanitize ผ่าน allowlist แล้ว **เขียนแค่ local state แบบ atomic**
-   (temp file + fsync + rename) จบแล้วก็ออก — ไม่เปิด network เอง ไม่รอ SSH
-   ไม่ block hook หรือ statusLine แม้แต่ nanoseconds เดียว
+   (temp file + fsync + rename) จบแล้วก็ออก — ไม่เปิด network เองและไม่รอ SSH;
+   เวลาที่ใช้มีเฉพาะการ decode และเขียนไฟล์ local ที่จำเป็น
 2. **Relay** (`claude-status relay`) — process ระยะยาวตัวเดียวที่ watch local
-   state directory เดียวกันนั้น เจอ snapshot ที่เปลี่ยน (เทียบด้วย hash/mtime)
+   state directory เดียวกันนั้น เจอ snapshot ที่เปลี่ยน (เทียบ fingerprint SHA-256
+   ของ sanitized content)
    ก็ส่งไป Pi ผ่าน SSH โดย retry เองเมื่อเครือข่ายขาดหรือ Pi ปิดอยู่ชั่วคราว
    เป็นเจ้าของ SSH transport เพียงจุดเดียวในทั้งระบบ ปลายทางเสมอคือ
    `claude-status import` บน Pi ซึ่งรับเฉพาะ `model.Snapshot` schema ที่รู้จัก
@@ -78,8 +79,8 @@ Desktop, Chromium หรือ X/Wayland จึงควบคุม typography,
    แล้ว composite เฟรมด้วย `internal/pixelui` วาดตรงลง `/dev/fb0` ทุก
    `--refresh` (ดีฟอลต์ 66ms/~15fps) — ไม่รอ SSH, ไม่รอ relay, ไม่ block
 
-Activity state (working/idle/waiting-approval) เดินคนละ path จาก
-snapshot ทั่วไป: hook เขียนแค่ field `Activity{State, UpdatedAt}` merge เข้า
+Activity state (working/idle/waiting-approval และจำนวน subagent) เดินคนละ path จาก
+snapshot ทั่วไป: hook เขียนแค่ field `Activity{State, UpdatedAt, Subagents}` merge เข้า
 ไปในของเดิม ไม่ทำให้ statusLine event ที่มาก่อน/หลังกันมาทับข้อมูลกัน และ
 mascot จะ fallback กลับ idle เองถ้า state ค้างเกิน 10 นาที (เผื่อ `Stop`
 hook หลุดไป)
@@ -134,18 +135,20 @@ sudo ~/.local/bin/claude-status pi install
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
     "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }]
+    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }]
   }
 }
 ```
 
-hook ทั้งสี่ทำให้ mascot บนจอรู้สถานะจริงของ session: `UserPromptSubmit`/
+hook ทั้งหกทำให้ mascot บนจอรู้สถานะจริงของ session: `UserPromptSubmit`/
 `PreToolUse` → กำลังทำงาน (Clawd Coding พิมพ์อยู่ ตากะพริบ), `Stop` → idle
 (Clawd Sleeping หายใจช้า ๆ พร้อม Zzz ลอย), `Notification` ที่มีคำว่า permission →
-รอ approval (Clawd Exclamation Mark สั่นเตือน จุดตกใจกะพริบ) แต่ละสถานะมี SVG
-2 ท่าสลับกันตามจังหวะของตัวเอง (ไม่ใช่แค่ขยับ/ย่อขยาย raster เดิม) ส่วน rail,
-card และ halo ด้านหลังอยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook พวกนี้ dashboard จะยัง
-ทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
+รอ approval (Clawd Exclamation Mark สั่นเตือน จุดตกใจกะพริบ) ส่วน
+`SubagentStart`/`SubagentStop` ขับท่าของ subagent ตามจำนวนที่กำลังรัน แต่ละสถานะ
+เล่นลำดับ SVG frames ของตัวเอง ส่วน rail และ card อยู่นิ่งทั้งหมด ถ้าไม่ตั้ง hook
+พวกนี้ dashboard จะยังทำงานได้ปกติ แต่จะเดาสถานะจาก statusLine freshness แทน
 
 ถ้า Claude Code/Codex รันอยู่คนละเครื่องกับจอ Pi ดูหัวข้อ "Claude/Codex อยู่บน
 PC/Mac แต่ใช้ Pi เป็นจอ" ด้านล่าง สำหรับวิธีตั้งค่าฝั่งเครื่องต้นทาง
@@ -253,8 +256,8 @@ claude-status service install --mirror-ssh pilab
 (ใช้ชื่อบริการ `claude-status-relay` เดียวกันทุก OS) รัน `install` ซ้ำได้เสมอ —
 ถ้ามี instance เดิมรันอยู่จะ stop แล้ว restart ให้เองด้วย binary/flag ใหม่
 
-บน Windows ยังมีสคริปต์ `install-windows.ps1` ที่ทำครบในคำสั่งเดียว (build/ติดตั้ง
-binary + เพิ่ม hook ใน `~/.claude/settings.json` + wrap `notify` ใน
+บน Windows ยังมีสคริปต์ `install-windows.ps1` ที่ทำครบในคำสั่งเดียว (ติดตั้ง
+binary ที่ `-BinaryPath` ระบุหรือ `bin/claude-status.exe` + เพิ่ม hook ใน `~/.claude/settings.json` + wrap `notify` ใน
 `~/.codex/config.toml` + เรียก `service install` ให้ตอนท้าย):
 
 ```powershell

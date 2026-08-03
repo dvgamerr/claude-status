@@ -89,7 +89,7 @@ the header's own omission of session identity.
 - Source adapters only persist sanitized local state; they never open the
   network. The long-lived `claude-status relay` process is the sole owner of
   SSH transport. On Windows, `scripts/install-windows.ps1` runs one relay via
-  the `claude-status-relay` Scheduled Task. It retries changed snapshots and
+  the `claude-status-relay` Windows Service. It retries changed snapshots and
   pipes only the allowlisted `model.Snapshot` to
   `/home/pi/.local/bin/claude-status import`.
 - Never mirror raw Claude statusLine JSON, a raw Codex notify payload, rollout
@@ -252,11 +252,10 @@ References:
   cross-build plus metadata inspection, PowerShell and shell syntax checks,
   Linux AMD64/ARM64 release packaging plus checksum verification, and
   `git diff --check`.
-- Two pre-existing verification constraints remain visible rather than being
-  hidden: the full suite currently reports 71.0% coverage while
-  `scripts/verify.ps1` requires 80%, so that script stops at step 5; and
-  `go test -race ./...` cannot build on this Windows machine because no GCC C
-  compiler is installed. Normal, shuffled, and repeated tests pass.
+- At the time of this pass, coverage was 71.0% and the local Windows host had
+  no GCC for `go test -race`; both observations are historical. The later
+  full-project debt pass raised coverage above the 80% gate, while race tests
+  remain enforced by Linux CI.
 - Pre-existing worktree changes in Claude/state/system-info tests and reader
   code, plus untracked mascot GIFs in top-level `assets/`, were deliberately
   left intact and are not part of this maintenance pass.

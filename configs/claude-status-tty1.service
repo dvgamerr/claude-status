@@ -4,11 +4,11 @@ After=local-fs.target systemd-user-sessions.service
 Conflicts=getty@tty1.service
 
 [Service]
-Type=simple
+Type=exec
 User=pi
 Group=pi
 SupplementaryGroups=video input
-WorkingDirectory=/home/pi/.lab
+WorkingDirectory=/home/pi
 Environment=HOME=/home/pi
 ExecStartPre=/usr/bin/test -x /home/pi/.local/bin/claude-status
 ExecStart=/home/pi/.local/bin/claude-status gfx --refresh 66ms --framebuffer /dev/fb0 --tty /dev/tty1

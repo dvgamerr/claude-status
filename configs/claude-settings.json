@@ -17,6 +17,12 @@
     ],
     "Notification": [
       { "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "~/.local/bin/claude-status activity" }] }
     ]
   }
 }
