@@ -1,3 +1,4 @@
+// Package systeminfo reads best-effort host metrics for dashboard display.
 package systeminfo
 
 import (
@@ -12,6 +13,7 @@ import (
 	"time"
 )
 
+// Stats contains optional CPU, memory, load, temperature, and uptime metrics.
 type Stats struct {
 	CPUPercent       *float64
 	MemoryUsedBytes  *uint64
@@ -21,6 +23,7 @@ type Stats struct {
 	Uptime           *time.Duration
 }
 
+// Reader samples Linux procfs/sysfs metrics beneath a configurable root.
 type Reader struct {
 	root    string
 	mu      sync.Mutex
@@ -33,6 +36,7 @@ type cpuSample struct {
 	idle  uint64
 }
 
+// NewReader constructs a metrics reader rooted at root, or the filesystem root.
 func NewReader(root string) *Reader {
 	if strings.TrimSpace(root) == "" {
 		root = string(filepath.Separator)
@@ -48,7 +52,15 @@ func (r *Reader) Read() Stats {
 	defer r.mu.Unlock()
 
 	stats := Stats{}
+	r.readCPU(&stats)
+	r.readMemory(&stats)
+	r.readLoad(&stats)
+	r.readUptime(&stats)
+	r.readTemperature(&stats)
+	return stats
+}
 
+func (r *Reader) readCPU(stats *Stats) {
 	if data, err := os.ReadFile(r.path("proc", "stat")); err == nil {
 		if sample, err := parseCPUSample(string(data)); err == nil {
 			if r.hasCPU && sample.total > r.lastCPU.total && sample.idle >= r.lastCPU.idle {
@@ -63,27 +75,36 @@ func (r *Reader) Read() Stats {
 			r.hasCPU = true
 		}
 	}
+}
 
+func (r *Reader) readMemory(stats *Stats) {
 	if data, err := os.ReadFile(r.path("proc", "meminfo")); err == nil {
 		if used, total, err := parseMemory(string(data)); err == nil {
 			stats.MemoryUsedBytes = &used
 			stats.MemoryTotalBytes = &total
 		}
 	}
+}
 
+func (r *Reader) readLoad(stats *Stats) {
 	if data, err := os.ReadFile(r.path("proc", "loadavg")); err == nil {
 		if value, err := parseLoad(string(data)); err == nil {
 			stats.Load1 = &value
 		}
 	}
+}
 
+func (r *Reader) readUptime(stats *Stats) {
 	if data, err := os.ReadFile(r.path("proc", "uptime")); err == nil {
 		if value, err := parseUptime(string(data)); err == nil {
 			stats.Uptime = &value
 		}
 	}
+}
 
+func (r *Reader) readTemperature(stats *Stats) {
 	for _, path := range r.temperaturePaths() {
+		// #nosec G304 -- paths are constructed under Reader.root from fixed sysfs segments.
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -93,7 +114,6 @@ func (r *Reader) Read() Stats {
 			break
 		}
 	}
-	return stats
 }
 
 func (r *Reader) path(parts ...string) string {
