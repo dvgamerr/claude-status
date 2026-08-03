@@ -18,14 +18,17 @@ Start-Transcript -Path $TranscriptPath -Force
 try {
     Set-Location $RepoDir
 
-    Write-Host "[1/12] gofmt"
-    $GoFiles = rg --files -g "*.go"
-    if ($GoFiles) {
-        gofmt -w $GoFiles
+    Write-Host "[1/17] gofmt (read-only check)"
+    $GoFiles = @(rg --files -g "*.go")
+    if ($GoFiles.Count -gt 0) {
+        $Unformatted = @(gofmt -l $GoFiles)
+        if ($Unformatted.Count -gt 0) {
+            throw "gofmt required for: $($Unformatted -join ', ')"
+        }
     }
 
-    Write-Host "[2/12] PowerShell syntax"
-    $PowerShellScripts = rg --files -g "*.ps1"
+    Write-Host "[2/17] PowerShell syntax"
+    $PowerShellScripts = @(rg --files -g "*.ps1")
     foreach ($PowerShellScript in $PowerShellScripts) {
         $Tokens = $null
         $ParseErrors = $null
@@ -39,13 +42,43 @@ try {
         }
     }
 
-    Write-Host "[3/12] go mod tidy"
-    go mod tidy
+    Write-Host "[3/17] POSIX shell syntax"
+    $GitCommand = Get-Command git
+    $GitRoot = (Resolve-Path (Join-Path (Split-Path -Parent $GitCommand.Source) "..")).Path
+    $GitBash = Join-Path $GitRoot "bin\bash.exe"
+    if (-not (Test-Path -LiteralPath $GitBash)) {
+        throw "Git Bash not found at $GitBash"
+    }
+    $ShellScripts = @(rg --files -g "*.sh")
+    & $GitBash -n @ShellScripts
 
-    Write-Host "[4/12] repeated shuffled tests"
+    Write-Host "[4/17] JSON and SVG syntax"
+    foreach ($JsonFile in @(rg --files -g "*.json")) {
+        Get-Content -Raw -LiteralPath $JsonFile | ConvertFrom-Json | Out-Null
+    }
+    foreach ($SvgFile in @(rg --files -g "*.svg")) {
+        $Document = [xml]::new()
+        $Document.PreserveWhitespace = $true
+        $Document.Load((Join-Path $RepoDir $SvgFile))
+        if ($Document.DocumentElement.LocalName -ne "svg") {
+            throw "$SvgFile does not have an svg root element"
+        }
+    }
+
+    Write-Host "[5/17] Go module consistency"
+    go mod verify
+    go mod tidy -diff
+
+    Write-Host "[6/17] staticcheck"
+    go tool staticcheck ./...
+
+    Write-Host "[7/17] vulnerability scan"
+    go tool govulncheck ./...
+
+    Write-Host "[8/17] repeated shuffled tests"
     go test -shuffle=on -count=3 ./...
 
-    Write-Host "[5/12] coverage floor"
+    Write-Host "[9/17] coverage floor"
     $CoveragePath = Join-Path $RepoDir "artifacts\coverage.out"
     go test "-coverprofile=$CoveragePath" ./...
     $CoverageSummary = go tool cover "-func=$CoveragePath"
@@ -58,31 +91,42 @@ try {
         throw "total Go test coverage $($Matches[1])% is below the 80% floor"
     }
 
-    Write-Host "[6/12] go vet"
+    Write-Host "[10/17] go vet"
     go vet ./...
 
-    Write-Host "[7/12] Windows build"
-    New-Item -ItemType Directory -Force -Path (Join-Path $RepoDir "bin") | Out-Null
-    go build -trimpath -o (Join-Path $RepoDir "bin\claude-status.exe") ./cmd/claude-status
+    Write-Host "[11/17] Windows build"
+    $NativeBinary = Join-Path $RepoDir "artifacts\claude-status-verify.exe"
+    go build -trimpath -o $NativeBinary ./cmd/claude-status
 
-    Write-Host "[8/12] Raspberry Pi 4 linux/arm64 build"
-    $env:CGO_ENABLED = "0"
-    $env:GOOS = "linux"
-    $env:GOARCH = "arm64"
-    go build -trimpath -o (Join-Path $RepoDir "bin\claude-status-linux-arm64") ./cmd/claude-status
+    Write-Host "[12/17] Raspberry Pi 4 linux/arm64 build"
+    $ArmBinary = Join-Path $RepoDir "artifacts\claude-status-linux-arm64"
+    $PreviousCGO = $env:CGO_ENABLED
+    $PreviousGOOS = $env:GOOS
+    $PreviousGOARCH = $env:GOARCH
+    try {
+        $env:CGO_ENABLED = "0"
+        $env:GOOS = "linux"
+        $env:GOARCH = "arm64"
+        go build -trimpath -o $ArmBinary ./cmd/claude-status
+    }
+    finally {
+        $env:CGO_ENABLED = $PreviousCGO
+        $env:GOOS = $PreviousGOOS
+        $env:GOARCH = $PreviousGOARCH
+    }
 
-    Write-Host "[9/12] Verify ARM64 build metadata"
-    $ArmMetadata = go version -m (Join-Path $RepoDir "bin\claude-status-linux-arm64")
+    Write-Host "[13/17] ARM64 build metadata"
+    $ArmMetadata = go version -m $ArmBinary
     if (($ArmMetadata -join "`n") -notmatch "GOOS=linux" -or ($ArmMetadata -join "`n") -notmatch "GOARCH=arm64") {
         throw "cross-built binary is not linux/arm64"
     }
 
-    Write-Host "[10/12] Binary ingest smoke test"
+    Write-Host "[14/17] Binary ingest smoke test"
     $SmokeDir = Join-Path $RepoDir ("artifacts\smoke-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $SmokeDir | Out-Null
     try {
         $StatusLine = Get-Content -Raw (Join-Path $RepoDir "examples\statusline-input.json") |
-            & (Join-Path $RepoDir "bin\claude-status.exe") ingest --state-dir $SmokeDir
+            & $NativeBinary ingest --state-dir $SmokeDir
         Write-Host $StatusLine
         if ($StatusLine -notmatch "\[Opus\] 5h 51% .* 7d 34% .* ctx 72%") {
             throw "unexpected status line: $StatusLine"
@@ -106,37 +150,43 @@ try {
         }
     }
 
-    Write-Host "[11/12] Linux package smoke test"
-    $GitCommand = Get-Command git
-    $GitRoot = (Resolve-Path (Join-Path (Split-Path -Parent $GitCommand.Source) "..")).Path
-    $GitBash = Join-Path $GitRoot "bin\bash.exe"
-    if (-not (Test-Path -LiteralPath $GitBash)) {
-        throw "Git Bash not found at $GitBash"
+    Write-Host "[15/17] Linux package smoke test"
+    $PackageDir = Join-Path $RepoDir ("artifacts\packages-" + [guid]::NewGuid().ToString("N"))
+    $env:CLAUDE_STATUS_DIST_DIR = $PackageDir
+    try {
+        & $GitBash scripts/package.sh v0.0.0-verify
+        $Packages = @(Get-ChildItem -LiteralPath $PackageDir -Filter "claude-status_v0.0.0-verify_linux_*.tar.gz")
+        if ($Packages.Count -ne 2) {
+            throw "expected 2 Linux packages, found $($Packages.Count)"
+        }
+        $Checksums = @(Get-Content -LiteralPath (Join-Path $PackageDir "SHA256SUMS"))
+        if (($Checksums | Where-Object { $_ -match "claude-status_v0.0.0-verify_linux_" }).Count -ne 2) {
+            throw "SHA256SUMS does not contain both verification packages"
+        }
+
+        Write-Host "[16/17] SHA256 verification"
+        foreach ($Checksum in $Checksums) {
+            if ($Checksum -notmatch '^([0-9a-fA-F]{64})\s+\*?\.?/?(.+)$') {
+                throw "invalid checksum line: $Checksum"
+            }
+            $ExpectedHash = $Matches[1]
+            $PackageName = $Matches[2]
+            $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PackageDir $PackageName)).Hash
+            if ($ActualHash -ne $ExpectedHash) {
+                throw "SHA256 mismatch for $PackageName"
+            }
+            Write-Host "SHA256_OK $PackageName"
+        }
     }
-    & $GitBash -n scripts/install.sh scripts/uninstall.sh scripts/package.sh
-    & $GitBash scripts/package.sh v0.0.0-verify
-    $Packages = Get-ChildItem -LiteralPath (Join-Path $RepoDir "dist") -Filter "claude-status_v0.0.0-verify_linux_*.tar.gz"
-    if ($Packages.Count -ne 2) {
-        throw "expected 2 Linux packages, found $($Packages.Count)"
-    }
-    $Checksums = Get-Content -LiteralPath (Join-Path $RepoDir "dist\SHA256SUMS")
-    if (($Checksums | Where-Object { $_ -match "claude-status_v0.0.0-verify_linux_" }).Count -ne 2) {
-        throw "SHA256SUMS does not contain both verification packages"
+    finally {
+        Remove-Item Env:CLAUDE_STATUS_DIST_DIR -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $PackageDir) {
+            Remove-Item -LiteralPath $PackageDir -Recurse -Force
+        }
     }
 
-    Write-Host "[12/12] SHA256 verification"
-    foreach ($Checksum in $Checksums) {
-        if ($Checksum -notmatch '^([0-9a-fA-F]{64})\s+\*?\.?/?(.+)$') {
-            throw "invalid checksum line: $Checksum"
-        }
-        $ExpectedHash = $Matches[1]
-        $PackageName = $Matches[2]
-        $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $RepoDir "dist\$PackageName")).Hash
-        if ($ActualHash -ne $ExpectedHash) {
-            throw "SHA256 mismatch for $PackageName"
-        }
-        Write-Host "SHA256_OK $PackageName"
-    }
+    Write-Host "[17/17] patch whitespace"
+    git diff --check
 
     Write-Host "VERIFY_OK"
 }

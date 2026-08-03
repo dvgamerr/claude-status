@@ -11,13 +11,44 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race ./...
-      - run: go vet ./...
+      - name: Check formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - name: Check module files
+        run: |
+          go mod verify
+          go mod tidy -diff
+      - name: Validate config and asset syntax
+        run: |
+          bash -n scripts/*.sh
+          python - <<'PY'
+          import json
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          for path in pathlib.Path('.').rglob('*.json'):
+              json.loads(path.read_text(encoding='utf-8'))
+          for path in pathlib.Path('.').rglob('*.svg'):
+              if ET.parse(path).getroot().tag.rsplit('}', 1)[-1] != 'svg':
+                  raise SystemExit(f'{path}: root element is not svg')
+          PY
+      - name: Static analysis
+        run: |
+          go vet ./...
+          go tool staticcheck ./...
+          go tool govulncheck ./...
+      - name: Tests with race detector
+        run: go test -race -shuffle=on ./...
+      - name: Enforce coverage floor
+        run: |
+          go test -coverprofile=/tmp/coverage.out ./...
+          go tool cover -func=/tmp/coverage.out
+          coverage=$(go tool cover -func=/tmp/coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+          awk -v coverage="$coverage" 'BEGIN { if (coverage < 80) exit 1 }'
       - name: Cross-build Raspberry Pi 4 binary
         env:
           CGO_ENABLED: "0"

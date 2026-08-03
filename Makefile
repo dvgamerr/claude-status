@@ -1,4 +1,17 @@
-.PHONY: test coverage vet check build build-pi package clean
+.PHONY: fmt tidy staticcheck vuln test coverage vet check build build-pi package clean
+
+fmt:
+	@test -z "$$(gofmt -l $$(find . -name '*.go' -type f))"
+
+tidy:
+	go mod verify
+	go mod tidy -diff
+
+staticcheck:
+	go tool staticcheck ./...
+
+vuln:
+	go tool govulncheck ./...
 
 test:
 	go test ./...
@@ -6,11 +19,13 @@ test:
 coverage:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
+	@coverage=$$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}'); \
+	awk -v coverage="$$coverage" 'BEGIN { if (coverage < 80) exit 1 }'
 
 vet:
 	go vet ./...
 
-check: test vet build-pi
+check: fmt tidy staticcheck vuln test coverage vet build-pi
 
 build:
 	go build -trimpath -o bin/claude-status ./cmd/claude-status
