@@ -421,8 +421,14 @@ func (r *Renderer) codexCard(canvas *image.RGBA, bounds image.Rectangle, snapsho
 	r.text(canvas, r.bold18, textPrimary, bounds.Min.X+18, bounds.Min.Y+52, fitText(r.bold18, strings.ToUpper(modelLabel(*snapshot)), innerWidth))
 	r.text(canvas, r.regular12, textSecondary, bounds.Min.X+18, bounds.Min.Y+74, modePrimary(*snapshot))
 
-	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+106, "TOKENS & EST. COST")
-	r.codexUsageBlock(canvas, bounds.Min.X+18, bounds.Min.Y+134, innerWidth, *snapshot)
+	// A thin divider (same treatment as the rail's own dividerY) separates
+	// "who" (model/mode identity) from "how much" (cost/tokens) instead of
+	// the two blocks running together with only a label between them.
+	dividerY := bounds.Min.Y + 92
+	fillRounded(canvas, image.Rect(bounds.Min.X+18, dividerY, bounds.Max.X-18, dividerY+2), 1, trackColor)
+
+	r.text(canvas, r.bold13, textSecondary, bounds.Min.X+18, bounds.Min.Y+118, "USAGE")
+	r.codexUsageBlock(canvas, bounds.Min.X+18, bounds.Min.Y+150, innerWidth, *snapshot)
 }
 
 // codexUsageBlock replaces the context-percentage block Codex used to share
@@ -451,8 +457,8 @@ func (r *Renderer) codexUsageBlock(canvas *image.RGBA, x, top, width int, snapsh
 	r.text(canvas, r.bold13, green, tagX, centeredBaseline(top, r.bold30, r.bold13), tag)
 
 	total := inputTokens + outputTokens
-	detail := fmt.Sprintf("%s tokens (%s in / %s out)", tokenLabel(&total), tokenLabel(&inputTokens), tokenLabel(&outputTokens))
-	r.text(canvas, r.regular12, textFaint, x, top+22, fitText(r.regular12, detail, width))
+	detail := fmt.Sprintf("%s tokens  ·  %s in / %s out", tokenLabel(&total), tokenLabel(&inputTokens), tokenLabel(&outputTokens))
+	r.text(canvas, r.regular12, textFaint, x, top+26, fitText(r.regular12, detail, width))
 }
 
 func metricChip(canvas *image.RGBA, r *Renderer, bounds image.Rectangle, label, value string, accent color.RGBA) {
