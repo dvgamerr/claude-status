@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -41,74 +42,80 @@ const (
 // fails; callers should treat a closed channel as "no more touch input"
 // rather than a fatal error — the dashboard must keep running without it.
 func Watch(ctx context.Context, devicePath string) (<-chan Point, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("watch touch device: context is nil")
+	}
 	device, err := os.Open(devicePath)
 	if err != nil {
 		return nil, fmt.Errorf("open touch device %s: %w", devicePath, err)
 	}
 
 	points := make(chan Point, 8)
+	done := make(chan struct{})
 	go func() {
-		<-ctx.Done()
-		device.Close()
+		select {
+		case <-ctx.Done():
+			_ = device.Close()
+		case <-done:
+		}
 	}()
 
 	go func() {
+		defer close(done)
 		defer close(points)
-		defer device.Close()
+		defer func() { _ = device.Close() }()
 
 		var buffer [eventSize]byte
-		var x, y int
-		var pressed, pendingRipple bool
+		var decoder eventDecoder
 		for {
-			if _, err := readFull(device, buffer[:]); err != nil {
+			if _, err := io.ReadFull(device, buffer[:]); err != nil {
 				return
 			}
-			eventType := binary.LittleEndian.Uint16(buffer[16:18])
-			code := binary.LittleEndian.Uint16(buffer[18:20])
-			value := int32(binary.LittleEndian.Uint32(buffer[20:24]))
-
-			switch eventType {
-			case evAbs:
-				switch code {
-				case absMTPositionX:
-					x = int(value)
-				case absMTPositionY:
-					y = int(value)
-				}
-			case evKey:
-				if code == btnTouch {
-					down := value == 1
-					if down && !pressed {
-						pendingRipple = true
-					}
-					pressed = down
-				}
-			case evSyn:
-				if code == synReport && pendingRipple {
-					pendingRipple = false
-					select {
-					case points <- Point{X: x, Y: y, At: time.Now()}:
-					case <-ctx.Done():
-						return
-					default:
-						// A slow consumer drops the point; a missed ripple
-						// is harmless and must never block reading input.
-					}
-				}
+			point, emit := decoder.decode(buffer[:], time.Now())
+			if !emit {
+				continue
+			}
+			select {
+			case points <- point:
+			case <-ctx.Done():
+				return
+			default:
+				// A slow consumer drops the point; a missed ripple
+				// is harmless and must never block reading input.
 			}
 		}
 	}()
 	return points, nil
 }
 
-func readFull(file *os.File, buffer []byte) (int, error) {
-	total := 0
-	for total < len(buffer) {
-		n, err := file.Read(buffer[total:])
-		if err != nil {
-			return total, err
+type eventDecoder struct {
+	x, y          int
+	pressed       bool
+	pendingRipple bool
+}
+
+func (decoder *eventDecoder) decode(buffer []byte, now time.Time) (Point, bool) {
+	eventType := binary.LittleEndian.Uint16(buffer[16:18])
+	code := binary.LittleEndian.Uint16(buffer[18:20])
+	value := int32(binary.LittleEndian.Uint32(buffer[20:24]))
+	switch eventType {
+	case evAbs:
+		if code == absMTPositionX {
+			decoder.x = int(value)
+		} else if code == absMTPositionY {
+			decoder.y = int(value)
 		}
-		total += n
+	case evKey:
+		if code == btnTouch {
+			down := value == 1
+			decoder.pendingRipple = decoder.pendingRipple || (down && !decoder.pressed)
+			decoder.pressed = down
+		}
+	case evSyn:
+		if code == synReport && decoder.pendingRipple {
+			decoder.pendingRipple = false
+			return Point{X: decoder.x, Y: decoder.y, At: now}, true
+		}
 	}
-	return total, nil
+	return Point{}, false
 }

@@ -63,3 +63,28 @@ func TestWatchReturnsErrorForMissingDevice(t *testing.T) {
 		t.Fatal("expected an error opening a missing device")
 	}
 }
+
+func TestWatchRejectsNilContextAndClosesOnCancellation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty-touch-device")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Watch(nil, path); err == nil {
+		t.Fatal("expected nil context error")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	points, err := Watch(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case _, ok := <-points:
+		if ok {
+			t.Fatal("unexpected point")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("touch channel did not close after cancellation")
+	}
+}
