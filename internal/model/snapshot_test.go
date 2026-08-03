@@ -40,6 +40,45 @@ func TestCanonicalProvider(t *testing.T) {
 	}
 }
 
+func TestTodayTokenTotals(t *testing.T) {
+	now := time.Date(2026, time.August, 3, 12, 0, 0, 0, time.Local)
+	yesterday := now.AddDate(0, 0, -1)
+
+	claudeInput, claudeOutput := int64(85_000), int64(12_000)
+	codexInput, codexOutput := int64(250_000), int64(40_000)
+	staleInput, staleOutput := int64(999_999), int64(999_999)
+
+	snapshots := []Snapshot{
+		{
+			Provider:   ProviderClaude,
+			CapturedAt: now,
+			Context:    Context{TotalInputTokens: &claudeInput, TotalOutputTokens: &claudeOutput},
+		},
+		{
+			Provider:   ProviderCodex,
+			CapturedAt: now.Add(5 * time.Minute),
+			Context:    Context{TotalInputTokens: &codexInput, TotalOutputTokens: &codexOutput},
+		},
+		{
+			Provider:   ProviderClaude,
+			CapturedAt: yesterday,
+			Context:    Context{TotalInputTokens: &staleInput, TotalOutputTokens: &staleOutput},
+		},
+	}
+
+	gotInput, gotOutput := TodayTokenTotals(snapshots, now)
+	if wantInput := claudeInput + codexInput; gotInput != wantInput {
+		t.Errorf("input = %d, want %d", gotInput, wantInput)
+	}
+	if wantOutput := claudeOutput + codexOutput; gotOutput != wantOutput {
+		t.Errorf("output = %d, want %d", gotOutput, wantOutput)
+	}
+
+	if gotInput, gotOutput := TodayTokenTotals(nil, now); gotInput != 0 || gotOutput != 0 {
+		t.Errorf("empty snapshots: got (%d, %d), want (0, 0)", gotInput, gotOutput)
+	}
+}
+
 func TestSnapshotIsNewer(t *testing.T) {
 	base := time.Unix(100, 0)
 	current := Snapshot{CapturedAt: base, Activity: Activity{UpdatedAt: base}, Session: Session{ID: "a"}}
