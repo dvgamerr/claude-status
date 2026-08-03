@@ -1,6 +1,8 @@
 package state
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,11 +21,11 @@ func TestSaveAndLoadMultipleSessions(t *testing.T) {
 	}
 	older := sampleSnapshot("session/with/unsafe/path", time.Unix(100, 0))
 	newer := sampleSnapshot("second", time.Unix(200, 0))
-	if err := store.Save(older); err != nil {
-		t.Fatalf("Save(older) error = %v", err)
+	if saveErr := store.Save(older); saveErr != nil {
+		t.Fatalf("Save(older) error = %v", saveErr)
 	}
-	if err := store.Save(newer); err != nil {
-		t.Fatalf("Save(newer) error = %v", err)
+	if saveErr := store.Save(newer); saveErr != nil {
+		t.Fatalf("Save(newer) error = %v", saveErr)
 	}
 
 	snapshots, err := store.LoadAll()
@@ -71,11 +73,11 @@ func TestSaveOverwritesSessionAtomically(t *testing.T) {
 	}
 	first := sampleSnapshot("same", time.Unix(100, 0))
 	second := sampleSnapshot("same", time.Unix(200, 0))
-	if err := store.Save(first); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(first); saveErr != nil {
+		t.Fatal(saveErr)
 	}
-	if err := store.Save(second); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(second); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 	snapshots, err := store.LoadAll()
 	if err != nil {
@@ -98,12 +100,12 @@ func TestLoadAllSkipsCorruptFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save(sampleSnapshot("valid", time.Now())); err != nil {
-		t.Fatal(err)
+	if saveErr := store.Save(sampleSnapshot("valid", time.Now())); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 	corrupt := filepath.Join(store.Dir(), "sessions", "corrupt.json")
-	if err := os.WriteFile(corrupt, []byte("{"), 0o600); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(corrupt, []byte("{"), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	snapshots, err := store.LoadAll()
 	if err == nil || !strings.Contains(err.Error(), "ignored 1 invalid session snapshot") {
@@ -134,6 +136,30 @@ func TestDefaultDirHonorsEnvironment(t *testing.T) {
 	}
 	if got != filepath.Clean(want) {
 		t.Fatalf("DefaultDir() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadSessionRejectsEmptyID(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadSession(" \t"); err == nil || !strings.Contains(err.Error(), "session ID") {
+		t.Fatalf("LoadSession() error = %v", err)
+	}
+}
+
+func TestLoadLatestRejectsOversizedSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, latestFile), bytes.Repeat([]byte("x"), maxSnapshotBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadLatest(); !errors.Is(err, errSnapshotTooLarge) {
+		t.Fatalf("LoadLatest() error = %v, want size-limit error", err)
 	}
 }
 

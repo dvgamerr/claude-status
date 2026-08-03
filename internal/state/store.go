@@ -1,3 +1,4 @@
+// Package state persists and validates sanitized provider snapshots.
 package state
 
 import (
@@ -6,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/atomicfile"
 	"github.com/dvgamerr/claude-status/internal/model"
 )
 
@@ -29,10 +32,12 @@ const (
 	readRetryDelay    = 20 * time.Millisecond
 )
 
+// Store owns one private snapshot directory.
 type Store struct {
 	dir string
 }
 
+// DefaultDir resolves the configured or platform-default state directory.
 func DefaultDir() (string, error) {
 	if override := strings.TrimSpace(os.Getenv("CLAUDE_STATUS_STATE_DIR")); override != "" {
 		return filepath.Clean(override), nil
@@ -44,6 +49,7 @@ func DefaultDir() (string, error) {
 	return filepath.Join(cacheDir, appDirectory), nil
 }
 
+// New validates and normalizes a snapshot directory.
 func New(dir string) (*Store, error) {
 	if strings.TrimSpace(dir) == "" {
 		return nil, errors.New("state directory is empty")
@@ -55,10 +61,12 @@ func New(dir string) (*Store, error) {
 	return &Store{dir: filepath.Clean(abs)}, nil
 }
 
+// Dir returns the normalized absolute state directory.
 func (s *Store) Dir() string {
 	return s.dir
 }
 
+// Save atomically writes both the session-specific and latest snapshots.
 func (s *Store) Save(snapshot model.Snapshot) error {
 	if snapshot.SchemaVersion != model.CurrentSchemaVersion {
 		return fmt.Errorf("unsupported snapshot schema version %d", snapshot.SchemaVersion)
@@ -93,6 +101,7 @@ func (s *Store) Save(snapshot model.Snapshot) error {
 	return nil
 }
 
+// LoadLatest reads and validates the most recently saved snapshot.
 func (s *Store) LoadLatest() (model.Snapshot, error) {
 	return readSnapshot(filepath.Join(s.dir, latestFile))
 }
@@ -101,9 +110,13 @@ func (s *Store) LoadLatest() (model.Snapshot, error) {
 // returns an error satisfying errors.Is(err, os.ErrNotExist) when no
 // snapshot has been saved for that session yet.
 func (s *Store) LoadSession(sessionID string) (model.Snapshot, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return model.Snapshot{}, errors.New("session ID is empty")
+	}
 	return readSnapshot(filepath.Join(s.dir, "sessions", sessionFilename(sessionID)))
 }
 
+// LoadAll returns valid session snapshots newest-first and reports corruption.
 func (s *Store) LoadAll() ([]model.Snapshot, error) {
 	dir := filepath.Join(s.dir, "sessions")
 	entries, err := os.ReadDir(dir)
@@ -147,46 +160,15 @@ func ensurePrivateDir(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return fmt.Errorf("create state directory %q: %w", path, err)
 	}
+	// #nosec G302 -- directories require execute permission; access is owner-only.
 	if err := os.Chmod(path, 0o700); err != nil {
 		return fmt.Errorf("secure state directory %q: %w", path, err)
 	}
 	return nil
 }
 
-func writeAtomic(dir, name string, data []byte) (returnErr error) {
-	temp, err := os.CreateTemp(dir, ".snapshot-*")
-	if err != nil {
-		return fmt.Errorf("create temporary file: %w", err)
-	}
-	tempName := temp.Name()
-	defer func() {
-		_ = temp.Close()
-		if returnErr != nil {
-			_ = os.Remove(tempName)
-		}
-	}()
-
-	if err := temp.Chmod(0o600); err != nil {
-		return fmt.Errorf("secure temporary file: %w", err)
-	}
-	if _, err := temp.Write(data); err != nil {
-		return fmt.Errorf("write temporary file: %w", err)
-	}
-	if err := temp.Sync(); err != nil {
-		return fmt.Errorf("sync temporary file: %w", err)
-	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("close temporary file: %w", err)
-	}
-
-	destination := filepath.Join(dir, name)
-	if err := os.Rename(tempName, destination); err != nil {
-		return fmt.Errorf("replace %q: %w", destination, err)
-	}
-	if err := os.Chmod(destination, 0o600); err != nil {
-		return fmt.Errorf("secure %q: %w", destination, err)
-	}
-	return nil
+func writeAtomic(dir, name string, data []byte) error {
+	return atomicfile.Write(filepath.Join(dir, name), data, 0o600)
 }
 
 // readFileWithRetry retries a transient read failure (a file mid-rename)
@@ -196,17 +178,45 @@ func writeAtomic(dir, name string, data []byte) (returnErr error) {
 func readFileWithRetry(path string) ([]byte, error) {
 	var data []byte
 	var err error
-	for range readRetryAttempts {
-		data, err = os.ReadFile(path)
+	for attempt := range readRetryAttempts {
+		data, err = readLimitedFile(path)
 		if err == nil || errors.Is(err, os.ErrNotExist) {
 			return data, err
 		}
-		time.Sleep(readRetryDelay)
+		if errors.Is(err, errSnapshotTooLarge) {
+			return nil, err
+		}
+		if attempt+1 < readRetryAttempts {
+			time.Sleep(readRetryDelay)
+		}
 	}
 	if isTransientReadErr(err) {
 		err = fmt.Errorf("%w: %w", err, ErrTransientRead)
 	}
 	return data, err
+}
+
+var errSnapshotTooLarge = errors.New("snapshot exceeds size limit")
+
+func readLimitedFile(path string) (data []byte, returnErr error) {
+	// #nosec G304 -- callers construct path beneath the Store's normalized root.
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close snapshot: %w", closeErr))
+		}
+	}()
+	data, err = io.ReadAll(io.LimitReader(file, maxSnapshotBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxSnapshotBytes {
+		return nil, fmt.Errorf("%w: %q is larger than %d bytes", errSnapshotTooLarge, path, maxSnapshotBytes)
+	}
+	return data, nil
 }
 
 func readSnapshot(path string) (model.Snapshot, error) {
