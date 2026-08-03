@@ -21,18 +21,20 @@ Clawd artwork is by Icons8: [Coding](https://icons8.com/icon/aStqmH9WIxrR/clawd-
 [Sleeping](https://icons8.com/icon/IJM9GlYiqcQn/clawd-sleeping), and
 [Exclamation Mark](https://icons8.com/icon/2CuabJDbRdZ8/clawd-exclamation-mark).
 
-- `clawd-idle-01.svg`..`-10.svg`, `clawd-thinking-01.svg`..`-09.svg`,
-  `clawd-typing-01.svg`..`-09.svg`, `clawd-building-01.svg`..`-09.svg`,
-  `clawd-headphones-groove-01.svg`..`-10.svg`, and
-  `clawd-juggling-01.svg`..`-09.svg` are full frame-by-frame traces (same
-  `0 0 100 100` viewBox, `crispEdges`, path-only grouped-fill conventions as
-  above) of a real reference animation per pose (standing and blinking,
-  thought bubble rising, hands typing, hammer swinging, head bobbing to
-  music, balls arcing) supplied for this project — each pose's source GIF
-  and extracted PNG frames live under the repo-root `assets/` folder
-  (outside this package), not committed here. Frame numbers are zero-padded
-  specifically so a lexical sort is also playback order; `icons.go`'s
-  `loadFrameSequence` glob-embeds and sorts them, and `render.go`'s
-  `gifFrameIndex` advances through the sequence at `gifFrameDuration` (300ms
-  — 5 source frames' worth at the original ~60ms/frame GIF rate) per
-  displayed frame, looping.
+- `clawd-idle.svg`, `clawd-thinking.svg`, `clawd-typing.svg`,
+  `clawd-building.svg`, `clawd-headphones-groove.svg`, and
+  `clawd-juggling.svg` are each a single rigged SVG (same `0 0 100 100`
+  viewBox, `crispEdges` as above): a static body plus a handful of named
+  `<g>` groups (`eyes`, `leftArm`/`rightArm`, `armHammer`, `upperBody`,
+  `thoughtBubble`, `ball1`/`ball2`/`ball3`, ...) animated with real SMIL
+  (`<animate>`/`<animateTransform>`, `values`/`keyTimes`/`dur`/
+  `repeatCount="indefinite"`) — genuinely valid, browser-viewable animated
+  SVGs, not a Go-managed array of pre-rasterized frames. These replaced an
+  earlier generation of hand-traced per-frame sequences (10/9/9/9/10/9
+  frames respectively) once it turned out those traced frames were flat,
+  ungrouped pixel-rect traces with no rig to tween between — see the
+  "Replace traced-GIF mascot frames" maintenance entry in the project
+  `CLAUDE.md` for that investigation. `internal/svganim.Evaluate` bakes each
+  rig's animation for a given instant (since `oksvg` itself has no SMIL
+  support), and `icons.go`/`render.go` rasterize the result fresh every
+  render tick instead of caching frames at startup.

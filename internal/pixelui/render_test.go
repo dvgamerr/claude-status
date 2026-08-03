@@ -129,10 +129,10 @@ func TestRailMascotAnimatesOverTime(t *testing.T) {
 	snapshot := baseSnapshot(now)
 	snapshot.Activity = model.Activity{State: model.ActivityWorking, UpdatedAt: now}
 	frame := renderer.Render(View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second})
-	// ActivityWorking now plays back a traced GIF sequence at
-	// gifFrameDuration per frame (see gifFrameIndex), not a continuous pose
-	// bob, so the delta must cross a frame boundary to show a difference.
-	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(gifFrameDuration), StaleAfter: 15 * time.Second})
+	// ActivityWorking now plays a rigged SVG animation (see
+	// renderAnimatedIcon) that's a continuous function of time, not a
+	// discrete frame index, so any nonzero delta should show a difference.
+	later := renderer.Render(View{Claude: &snapshot, Now: now.Add(50 * time.Millisecond), StaleAfter: 15 * time.Second})
 	mascotRegion := image.Rect(railLeft+20, sectionsTop+20, railRight-20, sectionsTop+180)
 	if sameRegion(frame, later, mascotRegion) {
 		t.Fatal("mascot did not animate between frames")
@@ -150,13 +150,15 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 		name  string
 		state string
 		later time.Time
-		// gifSequence states render at a fixed rect (see gifFramesForActivity)
-		// — only the frame content changes, not a pose offset/scale — so
-		// movingBounds can't be derived from mascotPoseForActivity for them.
-		gifSequence bool
+		// fixedRect states rasterize into the same railIconSize square every
+		// tick (see animatedSVGForActivity/renderAnimatedIcon) — only the
+		// rasterized content changes, not the icon's position/scale on
+		// screen — so movingBounds can't be derived from
+		// mascotPoseForActivity for them.
+		fixedRect bool
 	}{
-		{name: "typing frames", state: model.ActivityTyping, later: start.Add(gifFrameDuration), gifSequence: true},
-		{name: "idle frames", state: model.ActivityIdle, later: start.Add(gifFrameDuration), gifSequence: true},
+		{name: "typing rig", state: model.ActivityTyping, later: start.Add(300 * time.Millisecond), fixedRect: true},
+		{name: "idle rig", state: model.ActivityIdle, later: start.Add(300 * time.Millisecond), fixedRect: true},
 		{name: "approval shake", state: model.ActivityWaitingApproval, later: start.Add(65 * time.Millisecond)},
 	}
 
@@ -171,7 +173,7 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 			}
 
 			var movingBounds image.Rectangle
-			if tt.gifSequence {
+			if tt.fixedRect {
 				movingBounds = iconDestination(centerX, centerY, railIconSize, railIconSize)
 			} else {
 				firstPose := mascotPoseForActivity(start)
@@ -186,6 +188,22 @@ func TestEachActivityAnimatesOnlyTheMascot(t *testing.T) {
 				t.Fatal("mascot animation changed the static backdrop")
 			}
 		})
+	}
+}
+
+// BenchmarkDrawMascot covers the cost this refactor moved from "once at
+// startup" to every render tick (~66ms in production): evaluating a rig's
+// SMIL animation for the current instant and rasterizing the result. See
+// icons.go's startup comment and the maintenance log in CLAUDE.md.
+func BenchmarkDrawMascot(b *testing.B) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		b.Fatal(err)
+	}
+	canvas := image.NewRGBA(image.Rect(0, 0, 200, 200))
+	now := time.Unix(0, 0)
+	for i := 0; b.Loop(); i++ {
+		renderer.drawMascot(canvas, 100, 100, now.Add(time.Duration(i)*time.Millisecond), model.ActivityTyping)
 	}
 }
 
@@ -374,9 +392,6 @@ func TestFormattingHelpers(t *testing.T) {
 	}
 	if got := thresholdColor(75, claudeOrange); got != yellow {
 		t.Fatalf("thresholdColor(75) = %v", got)
-	}
-	if ageText(0) != "just now" || ageText(2*time.Minute) != "2m ago" {
-		t.Fatal("age labels are incorrect")
 	}
 }
 

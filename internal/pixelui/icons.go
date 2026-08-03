@@ -1,15 +1,15 @@
+// Package pixelui renders the native fixed-pixel framebuffer dashboard.
 package pixelui
 
 import (
 	"bytes"
-	"embed"
+	_ "embed"
 	"fmt"
 	"image"
 	"image/draw"
-	"io/fs"
-	"sort"
 	"time"
 
+	"github.com/dvgamerr/claude-status/internal/svganim"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
 	xdraw "golang.org/x/image/draw"
@@ -31,49 +31,44 @@ var clawdExclamationMarkSVG []byte
 //go:embed assets/clawd-exclamation-mark-2.svg
 var clawdExclamationMark2SVG []byte
 
-// gifFrameDuration is how long each frame of the sequences below stays on
-// screen. They were traced from every 5th frame of a ~16.7fps (60ms) source
-// GIF, so 5*60ms reproduces the original's motion at the same speed.
-const gifFrameDuration = 300 * time.Millisecond
-
-// These six states were traced frame-by-frame from real reference animations
-// (see internal/pixelui/assets/README.md) rather than given a single pose
-// plus procedural motion — each glob below embeds one numbered SVG per frame
-// of that GIF's actual motion (standing and blinking, thought bubble rising,
-// hands typing, hammer swinging, head bobbing to music, balls arcing), in
-// playback order.
+// These six states are each a single rigged SVG — a static body plus a few
+// named groups animated with real SMIL (<animate>/<animateTransform>,
+// see internal/svganim) instead of a Go-managed array of pre-rasterized
+// traced-GIF frames. drawMascot evaluates and rasterizes them fresh every
+// render tick (see resolveActivity/drawMascot in render.go), since the pose
+// is a continuous function of time rather than a discrete frame index.
 //
-//go:embed assets/clawd-idle-*.svg
-var clawdIdleFrames embed.FS
+//go:embed assets/clawd-idle.svg
+var clawdIdleSVG []byte
 
-//go:embed assets/clawd-thinking-*.svg
-var clawdThinkingFrames embed.FS
+//go:embed assets/clawd-thinking.svg
+var clawdThinkingSVG []byte
 
-//go:embed assets/clawd-typing-*.svg
-var clawdTypingFrames embed.FS
+//go:embed assets/clawd-typing.svg
+var clawdTypingSVG []byte
 
-//go:embed assets/clawd-building-*.svg
-var clawdBuildingFrames embed.FS
+//go:embed assets/clawd-building.svg
+var clawdBuildingSVG []byte
 
-//go:embed assets/clawd-headphones-groove-*.svg
-var clawdHeadphonesGrooveFrames embed.FS
+//go:embed assets/clawd-headphones-groove.svg
+var clawdHeadphonesGrooveSVG []byte
 
-//go:embed assets/clawd-juggling-*.svg
-var clawdJugglingFrames embed.FS
+//go:embed assets/clawd-juggling.svg
+var clawdJugglingSVG []byte
 
 // waiting_approval is the only state left on the original 2-rasterized-
 // frame alternation system (typing hands, drifted Zzz, a pulsing alert dot
-// baked into the artwork itself) — every other state now plays back a full
-// traced GIF sequence instead (see gifFrameDuration).
+// baked into the artwork itself) — every other state now plays back a
+// rigged SVG animation instead (see svganim.Evaluate).
 type iconSet struct {
 	logo            *image.RGBA
 	waitingApproval [2]*image.RGBA
-	idle            []*image.RGBA
-	thinking        []*image.RGBA
-	typing          []*image.RGBA
-	building        []*image.RGBA
-	subagentOne     []*image.RGBA
-	subagentMany    []*image.RGBA
+	idle            []byte
+	thinking        []byte
+	typing          []byte
+	building        []byte
+	subagentOne     []byte
+	subagentMany    []byte
 }
 
 func loadIconSet() (iconSet, error) {
@@ -97,53 +92,39 @@ func loadIconSet() (iconSet, error) {
 		return iconSet{}, err
 	}
 
-	sequences := []struct {
+	rigs := []struct {
 		name        string
-		fsys        embed.FS
-		destination *[]*image.RGBA
+		source      []byte
+		destination *[]byte
 	}{
-		{"Clawd Idle", clawdIdleFrames, &set.idle},
-		{"Clawd Thinking", clawdThinkingFrames, &set.thinking},
-		{"Clawd Typing", clawdTypingFrames, &set.typing},
-		{"Clawd Building", clawdBuildingFrames, &set.building},
-		{"Clawd Headphones Groove", clawdHeadphonesGrooveFrames, &set.subagentOne},
-		{"Clawd Juggling", clawdJugglingFrames, &set.subagentMany},
+		{"Clawd Idle", clawdIdleSVG, &set.idle},
+		{"Clawd Thinking", clawdThinkingSVG, &set.thinking},
+		{"Clawd Typing", clawdTypingSVG, &set.typing},
+		{"Clawd Building", clawdBuildingSVG, &set.building},
+		{"Clawd Headphones Groove", clawdHeadphonesGrooveSVG, &set.subagentOne},
+		{"Clawd Juggling", clawdJugglingSVG, &set.subagentMany},
 	}
-	for _, sequence := range sequences {
-		frames, err := loadFrameSequence(sequence.name, sequence.fsys, railIconSize, railIconSize)
-		if err != nil {
+	for _, rig := range rigs {
+		if err := smokeTestRig(rig.name, rig.source); err != nil {
 			return iconSet{}, err
 		}
-		*sequence.destination = frames
+		*rig.destination = rig.source
 	}
 	return set, nil
 }
 
-// loadFrameSequence rasterizes every SVG embedded via a "assets/clawd-X-*.svg"
-// glob, in filename order — frame numbers are zero-padded (e.g. "-01.svg",
-// "-10.svg") specifically so this lexical sort is also playback order.
-func loadFrameSequence(name string, fsys embed.FS, width, height int) ([]*image.RGBA, error) {
-	entries, err := fs.Glob(fsys, "assets/*.svg")
+// smokeTestRig evaluates and rasterizes a rig once at startup, discarding
+// the result — the point is to fail fast on a malformed asset at boot
+// instead of on the first render tick.
+func smokeTestRig(name string, source []byte) error {
+	posed, err := svganim.Evaluate(source, time.Unix(0, 0))
 	if err != nil {
-		return nil, fmt.Errorf("glob %s frames: %w", name, err)
+		return fmt.Errorf("evaluate %s rig: %w", name, err)
 	}
-	sort.Strings(entries)
-	frames := make([]*image.RGBA, 0, len(entries))
-	for _, entry := range entries {
-		source, err := fsys.ReadFile(entry)
-		if err != nil {
-			return nil, fmt.Errorf("read %s frame %q: %w", name, entry, err)
-		}
-		icon, err := rasterizeSVG(source, width, height)
-		if err != nil {
-			return nil, fmt.Errorf("render %s frame %q: %w", name, entry, err)
-		}
-		frames = append(frames, icon)
+	if _, err := rasterizeSVG(posed, railIconSize, railIconSize); err != nil {
+		return fmt.Errorf("render %s rig: %w", name, err)
 	}
-	if len(frames) == 0 {
-		return nil, fmt.Errorf("no frames found for %s", name)
-	}
-	return frames, nil
+	return nil
 }
 
 func rasterizeSVG(source []byte, width, height int) (*image.RGBA, error) {

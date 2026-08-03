@@ -16,12 +16,15 @@ import (
 	"golang.org/x/image/math/fixed"
 
 	"github.com/dvgamerr/claude-status/internal/model"
+	"github.com/dvgamerr/claude-status/internal/svganim"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 	"github.com/dvgamerr/claude-status/internal/touch"
 )
 
 const (
-	Width  = 800
+	// Width is the dashboard's required framebuffer width in pixels.
+	Width = 800
+	// Height is the dashboard's required framebuffer height in pixels.
 	Height = 480
 )
 
@@ -67,6 +70,7 @@ const (
 	footerBaseline = 469
 )
 
+// View is one immutable set of provider, host, and touch data to render.
 type View struct {
 	Claude       *model.Snapshot
 	Codex        *model.Snapshot
@@ -78,6 +82,7 @@ type View struct {
 	Touches      []touch.Point
 }
 
+// Renderer owns preloaded fonts and vector assets reused across frames.
 type Renderer struct {
 	regular12 font.Face
 	regular13 font.Face
@@ -92,6 +97,7 @@ type Renderer struct {
 	icons     iconSet
 }
 
+// NewRenderer parses embedded fonts and rasterizes embedded SVG assets.
 func NewRenderer() (*Renderer, error) {
 	regular, err := opentype.Parse(goregular.TTF)
 	if err != nil {
@@ -114,9 +120,9 @@ func NewRenderer() (*Renderer, error) {
 		{&r.regular16, regular, 16}, {&r.bold13, bold, 13}, {&r.bold16, bold, 16},
 		{&r.bold18, bold, 18}, {&r.bold22, bold, 22}, {&r.bold30, bold, 30}, {&r.bold44, bold, 44},
 	} {
-		created, err := face(target.parsed, target.size)
-		if err != nil {
-			return nil, fmt.Errorf("create UI font %.0f: %w", target.size, err)
+		created, createErr := face(target.parsed, target.size)
+		if createErr != nil {
+			return nil, fmt.Errorf("create UI font %.0f: %w", target.size, createErr)
 		}
 		*target.destination = created
 	}
@@ -127,6 +133,7 @@ func NewRenderer() (*Renderer, error) {
 	return r, nil
 }
 
+// Render draws one complete 800x480 RGBA frame.
 func (r *Renderer) Render(view View) *image.RGBA {
 	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	draw.Draw(canvas, canvas.Bounds(), image.NewUniform(backgroundTop), image.Point{}, draw.Src)
@@ -247,9 +254,9 @@ func (r *Renderer) renderClaudePanel(canvas *image.RGBA, snapshot model.Snapshot
 	chipWidth := (panelWidth - 14) / 2
 	chipTop := codexBottom - 58
 	chipBounds := image.Rect(contentLeft, chipTop, contentLeft+chipWidth, codexBottom)
-	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(contextInput(snapshot.Context)), claudePeach)
+	metricChip(canvas, r, chipBounds, "INPUT", tokenLabel(snapshot.Context.InputTokens()), claudePeach)
 	chipBounds = image.Rect(contentLeft+chipWidth+14, chipTop, contentSplit, codexBottom)
-	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(contextOutput(snapshot.Context)), purple)
+	metricChip(canvas, r, chipBounds, "OUTPUT", tokenLabel(snapshot.Context.OutputTokens()), purple)
 }
 
 func (r *Renderer) renderWaiting(canvas *image.RGBA, view View, activity string) {
@@ -321,7 +328,7 @@ func (r *Renderer) contextBlock(canvas *image.RGBA, x, top, width int, context m
 // its top-left identity is only the bare Anthropic mark and CLAUDE label.
 func (r *Renderer) renderHeader(canvas *image.RGBA, view View) {
 	const logoCenterY = 36
-	r.drawLogoMark(canvas, 33, logoCenterY, 9)
+	r.drawLogoMark(canvas, 33, logoCenterY)
 	// "CLAUDE" is centered on the logo mark's own vertical center rather than
 	// a hardcoded baseline — the logo is a fixed-size icon, not text, so its
 	// visual middle doesn't move with font metrics the way a same-baseline
@@ -378,21 +385,16 @@ func (r *Renderer) renderRail(canvas *image.RGBA, bounds image.Rectangle, activi
 	r.piHealthBox(canvas, image.Rect(bounds.Min.X+22, healthTop+14, bounds.Max.X-22, healthTop+70), stats)
 }
 
-// piHealthBox is one bordered row with three columns (CPU, MEM, GPU),
+// piHealthBox is one bordered row with three columns (CPU, MEM, TEMP),
 // label above value, divided by thin vertical rules.
 func (r *Renderer) piHealthBox(canvas *image.RGBA, bounds image.Rectangle, stats systeminfo.Stats) {
 	fillRounded(canvas, bounds, 12, cardStrong)
 	segmentWidth := bounds.Dx() / 3
-	labels := [3]string{"CPU", "MEM", "GPU"}
+	labels := [3]string{"CPU", "MEM", "TEMP"}
 	values := [3]string{
 		floatLabel(stats.CPUPercent, "%.0f%%"),
 		memoryLabel(stats.MemoryUsedBytes, stats.MemoryTotalBytes),
-		// GPU load has no reliable source on this hardware: the dashboard
-		// writes straight to /dev/fb0 and never touches the 3D pipeline,
-		// and the v3d core runs at a fixed clock regardless of load, so
-		// there's nothing meaningful to sample — stays "--" like any
-		// other unavailable value in this dashboard.
-		"--",
+		floatLabel(stats.TemperatureC, "%.0f°C"),
 	}
 	for index := range labels {
 		centerX := bounds.Min.X + segmentWidth*index + segmentWidth/2
@@ -438,10 +440,6 @@ func metricChip(canvas *image.RGBA, r *Renderer, bounds image.Rectangle, label, 
 func card(canvas *image.RGBA, bounds image.Rectangle, radius int) {
 	fillRounded(canvas, bounds.Add(image.Pt(0, 3)), radius, rgb(4, 7, 14))
 	fillRounded(canvas, bounds, radius, cardColor)
-}
-
-func miniCard(canvas *image.RGBA, bounds image.Rectangle) {
-	fillRounded(canvas, bounds, 14, cardColor)
 }
 
 func progress(canvas *image.RGBA, bounds image.Rectangle, percentage float64, accent color.RGBA) {
@@ -512,8 +510,8 @@ func blendRing(canvas *image.RGBA, centerX, centerY, radius, thickness int, tint
 
 // waitingApprovalPeriod is the beat of the one remaining pose+alternation
 // state (see mascotPoseForActivity/mascotFrameForActivity below) — every
-// other state now plays back a traced GIF sequence instead, timed by
-// gifFrameDuration.
+// other state now plays back a rigged SVG animation instead (see
+// internal/svganim), timed by each rig's own SMIL dur/values.
 const waitingApprovalPeriod = 780 * time.Millisecond
 
 // mascotPose is a nearest-neighbor transform applied to the rasterized SVG.
@@ -528,9 +526,9 @@ type mascotPose struct {
 
 // mascotPoseForActivity computes waiting_approval's shake — the only state
 // left on a single static pose plus procedural motion; every other state's
-// motion is traced frame-by-frame from a real GIF instead (see
-// gifFramesForActivity/gifFrameIndex), so drawMascot never calls this for
-// them.
+// motion comes from a rigged SVG's own SMIL animation instead (see
+// animatedSVGForActivity/renderAnimatedIcon), so drawMascot never calls this
+// for them.
 func mascotPoseForActivity(now time.Time) mascotPose {
 	periodMS := waitingApprovalPeriod.Milliseconds()
 	phase := float64(now.UnixMilli()%periodMS) / float64(periodMS) * 2 * math.Pi
@@ -618,28 +616,36 @@ func activityCaption(snapshot model.Snapshot, state string, now time.Time) strin
 }
 
 func (r *Renderer) drawMascot(canvas *image.RGBA, centerX, centerY int, now time.Time, state string) {
-	if frames := gifFramesForActivity(&r.icons, state); frames != nil {
-		icon := frames[gifFrameIndex(frames, now)]
+	if source := animatedSVGForActivity(&r.icons, state); source != nil {
+		icon, err := renderAnimatedIcon(source, now)
+		if err != nil {
+			// A malformed or unrecognized animation must never take down the
+			// primary display — same "secondary feature must never break the
+			// primary display" pattern as touch and resolveActivity's
+			// fallbacks. Skip drawing the mascot this tick and try again on
+			// the next one.
+			return
+		}
 		drawIconScaledCentered(canvas, icon, centerX, centerY, railIconSize, railIconSize)
 		return
 	}
 
-	// Only waiting_approval reaches here — see gifFramesForActivity.
+	// Only waiting_approval reaches here — see animatedSVGForActivity.
 	icon := r.icons.waitingApproval[mascotFrameForActivity(now)]
 	pose := mascotPoseForActivity(now)
 	drawIconScaledCentered(canvas, icon, centerX+pose.xOffset, centerY+pose.yOffset, pose.width, pose.height)
 }
 
-// gifFramesForActivity returns the traced GIF-sequence frames for state.
+// animatedSVGForActivity returns the rigged-SVG source for state.
 // waiting_approval is the only value that returns nil, signaling drawMascot
 // to fall back to the legacy 2-frame pose+alternation system instead (see
 // mascotPoseForActivity) — every other value, including an empty or
 // otherwise unrecognized state, defaults to idle.
 //
 // ActivityWorking is the pre-Typing/Building legacy value (see its doc
-// comment in internal/model/snapshot.go) and renders on the same traced
-// sequence as Typing, not the original static Clawd Coding pose.
-func gifFramesForActivity(icons *iconSet, state string) []*image.RGBA {
+// comment in internal/model/snapshot.go) and renders on the same rig as
+// Typing, not the original static Clawd Coding pose.
+func animatedSVGForActivity(icons *iconSet, state string) []byte {
 	switch state {
 	case model.ActivityWorking, model.ActivityTyping:
 		return icons.typing
@@ -658,15 +664,16 @@ func gifFramesForActivity(icons *iconSet, state string) []*image.RGBA {
 	}
 }
 
-// gifFrameIndex advances through a traced GIF sequence at gifFrameDuration
-// per frame, looping.
-func gifFrameIndex(frames []*image.RGBA, now time.Time) int {
-	durationMS := gifFrameDuration.Milliseconds()
-	index := int(now.UnixMilli() / durationMS % int64(len(frames)))
-	if index < 0 {
-		index += len(frames)
+// renderAnimatedIcon bakes source's SMIL animation for the instant now (see
+// internal/svganim) and rasterizes the result. This runs every render tick
+// rather than once at startup, since the pose is a continuous function of
+// time instead of a discrete frame index.
+func renderAnimatedIcon(source []byte, now time.Time) (*image.RGBA, error) {
+	posed, err := svganim.Evaluate(source, now)
+	if err != nil {
+		return nil, err
 	}
-	return index
+	return rasterizeSVG(posed, railIconSize, railIconSize)
 }
 
 // mascotFrameForActivity picks between the two rasterized SVG poses for the
@@ -683,7 +690,7 @@ func mascotFrameForActivity(now time.Time) int {
 
 // drawLogoMark is the white Anthropic mark, used only in the top-left header;
 // the Clawd artwork remains exclusive to the activity rail.
-func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY, _ int) {
+func (r *Renderer) drawLogoMark(canvas *image.RGBA, centerX, centerY int) {
 	drawIconCentered(canvas, r.icons.logo, centerX, centerY)
 }
 
@@ -717,6 +724,9 @@ func centeredBaseline(bigBaseline int, bigFace, smallFace font.Face) int {
 
 func fitText(face font.Face, value string, maxWidth int) string {
 	value = strings.TrimSpace(value)
+	if maxWidth <= 0 {
+		return ""
+	}
 	if font.MeasureString(face, value).Ceil() <= maxWidth {
 		return value
 	}
@@ -732,7 +742,7 @@ func fitText(face font.Face, value string, maxWidth int) string {
 }
 
 func providerName(provider string) string {
-	if strings.EqualFold(strings.TrimSpace(provider), "codex") {
+	if model.CanonicalProvider(provider) == model.ProviderCodex {
 		return "CODEX"
 	}
 	return "CLAUDE"
@@ -763,41 +773,15 @@ func thresholdColor(value float64, fallback color.RGBA) color.RGBA {
 	}
 }
 
-func contextInput(context model.Context) *int64 {
-	if context.TotalInputTokens != nil {
-		return context.TotalInputTokens
-	}
-	parts := []*int64{context.CurrentUsage.InputTokens, context.CurrentUsage.CacheCreationInputTokens, context.CurrentUsage.CacheReadInputTokens}
-	var total int64
-	found := false
-	for _, part := range parts {
-		if part != nil {
-			total += *part
-			found = true
-		}
-	}
-	if !found {
-		return nil
-	}
-	return &total
-}
-
-func contextOutput(context model.Context) *int64 {
-	if context.TotalOutputTokens != nil {
-		return context.TotalOutputTokens
-	}
-	return context.CurrentUsage.OutputTokens
-}
-
 func contextFraction(context model.Context) string {
 	if context.WindowSize == nil {
 		return "window unavailable"
 	}
 	used := int64(0)
-	if input := contextInput(context); input != nil {
+	if input := context.InputTokens(); input != nil {
 		used += *input
 	}
-	if output := contextOutput(context); output != nil {
+	if output := context.OutputTokens(); output != nil {
 		used += *output
 	}
 	if used == 0 && context.UsedPercentage != nil {
@@ -849,13 +833,6 @@ func resetLabelShort(epoch *int64, now time.Time) string {
 		return "reset due"
 	}
 	return durationLabel(remaining) + " left"
-}
-
-func ageText(value time.Duration) string {
-	if value < time.Second {
-		return "just now"
-	}
-	return durationLabel(value) + " ago"
 }
 
 func modelLabel(snapshot model.Snapshot) string {

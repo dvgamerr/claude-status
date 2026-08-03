@@ -572,15 +572,25 @@ func runPreview(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("resolve state directory")
 		return 1
 	}
-	flags := newCommandFlagSet("preview", "Usage: claude-status preview [--state-dir DIR] [--output dashboard.png]", stderr)
+	flags := newCommandFlagSet("preview", "Usage: claude-status preview [--state-dir DIR] [--output dashboard.png] [--at RFC3339]", stderr)
 	stateDir := flags.String("state-dir", defaultDir, "directory containing sanitized snapshots")
 	outputPath := flags.String("output", "pixel-dashboard-preview.png", "PNG output path")
+	at := flags.String("at", "", "render as of this RFC3339 timestamp instead of now (for sampling an animated mascot at a specific instant)")
 	if exitCode, parsed := parseCommandFlags(flags, args); !parsed {
 		return exitCode
 	}
 	if flags.NArg() != 0 {
 		logger.Error().Msg("unexpected positional arguments")
 		return 2
+	}
+	now := time.Now()
+	if *at != "" {
+		parsed, err := time.Parse(time.RFC3339, *at)
+		if err != nil {
+			logger.Error().Err(err).Msg("parse --at")
+			return 2
+		}
+		now = parsed
 	}
 	store, err := state.New(*stateDir)
 	if err != nil {
@@ -594,7 +604,7 @@ func runPreview(args []string, stderr io.Writer) int {
 		logger.Error().Err(err).Msg("create renderer")
 		return 1
 	}
-	frame := renderer.Render(pixelui.View{Claude: claude, Codex: codex, Now: time.Now(), StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
+	frame := renderer.Render(pixelui.View{Claude: claude, Codex: codex, Now: now, StaleAfter: 15 * time.Second, SessionCount: len(snapshots), LoadError: loadErr})
 	file, err := os.Create(*outputPath)
 	if err != nil {
 		logger.Error().Err(err).Msg("create output")
