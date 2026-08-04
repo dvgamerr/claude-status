@@ -12,6 +12,18 @@ func TestText(t *testing.T) {
 	if got := Text("value", 0); got != "" {
 		t.Fatalf("Text() with zero limit = %q", got)
 	}
+	if got := Text("value", -1); got != "" {
+		t.Fatalf("Text() with negative limit = %q", got)
+	}
+	if got := Text("  ab  ", 10); got != "ab" {
+		t.Fatalf("Text() with limit exceeding length = %q, want %q", got, "ab")
+	}
+	if got := Text("abc", 3); got != "abc" {
+		t.Fatalf("Text() with limit equal to length = %q, want %q", got, "abc")
+	}
+	if got := Text("", 5); got != "" {
+		t.Fatalf("Text() with empty input = %q", got)
+	}
 }
 
 func TestNumericAndBooleanCopies(t *testing.T) {

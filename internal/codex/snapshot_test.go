@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dvgamerr/claude-status/internal/model"
 )
 
 func TestDecodeNotificationAllowlist(t *testing.T) {
@@ -162,5 +165,180 @@ func TestDefaultHomeHonorsEnvironment(t *testing.T) {
 	got, err := DefaultHome()
 	if err != nil || got != filepath.Clean(want) {
 		t.Fatalf("DefaultHome() = %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestDefaultHomeFallsBackToUserHomeDir(t *testing.T) {
+	t.Setenv("CODEX_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no user home directory available in this environment")
+	}
+	got, err := DefaultHome()
+	if err != nil {
+		t.Fatalf("DefaultHome() error = %v", err)
+	}
+	want := filepath.Join(home, ".codex")
+	if got != want {
+		t.Fatalf("DefaultHome() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultHomeReportsUserHomeDirError(t *testing.T) {
+	t.Setenv("CODEX_HOME", "")
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	_, err := DefaultHome()
+	if err == nil || !strings.Contains(err.Error(), "find Codex home") {
+		t.Fatalf("DefaultHome() error = %v, want find-Codex-home error", err)
+	}
+}
+
+func TestFindRolloutSelectsMostRecentlyModified(t *testing.T) {
+	home := t.TempDir()
+	threadID := "thread_recent"
+	sessions := filepath.Join(home, "sessions")
+	if err := os.MkdirAll(sessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	older := filepath.Join(sessions, "rollout-old-"+threadID+".jsonl")
+	newer := filepath.Join(sessions, "rollout-new-"+threadID+".jsonl")
+	if err := os.WriteFile(older, []byte(`{"type":"session_meta","payload":{"id":"old"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newer, []byte(`{"type":"session_meta","payload":{"id":"new"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-1 * time.Hour)
+	if err := os.Chtimes(older, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	got, err := findRollout(home, threadID)
+	if err != nil {
+		t.Fatalf("findRollout() error = %v", err)
+	}
+	if got != newer {
+		t.Fatalf("findRollout() = %q, want %q", got, newer)
+	}
+}
+
+func TestReadRolloutReportsOpenError(t *testing.T) {
+	_, err := readRollout(filepath.Join(t.TempDir(), "missing.jsonl"))
+	if err == nil || !strings.Contains(err.Error(), "open Codex rollout") {
+		t.Fatalf("readRollout() error = %v, want open error", err)
+	}
+}
+
+func TestReadRolloutReportsReadError(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "adir")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := readRollout(sub)
+	if err == nil || !strings.Contains(err.Error(), "read Codex rollout") {
+		t.Fatalf("readRollout() error = %v, want read error", err)
+	}
+}
+
+func TestReadRolloutSkipsUnknownAndMalformedLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rollout.jsonl")
+	content := strings.Join([]string{
+		`{"type":123}`,
+		`{"type":"event_msg","payload":{"type":"other"}}`,
+		`{"type":"unknown_kind","payload":{"type":"whatever"}}`,
+		`{"type":"session_meta","payload":{"id":"sess-1","cli_version":"1.2.3"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := readRollout(path)
+	if err != nil {
+		t.Fatalf("readRollout() error = %v", err)
+	}
+	if values.SessionID != "sess-1" || values.ClientVersion != "1.2.3" {
+		t.Fatalf("readRollout() values = %+v, want session metadata preserved despite malformed/unknown lines", values)
+	}
+}
+
+func TestDecodeNotificationRejectsOversizedInput(t *testing.T) {
+	huge := strings.Repeat("a", maxNotificationBytes+1)
+	_, err := DecodeNotification(huge)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("DecodeNotification() error = %v, want exceeds-bytes error", err)
+	}
+}
+
+func TestDecodeNotificationRejectsMalformedTrailingData(t *testing.T) {
+	raw := `{"type":"agent-turn-complete","thread-id":"thread_123"} {not-json`
+	_, err := DecodeNotification(raw)
+	if err == nil || !strings.Contains(err.Error(), "trailing codex notification data") {
+		t.Fatalf("DecodeNotification() error = %v, want trailing-data error", err)
+	}
+}
+
+func TestSnapshotFromNotificationRejectsInvalidThreadID(t *testing.T) {
+	_, err := SnapshotFromNotification(Notification{ThreadID: "../evil"}, t.TempDir(), time.Now())
+	if err == nil || !strings.Contains(err.Error(), "thread-id") {
+		t.Fatalf("SnapshotFromNotification() error = %v, want thread-id error", err)
+	}
+}
+
+func TestSnapshotFromNotificationReportsReadRolloutError(t *testing.T) {
+	home := t.TempDir()
+	threadID := "thread_broken"
+	sessions := filepath.Join(home, "sessions")
+	if err := os.MkdirAll(sessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(sessions, "rollout-"+threadID+".jsonl")
+	target := filepath.Join(sessions, "missing-target.jsonl")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not supported in this environment: %v", err)
+	}
+	_, err := SnapshotFromNotification(Notification{ThreadID: threadID}, home, time.Now())
+	if err == nil {
+		t.Fatal("SnapshotFromNotification() error = nil, want an error from the broken rollout symlink")
+	}
+}
+
+func TestAssignRateWindowFallsBackByPrimaryFlag(t *testing.T) {
+	var limits model.RateLimits
+	oddMinutes := int64(1000)
+	primaryUsed := 42.0
+	assignRateWindow(&limits, &rateWindow{UsedPercent: &primaryUsed, WindowMinutes: &oddMinutes}, true)
+	if limits.FiveHour.UsedPercentage == nil || *limits.FiveHour.UsedPercentage != 42 {
+		t.Fatalf("primary fallback = %+v, want FiveHour set", limits.FiveHour)
+	}
+	secondaryUsed := 24.0
+	assignRateWindow(&limits, &rateWindow{UsedPercent: &secondaryUsed, WindowMinutes: &oddMinutes}, false)
+	if limits.SevenDay.UsedPercentage == nil || *limits.SevenDay.UsedPercentage != 24 {
+		t.Fatalf("secondary fallback = %+v, want SevenDay set", limits.SevenDay)
+	}
+}
+
+func TestAssignRateWindowIgnoresNilInput(t *testing.T) {
+	var limits model.RateLimits
+	assignRateWindow(&limits, nil, true)
+	assignRateWindow(&limits, nil, false)
+	if limits.FiveHour.UsedPercentage != nil || limits.SevenDay.UsedPercentage != nil {
+		t.Fatalf("assignRateWindow(nil) mutated limits = %+v", limits)
+	}
+}
+
+func TestSumReturnsNilWithoutValidValues(t *testing.T) {
+	if got := sum(); got != nil {
+		t.Fatalf("sum() = %v, want nil", got)
+	}
+	if got := sum(nil, nil); got != nil {
+		t.Fatalf("sum(nil, nil) = %v, want nil", got)
+	}
+	negative := int64(-5)
+	if got := sum(&negative); got != nil {
+		t.Fatalf("sum(negative) = %v, want nil", got)
 	}
 }

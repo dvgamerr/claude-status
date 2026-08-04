@@ -1,9 +1,11 @@
 package systeminfo
 
 import (
+	"bufio"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,6 +34,36 @@ func TestReaderCollectsFixtureMetricsAndCPUDelta(t *testing.T) {
 	}
 }
 
+func TestNewReaderDefaultsToFilesystemRoot(t *testing.T) {
+	for _, root := range []string{"", "   "} {
+		reader := NewReader(root)
+		want := filepath.Clean(string(filepath.Separator))
+		if reader.root != want {
+			t.Fatalf("NewReader(%q).root = %q, want %q", root, reader.root, want)
+		}
+	}
+}
+
+func TestReadTemperatureFallsBackToHwmonWhenThermalZoneMissing(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "sys/class/hwmon/hwmon0/temp1_input", "45123\n")
+	reader := NewReader(root)
+	stats := Stats{}
+	reader.readTemperature(&stats)
+	if stats.TemperatureC == nil || math.Abs(*stats.TemperatureC-45.123) > 0.0001 {
+		t.Fatalf("readTemperature() = %v, want ~45.123", stats.TemperatureC)
+	}
+}
+
+func TestReadTemperatureLeavesNilWhenAllCandidatesMissing(t *testing.T) {
+	reader := NewReader(t.TempDir())
+	stats := Stats{}
+	reader.readTemperature(&stats)
+	if stats.TemperatureC != nil {
+		t.Fatalf("readTemperature() = %v, want nil", stats.TemperatureC)
+	}
+}
+
 func TestParseCPUSample(t *testing.T) {
 	got, err := parseCPUSample("cpu  100 20 30 400 50 6 7 8 9 10\ncpu0 0 0 0 0")
 	if err != nil {
@@ -49,6 +81,71 @@ func TestParseMemory(t *testing.T) {
 	}
 	if total != 4096*1024 || used != 3072*1024 {
 		t.Fatalf("parseMemory() = %d/%d", used, total)
+	}
+}
+
+func TestParseCPUSampleRejectsInvalidHeaderAndCounters(t *testing.T) {
+	if _, err := parseCPUSample("notcpu 1 2 3 4"); err == nil {
+		t.Fatal("parseCPUSample() accepted a non-cpu header")
+	}
+	if _, err := parseCPUSample("cpu 1 2"); err == nil {
+		t.Fatal("parseCPUSample() accepted too few fields")
+	}
+	if _, err := parseCPUSample("cpu 1 2 3 abc 5"); err == nil {
+		t.Fatal("parseCPUSample() accepted a non-numeric counter")
+	}
+}
+
+func TestParseMemoryHandlesFallbackAndClamping(t *testing.T) {
+	used, total, err := parseMemory("MemTotal: 4096 kB\nMemFree: 2048 kB\nBuffers: 512 kB\nCached: 512 kB\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 4096*1024 || used != 1024*1024 {
+		t.Fatalf("parseMemory() fallback = %d/%d, want used=%d total=%d", used, total, 1024*1024, 4096*1024)
+	}
+
+	usedClamped, totalClamped, err := parseMemory("MemTotal: 1024 kB\nMemFree: 4096 kB\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usedClamped != 0 || totalClamped != 1024*1024 {
+		t.Fatalf("parseMemory() clamp = %d/%d, want used=0 total=%d", usedClamped, totalClamped, 1024*1024)
+	}
+}
+
+func TestParseMemoryRejectsMissingTotalAndSkipsMalformedLines(t *testing.T) {
+	if _, _, err := parseMemory("MemFree: 1024 kB\n"); err == nil {
+		t.Fatal("parseMemory() accepted data without MemTotal")
+	}
+	used, total, err := parseMemory("garbage-line-with-one-field\nMemTotal: 4096 kB\nBadValue: notanumber kB\nMemAvailable: 1024 kB\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 4096*1024 || used != 3072*1024 {
+		t.Fatalf("parseMemory() with malformed lines = %d/%d", used, total)
+	}
+}
+
+func TestParseMemoryReportsScanError(t *testing.T) {
+	huge := strings.Repeat("a", bufio.MaxScanTokenSize+1)
+	if _, _, err := parseMemory(huge); err == nil {
+		t.Fatal("parseMemory() accepted a line exceeding the scanner buffer")
+	}
+}
+
+func TestParseLoadAndUptimeRejectEmptyInput(t *testing.T) {
+	if _, err := parseLoad(""); err == nil {
+		t.Fatal(`parseLoad("") accepted empty input`)
+	}
+	if _, err := parseLoad("   "); err == nil {
+		t.Fatal("parseLoad(whitespace) accepted empty input")
+	}
+	if _, err := parseUptime(""); err == nil {
+		t.Fatal(`parseUptime("") accepted empty input`)
+	}
+	if _, err := parseUptime("   "); err == nil {
+		t.Fatal("parseUptime(whitespace) accepted empty input")
 	}
 }
 

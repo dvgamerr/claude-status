@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -125,5 +126,34 @@ func TestDecodeRejectsOversizedInput(t *testing.T) {
 	_, err := Decode(strings.NewReader(`{"padding":"` + strings.Repeat("x", maxInputBytes) + `"}`))
 	if err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("Decode() error = %v, want size error", err)
+	}
+}
+
+func TestDecodeReportsReadError(t *testing.T) {
+	wantErr := errors.New("boom")
+	_, err := Decode(errReader{err: wantErr})
+	if err == nil || !strings.Contains(err.Error(), "read statusLine input") {
+		t.Fatalf("Decode() error = %v, want read-error wrap", err)
+	}
+}
+
+func TestDecodeRejectsEmptyInput(t *testing.T) {
+	_, err := Decode(strings.NewReader(`   `))
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("Decode() error = %v, want empty-input error", err)
+	}
+}
+
+func TestDecodeRejectsInvalidJSON(t *testing.T) {
+	_, err := Decode(strings.NewReader(`{`))
+	if err == nil || !strings.Contains(err.Error(), "decode statusLine JSON") {
+		t.Fatalf("Decode() error = %v, want decode error", err)
+	}
+}
+
+func TestDecodeRejectsMalformedTrailingData(t *testing.T) {
+	_, err := Decode(strings.NewReader(`{} {invalid`))
+	if err == nil || !strings.Contains(err.Error(), "trailing statusLine data") {
+		t.Fatalf("Decode() error = %v, want trailing-data error", err)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/image/font"
+
 	"github.com/dvgamerr/claude-status/internal/model"
 	"github.com/dvgamerr/claude-status/internal/systeminfo"
 	"github.com/dvgamerr/claude-status/internal/touch"
@@ -442,6 +444,327 @@ func TestResetCountdownRecomputesLiveFromNow(t *testing.T) {
 	later := resetLabelShort(&epoch, time.Date(2026, 8, 1, 11, 0, 0, 0, time.UTC))
 	if early == later {
 		t.Fatalf("resetLabelShort() did not change as time advanced toward the same epoch: %q", early)
+	}
+}
+
+func TestProviderNameBranches(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     string
+	}{
+		{provider: model.ProviderClaude, want: "CLAUDE"},
+		{provider: "CLAUDE", want: "CLAUDE"},
+		{provider: model.ProviderCodex, want: "CODEX"},
+		{provider: "openai", want: "CODEX"},
+		{provider: "", want: "CLAUDE"},
+		{provider: "some-unrecognized-provider", want: "CLAUDE"},
+	}
+	for _, tt := range tests {
+		if got := providerName(tt.provider); got != tt.want {
+			t.Errorf("providerName(%q) = %q, want %q", tt.provider, got, tt.want)
+		}
+	}
+}
+
+func TestActivityCaptionBranches(t *testing.T) {
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+
+	if got := activityCaption(model.Snapshot{}, model.ActivityIdle, now); got != "waiting for the next hook event" {
+		t.Fatalf("activityCaption(no activity at all) = %q", got)
+	}
+	zeroUpdatedAt := model.Snapshot{Activity: model.Activity{State: model.ActivityIdle}}
+	if got := activityCaption(zeroUpdatedAt, model.ActivityIdle, now); got != "waiting for the next hook event" {
+		t.Fatalf("activityCaption(zero UpdatedAt) = %q", got)
+	}
+
+	future := model.Snapshot{Activity: model.Activity{State: model.ActivityTyping, UpdatedAt: now.Add(time.Minute)}}
+	if got := activityCaption(future, model.ActivityTyping, now); got != "typing for 0s" {
+		t.Fatalf("activityCaption(UpdatedAt after now) = %q, want elapsed clamped to 0", got)
+	}
+
+	tests := []struct {
+		state string
+		want  string
+	}{
+		{model.ActivityWorking, "typing for 5s"},
+		{model.ActivityTyping, "typing for 5s"},
+		{model.ActivityThinking, "thinking for 5s"},
+		{model.ActivityBuilding, "building for 5s"},
+		{model.ActivitySubagentOne, "1 subagent for 5s"},
+		{model.ActivitySubagentMany, "subagents for 5s"},
+		{model.ActivityWaitingApproval, "waiting 5s"},
+		{model.ActivityIdle, "idle for 5s"},
+		{"", "idle for 5s"},
+	}
+	snapshot := model.Snapshot{Activity: model.Activity{State: model.ActivityTyping, UpdatedAt: now.Add(-5 * time.Second)}}
+	for _, tt := range tests {
+		if got := activityCaption(snapshot, tt.state, now); got != tt.want {
+			t.Errorf("activityCaption(rendered state=%q) = %q, want %q", tt.state, got, tt.want)
+		}
+	}
+}
+
+func TestFitTextBoundaries(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	face := renderer.regular12
+	value := "Hello world"
+	exact := font.MeasureString(face, value).Ceil()
+
+	if got := fitText(face, value, exact); got != value {
+		t.Fatalf("fitText at exact width = %q, want unmodified %q", got, value)
+	}
+	if got := fitText(face, value, exact+10); got != value {
+		t.Fatalf("fitText under width = %q, want unmodified %q", got, value)
+	}
+	if got := fitText(face, value, exact-1); got == value || got == "" {
+		t.Fatalf("fitText just over width = %q, want a truncated ellipsis", got)
+	}
+	if got := fitText(face, value, 0); got != "" {
+		t.Fatalf("fitText width<=0 = %q, want empty", got)
+	}
+	if got := fitText(face, value, -5); got != "" {
+		t.Fatalf("fitText negative width = %q, want empty", got)
+	}
+	// The ellipsis glyph itself is wider than this budget, so the trimming
+	// loop must exhaust down to a single rune and still fall back to a bare
+	// ellipsis instead of an empty string or a panic.
+	if got := fitText(face, value, 1); got != "…" {
+		t.Fatalf("fitText width smaller than the ellipsis itself = %q, want bare ellipsis", got)
+	}
+	if got := fitText(face, "  padded  ", 500); got != "padded" {
+		t.Fatalf("fitText did not trim surrounding whitespace: %q", got)
+	}
+}
+
+func TestModelLabelFallsBackToProviderName(t *testing.T) {
+	if got := modelLabel(model.Snapshot{Provider: model.ProviderCodex}); got != "CODEX" {
+		t.Fatalf("modelLabel(no model, codex) = %q", got)
+	}
+	if got := modelLabel(model.Snapshot{Provider: model.ProviderClaude}); got != "CLAUDE" {
+		t.Fatalf("modelLabel(no model, claude) = %q", got)
+	}
+	if got := modelLabel(model.Snapshot{Model: model.Model{ID: "claude-opus"}}); got != "claude-opus" {
+		t.Fatalf("modelLabel(ID only) = %q", got)
+	}
+	if got := modelLabel(model.Snapshot{Model: model.Model{DisplayName: "Opus"}}); got != "Opus" {
+		t.Fatalf("modelLabel(DisplayName) = %q", got)
+	}
+}
+
+func TestDurationLabelBoundaries(t *testing.T) {
+	tests := []struct {
+		value time.Duration
+		want  string
+	}{
+		{0, "0s"},
+		{30 * time.Second, "30s"},
+		{5 * time.Minute, "5m"},
+		{90 * time.Minute, "1h 30m"},
+		{26*time.Hour + 3*time.Minute, "1d 2h"},
+	}
+	for _, tt := range tests {
+		if got := durationLabel(tt.value); got != tt.want {
+			t.Errorf("durationLabel(%v) = %q, want %q", tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestContextFractionBranches(t *testing.T) {
+	if got := contextFraction(model.Context{}); got != "window unavailable" {
+		t.Fatalf("contextFraction(no window) = %q", got)
+	}
+
+	window := int64(200000)
+	pct := 50.0
+	derivedUsed := int64(100000)
+	want := tokenLabel(&derivedUsed) + " / " + tokenLabel(&window)
+	if got := contextFraction(model.Context{WindowSize: &window, UsedPercentage: &pct}); got != want {
+		t.Fatalf("contextFraction(derived from percentage) = %q, want %q", got, want)
+	}
+
+	input, output := int64(1000), int64(2000)
+	total := int64(3000)
+	wantDirect := tokenLabel(&total) + " / " + tokenLabel(&window)
+	direct := model.Context{WindowSize: &window, TotalInputTokens: &input, TotalOutputTokens: &output}
+	if got := contextFraction(direct); got != wantDirect {
+		t.Fatalf("contextFraction(direct tokens) = %q, want %q", got, wantDirect)
+	}
+
+	// A huge window/percentage pair must not overflow into a garbled label.
+	hugeWindow := int64(1_000_000_000)
+	fullPct := 100.0
+	hugeUsed := int64(1_000_000_000)
+	wantHuge := tokenLabel(&hugeUsed) + " / " + tokenLabel(&hugeWindow)
+	if got := contextFraction(model.Context{WindowSize: &hugeWindow, UsedPercentage: &fullPct}); got != wantHuge {
+		t.Fatalf("contextFraction(huge values) = %q, want %q", got, wantHuge)
+	}
+}
+
+func TestCodexUsageBlockUnmatchedModelWithRealTokens(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	canvas := image.NewRGBA(image.Rect(0, 0, 400, 100))
+	input, output := int64(1000), int64(2000)
+	snapshot := model.Snapshot{
+		Model:   model.Model{ID: "some-unrecognized-vendor-model"},
+		Context: model.Context{TotalInputTokens: &input, TotalOutputTokens: &output},
+	}
+	renderer.codexUsageBlock(canvas, 10, 40, 300, snapshot)
+	if !regionHasNonZeroPixel(canvas, image.Rect(0, 0, 400, 100)) {
+		t.Fatal("codexUsageBlock did not paint anything for real tokens + an unmatched model")
+	}
+
+	// Nil token pointers (a Context with nothing filled in) must not panic
+	// and should still render some cost figure.
+	canvasNilTokens := image.NewRGBA(image.Rect(0, 0, 400, 100))
+	renderer.codexUsageBlock(canvasNilTokens, 10, 40, 300, model.Snapshot{Model: model.Model{ID: "gpt-4o"}})
+	if !regionHasNonZeroPixel(canvasNilTokens, image.Rect(0, 0, 400, 100)) {
+		t.Fatal("codexUsageBlock did not paint anything for nil token pointers")
+	}
+}
+
+func regionHasNonZeroPixel(canvas *image.RGBA, bounds image.Rectangle) bool {
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if rgba(canvas.At(x, y)) != (color.RGBA{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestRenderDefaultsZeroNowToCurrentTime(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := renderer.Render(View{})
+	if frame.Bounds() != image.Rect(0, 0, Width, Height) {
+		t.Fatalf("frame bounds = %v", frame.Bounds())
+	}
+}
+
+func TestRenderDashboardShowsStateWarningOnLoadError(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	snapshot := baseSnapshot(now)
+	footerRegion := image.Rect(0, footerBaseline-14, 700, footerBaseline+4)
+
+	without := renderer.Render(View{Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second, SessionCount: 1})
+	withError := renderer.Render(View{
+		Claude: &snapshot, Now: now, StaleAfter: 15 * time.Second, SessionCount: 1,
+		LoadError: errors.New("partial read failure"),
+	})
+	if sameRegion(without, withError, footerRegion) {
+		t.Fatal("a LoadError on the dashboard path (Claude present) did not change the footer")
+	}
+}
+
+func TestRenderHeaderStaleAndFutureCapturedAt(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	pillRegion := image.Rect(contentRight-100, 18, contentRight, 46)
+
+	fresh := baseSnapshot(now)
+	fresh.CapturedAt = now
+	freshFrame := renderer.Render(View{Claude: &fresh, Now: now, StaleAfter: time.Second})
+
+	stale := baseSnapshot(now)
+	stale.CapturedAt = now.Add(-10 * time.Second)
+	staleFrame := renderer.Render(View{Claude: &stale, Now: now, StaleAfter: time.Second})
+	if sameRegion(freshFrame, staleFrame, pillRegion) {
+		t.Fatal("STALE pill did not differ from a LIVE pill")
+	}
+
+	// A CapturedAt after Now (clock skew or a stored future timestamp) must
+	// clamp age to 0 instead of going negative, rendering identically to the
+	// age==0 fresh case (still LIVE) rather than something else.
+	future := baseSnapshot(now)
+	future.CapturedAt = now.Add(time.Hour)
+	futureFrame := renderer.Render(View{Claude: &future, Now: now, StaleAfter: time.Second})
+	if !sameRegion(freshFrame, futureFrame, pillRegion) {
+		t.Fatal("a CapturedAt in the future was not clamped to age 0 (still LIVE)")
+	}
+}
+
+func TestDrawMascotSkipsFrameOnAnimationError(t *testing.T) {
+	// A whitebox Renderer built directly (rather than via NewRenderer) with
+	// a deliberately malformed rig source, so this exercises drawMascot's
+	// "never take down the primary display" fallback without corrupting any
+	// real embedded asset.
+	renderer := &Renderer{icons: iconSet{idle: []byte("<svg><rect")}}
+	canvas := image.NewRGBA(image.Rect(0, 0, 200, 200))
+	renderer.drawMascot(canvas, 100, 100, time.Unix(0, 0), model.ActivityIdle)
+	if !sameRegion(canvas, image.NewRGBA(canvas.Bounds()), canvas.Bounds()) {
+		t.Fatal("drawMascot drew something despite a malformed animation source")
+	}
+}
+
+func TestRenderAnimatedIconPropagatesEvaluateError(t *testing.T) {
+	if _, err := renderAnimatedIcon([]byte("<svg><rect"), time.Unix(0, 0)); err == nil {
+		t.Fatal("renderAnimatedIcon accepted a truncated/malformed SVG source")
+	}
+}
+
+func TestFillRoundedBoundaryCases(t *testing.T) {
+	canvas := image.NewRGBA(image.Rect(0, 0, 50, 50))
+
+	// An empty rect must be a no-op, not a panic.
+	fillRounded(canvas, image.Rect(10, 10, 10, 10), 5, red)
+	if rgba(canvas.At(10, 10)) != (color.RGBA{}) {
+		t.Fatal("fillRounded painted an empty rect")
+	}
+
+	// Zero radius is a plain filled rectangle, corners included.
+	fillRounded(canvas, image.Rect(0, 0, 10, 10), 0, red)
+	if rgba(canvas.At(0, 0)) != red {
+		t.Fatal("fillRounded(radius=0) did not fill the corner")
+	}
+}
+
+func TestBlendRingBoundaryCases(t *testing.T) {
+	canvas := image.NewRGBA(image.Rect(0, 0, 50, 50))
+	before := image.NewRGBA(canvas.Bounds())
+	copy(before.Pix, canvas.Pix)
+
+	blendRing(canvas, 25, 25, 10, 3, claudePeach, 0)
+	if !sameRegion(canvas, before, canvas.Bounds()) {
+		t.Fatal("blendRing(alpha=0) changed the canvas")
+	}
+
+	blendRing(canvas, 25, 25, 0, 3, claudePeach, 200)
+	if !sameRegion(canvas, before, canvas.Bounds()) {
+		t.Fatal("blendRing(radius=0) changed the canvas")
+	}
+
+	blendRing(canvas, 25, 25, -5, 3, claudePeach, 200)
+	if !sameRegion(canvas, before, canvas.Bounds()) {
+		t.Fatal("blendRing(negative radius) changed the canvas")
+	}
+
+	// A ring centered far outside the canvas must clip harmlessly instead of
+	// panicking on an out-of-bounds pixel access.
+	blendRing(canvas, 1000, 1000, 20, 5, claudePeach, 200)
+	if !sameRegion(canvas, before, canvas.Bounds()) {
+		t.Fatal("blendRing(off-canvas center) touched the canvas")
+	}
+
+	// A ring straddling the edge should still paint the on-canvas portion.
+	blendRing(canvas, 0, 0, 10, 3, claudePeach, 200)
+	if sameRegion(canvas, before, canvas.Bounds()) {
+		t.Fatal("blendRing(straddling the edge) did not paint anything")
 	}
 }
 

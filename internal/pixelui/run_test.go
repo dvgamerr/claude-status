@@ -141,6 +141,74 @@ func TestRunRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestRunRejectsNilRenderer(t *testing.T) {
+	err := Run(context.Background(), testLoader{}, testMetrics{}, &testScreen{}, nil, RunConfig{}, nil)
+	if err == nil {
+		t.Fatal("Run() accepted a nil renderer")
+	}
+}
+
+func TestRunDefaultsRefreshIntervalWhenUnset(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	screen := &testScreen{}
+	// A zero RunConfig must fall back to the 1s/15s defaults instead of a
+	// zero-interval ticker (which would panic) or an always-stale check.
+	if err := Run(ctx, testLoader{}, testMetrics{}, screen, renderer, RunConfig{}, nil); err != nil || screen.frames != 1 {
+		t.Fatalf("Run() with a zero RunConfig error=%v frames=%d", err, screen.frames)
+	}
+}
+
+func TestRunReturnsErrorFromInitialRender(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen := &testScreen{err: errors.New("initial present failed")}
+	err = Run(context.Background(), testLoader{}, testMetrics{}, screen, renderer, RunConfig{RefreshInterval: time.Second}, nil)
+	if err == nil || !errors.Is(err, screen.err) {
+		t.Fatalf("Run() error = %v, want the initial Present error surfaced before the ticker loop starts", err)
+	}
+}
+
+// flakySreen succeeds for its first failAfter calls, then fails every call
+// after that — used to reach the ticker loop's own render-error branch,
+// which is otherwise unreachable from a screen that fails immediately.
+type flakyScreen struct {
+	frames    int
+	failAfter int
+	err       error
+}
+
+func (screen *flakyScreen) Present(frame image.Image) error {
+	screen.frames++
+	if screen.frames > screen.failAfter {
+		return screen.err
+	}
+	return nil
+}
+
+func TestRunReturnsErrorFromTickRender(t *testing.T) {
+	renderer, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen := &flakyScreen{failAfter: 1, err: errors.New("tick present failed")}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err = Run(ctx, testLoader{}, testMetrics{}, screen, renderer, RunConfig{RefreshInterval: 5 * time.Millisecond}, nil)
+	if err == nil || !errors.Is(err, screen.err) {
+		t.Fatalf("Run() error = %v, want the ticker loop's own Present error", err)
+	}
+	if screen.frames < 2 {
+		t.Fatalf("Run() stopped after %d frame(s), want at least 2 (one success, one failure)", screen.frames)
+	}
+}
+
 func TestLatestProvidersKeepsClaudePrimaryWhenCodexIsNewer(t *testing.T) {
 	now := time.Now()
 	snapshots := []model.Snapshot{

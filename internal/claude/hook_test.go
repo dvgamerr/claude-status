@@ -1,11 +1,18 @@
 package claude
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/dvgamerr/claude-status/internal/model"
 )
+
+// errReader is an io.Reader that always fails, used to exercise the
+// read-error branch of DecodeHook/Decode without any production seam.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestDecodeHookAcceptsUnknownFieldsAndTrailingData(t *testing.T) {
 	raw := `{"session_id":"abc","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /"},"transcript_path":"/secret.jsonl"}`
@@ -22,6 +29,36 @@ func TestDecodeHookAcceptsUnknownFieldsAndTrailingData(t *testing.T) {
 	}
 	if _, err := DecodeHook(strings.NewReader(`   `)); err == nil {
 		t.Fatal("expected error for empty input")
+	}
+}
+
+func TestDecodeHookReportsReadError(t *testing.T) {
+	wantErr := errors.New("boom")
+	_, err := DecodeHook(errReader{err: wantErr})
+	if err == nil || !strings.Contains(err.Error(), "read hook input") {
+		t.Fatalf("DecodeHook() error = %v, want read-error wrap", err)
+	}
+}
+
+func TestDecodeHookRejectsOversizedInput(t *testing.T) {
+	raw := `{"padding":"` + strings.Repeat("x", maxHookInputBytes) + `"}`
+	_, err := DecodeHook(strings.NewReader(raw))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("DecodeHook() error = %v, want size error", err)
+	}
+}
+
+func TestDecodeHookRejectsInvalidJSON(t *testing.T) {
+	_, err := DecodeHook(strings.NewReader(`{`))
+	if err == nil || !strings.Contains(err.Error(), "decode hook JSON") {
+		t.Fatalf("DecodeHook() error = %v, want decode error", err)
+	}
+}
+
+func TestDecodeHookRejectsMalformedTrailingData(t *testing.T) {
+	_, err := DecodeHook(strings.NewReader(`{} {invalid`))
+	if err == nil || !strings.Contains(err.Error(), "trailing hook data") {
+		t.Fatalf("DecodeHook() error = %v, want trailing-data error", err)
 	}
 }
 

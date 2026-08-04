@@ -18,6 +18,17 @@ import (
 // ".service"), and the launchd LaunchAgent label.
 const RelayServiceName = "claude-status-relay"
 
+// These are overridden in tests so runService/runServiceInstall can be
+// exercised without actually installing/starting/stopping a real
+// systemd/Windows service.
+var (
+	serviceInstall = service.Install
+	serviceRemove  = service.Remove
+	serviceStart   = service.Start
+	serviceStop    = service.Stop
+	serviceStatus  = service.Status
+)
+
 // runService is the one `claude-status service <verb>` entry point for
 // Windows/Linux/macOS alike — see internal/service for how each OS's own
 // service manager is driven underneath.
@@ -33,7 +44,7 @@ func runService(args []string, stdout, stderr io.Writer) int {
 		return runServiceInstall(args[1:], stderr)
 	case "remove":
 		logger := logging.New(stderr, "service remove")
-		if err := service.Remove(RelayServiceName); err != nil {
+		if err := serviceRemove(RelayServiceName); err != nil {
 			logger.Error().Err(err).Msg("remove service")
 			return 1
 		}
@@ -42,11 +53,11 @@ func runService(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "start":
-		return runServiceControl(service.Start, service.Status, "start", stdout, stderr)
+		return runServiceControl(serviceStart, serviceStatus, "start", stdout, stderr)
 	case "stop":
-		return runServiceControl(service.Stop, service.Status, "stop", stdout, stderr)
+		return runServiceControl(serviceStop, serviceStatus, "stop", stdout, stderr)
 	case "status":
-		state, err := service.Status(RelayServiceName)
+		state, err := serviceStatus(RelayServiceName)
 		if err != nil {
 			logger := logging.New(stderr, "service status")
 			logger.Error().Err(err).Msg("service status")
@@ -113,7 +124,7 @@ func runServiceInstall(args []string, stderr io.Writer) int {
 			"--log-file", *logFile,
 		},
 	}
-	if err := service.Install(cfg); err != nil {
+	if err := serviceInstall(cfg); err != nil {
 		logger.Error().Err(err).Msg("install service")
 		return 1
 	}
