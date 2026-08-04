@@ -1,7 +1,9 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +40,7 @@ func TestDecodeSnapshotRejectsRawOrMalformedPayloads(t *testing.T) {
 		{name: "empty", input: " ", want: "empty"},
 		{name: "unknown raw field", input: `{"schema_version":1,"prompt":"secret"}`, want: "unknown field"},
 		{name: "multiple", input: `{}` + "\n" + `{}`, want: "multiple"},
+		{name: "trailing garbage", input: `{}` + "not-json", want: "decode trailing"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,5 +49,26 @@ func TestDecodeSnapshotRejectsRawOrMalformedPayloads(t *testing.T) {
 				t.Fatalf("DecodeSnapshot() error = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestDecodeSnapshotRejectsOversizedPayload(t *testing.T) {
+	oversized := bytes.Repeat([]byte("x"), maxSnapshotBytes+1)
+	_, err := DecodeSnapshot(bytes.NewReader(oversized))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("DecodeSnapshot() error = %v, want size-limit error", err)
+	}
+}
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) {
+	return 0, errors.New("simulated read failure")
+}
+
+func TestDecodeSnapshotPropagatesReadError(t *testing.T) {
+	_, err := DecodeSnapshot(errReader{})
+	if err == nil || !strings.Contains(err.Error(), "read sanitized snapshot") {
+		t.Fatalf("DecodeSnapshot() error = %v, want read error", err)
 	}
 }

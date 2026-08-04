@@ -4,11 +4,82 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// writeFakeSystemctl drops an executable script named "systemctl" on disk
+// that echoes stdout/stderr (if non-empty) and exits with exitCode, then
+// points PATH at it — so systemctl()/systemdState()'s real exec.Command
+// call can be exercised without a real systemd session.
+func writeFakeSystemctl(t *testing.T, exitCode int, stdout, stderr string) {
+	t.Helper()
+	dir := t.TempDir()
+	var body strings.Builder
+	body.WriteString("#!/bin/sh\n")
+	if stdout != "" {
+		fmt.Fprintf(&body, "echo '%s'\n", stdout)
+	}
+	if stderr != "" {
+		fmt.Fprintf(&body, "echo '%s' 1>&2\n", stderr)
+	}
+	fmt.Fprintf(&body, "exit %d\n", exitCode)
+	path := filepath.Join(dir, "systemctl")
+	if err := os.WriteFile(path, []byte(body.String()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+func TestSystemctlRealExecSuccess(t *testing.T) {
+	writeFakeSystemctl(t, 0, "ok", "")
+	if err := systemctl("daemon-reload"); err != nil {
+		t.Fatalf("systemctl() error = %v", err)
+	}
+}
+
+func TestSystemctlRealExecFailureWithOutput(t *testing.T) {
+	writeFakeSystemctl(t, 1, "", "permission denied")
+	err := systemctl("enable", "--now", "claude-status-test")
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("systemctl() error = %v, want it to mention the command output", err)
+	}
+	if !strings.Contains(err.Error(), "--user enable --now claude-status-test") {
+		t.Fatalf("systemctl() error = %v, want it to mention the --user argv", err)
+	}
+}
+
+func TestSystemctlRealExecFailureNoOutput(t *testing.T) {
+	writeFakeSystemctl(t, 1, "", "")
+	if err := systemctl("stop", "claude-status-test"); err == nil {
+		t.Fatal("systemctl() error = nil, want non-nil")
+	}
+}
+
+func TestSystemdStateRealExec(t *testing.T) {
+	writeFakeSystemctl(t, 0, "active", "")
+	state, err := systemdState("claude-status-test")
+	if err != nil {
+		t.Fatalf("systemdState() error = %v", err)
+	}
+	if state != "active" {
+		t.Fatalf("systemdState() = %q, want %q", state, "active")
+	}
+}
+
+func TestSystemdStateRealExecFailure(t *testing.T) {
+	writeFakeSystemctl(t, 3, "failed", "")
+	state, err := systemdState("claude-status-test")
+	if err == nil {
+		t.Fatal("systemdState() error = nil, want non-nil")
+	}
+	if state != "failed" {
+		t.Fatalf("systemdState() = %q, want %q even on error (stdout is still parsed)", state, "failed")
+	}
+}
 
 func useLinuxServiceFakes(t *testing.T, home, executable string, systemctl func(...string) error) {
 	t.Helper()

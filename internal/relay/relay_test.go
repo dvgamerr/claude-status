@@ -191,6 +191,109 @@ func TestLogLoadErrorUsesDebugForTransientReadRace(t *testing.T) {
 	}
 }
 
+func TestNewRejectsNilStoreOrSender(t *testing.T) {
+	store := testStore(t)
+	sender := func(context.Context, model.Snapshot) error { return nil }
+
+	if _, err := New(nil, sender, zerolog.Nop()); err == nil || !strings.Contains(err.Error(), "store") {
+		t.Fatalf("New(nil store) error = %v", err)
+	}
+	if _, err := New(store, nil, zerolog.Nop()); err == nil || !strings.Contains(err.Error(), "sender") {
+		t.Fatalf("New(nil sender) error = %v", err)
+	}
+	if _, err := New(store, sender, zerolog.Nop()); err != nil {
+		t.Fatalf("New() unexpected error = %v", err)
+	}
+}
+
+// TestSyncBreaksExactTimestampTiesByProviderKey pins Sync's own delivery-order
+// sort (independent of latestProviders' selection tie-break covered above):
+// two different providers captured at the identical instant must still be
+// delivered in a deterministic order rather than whatever map iteration or
+// sort instability would otherwise produce.
+func TestSyncBreaksExactTimestampTiesByProviderKey(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	saveSnapshot(t, store, "codex", "codex-tied", now, "")
+	saveSnapshot(t, store, "claude", "claude-tied", now, "idle")
+
+	var got []string
+	relay, err := New(store, func(_ context.Context, snapshot model.Snapshot) error {
+		got = append(got, providerKey(snapshot))
+		return nil
+	}, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := relay.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "claude,codex" {
+		t.Fatalf("tied-timestamp delivery order = %v, want claude before codex", got)
+	}
+}
+
+func TestProviderKeyFallsBackToSessionIDForUnknownProvider(t *testing.T) {
+	snapshot := model.Snapshot{Provider: "unknown-provider", Session: model.Session{ID: "abc123"}}
+	if got, want := providerKey(snapshot), "session:abc123"; got != want {
+		t.Fatalf("providerKey() = %q, want %q", got, want)
+	}
+	if got, want := providerKey(model.Snapshot{Provider: "unknown-provider", Session: model.Session{ID: ""}}), "session:"; got != want {
+		t.Fatalf("providerKey() with empty session ID = %q, want %q", got, want)
+	}
+}
+
+// TestSnapshotFingerprintReportsEncodeError pins the one way json.Marshal can
+// fail for a Snapshot: time.Time.MarshalJSON rejects years outside
+// [0,9999]. This can only be produced by constructing the value directly —
+// any snapshot that has round-tripped through state.Store's own
+// json.Unmarshal is guaranteed re-marshalable, so this branch is unreachable
+// from Sync's loop without a seam into the store.
+func TestSnapshotFingerprintReportsEncodeError(t *testing.T) {
+	snapshot := model.Snapshot{
+		Provider:   "claude",
+		Session:    model.Session{ID: "bad-time"},
+		CapturedAt: time.Date(99999, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if _, err := snapshotFingerprint(snapshot); err == nil || !strings.Contains(err.Error(), "encode claude snapshot") {
+		t.Fatalf("snapshotFingerprint() error = %v", err)
+	}
+}
+
+func TestSnapshotFingerprintIsStableAndDistinguishesUnicodeSessions(t *testing.T) {
+	base := model.Snapshot{Provider: "claude", Session: model.Session{ID: "session"}}
+	unicode := model.Snapshot{Provider: "claude", Session: model.Session{ID: "session-☃"}}
+	empty := model.Snapshot{}
+
+	baseSum, err := snapshotFingerprint(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSumAgain, err := snapshotFingerprint(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if baseSum != baseSumAgain {
+		t.Fatal("snapshotFingerprint() is not stable across identical inputs")
+	}
+
+	unicodeSum, err := snapshotFingerprint(unicode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unicodeSum == baseSum {
+		t.Fatal("snapshotFingerprint() collided between distinct unicode session IDs")
+	}
+
+	emptySum, err := snapshotFingerprint(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emptySum == baseSum {
+		t.Fatal("snapshotFingerprint() collided between an empty and populated snapshot")
+	}
+}
+
 func testStore(t *testing.T) *state.Store {
 	t.Helper()
 	store, err := state.New(t.TempDir())

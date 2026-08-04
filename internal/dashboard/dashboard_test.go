@@ -299,4 +299,397 @@ func TestRunHonorsCanceledContext(t *testing.T) {
 	}
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestClearTerminalPropagatesWriteError(t *testing.T) {
+	err := clearTerminal(failingWriter{})
+	if err == nil {
+		t.Fatal("clearTerminal() succeeded with a failing writer, want error")
+	}
+	if !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf("clearTerminal() error = %v, want wrapped write failed", err)
+	}
+}
+
+func TestRunPropagatesClearTerminalError(t *testing.T) {
+	err := Run(context.Background(), strings.NewReader(""), failingWriter{}, fakeLoader{}, fakeMetrics{}, Config{})
+	if err == nil {
+		t.Fatal("Run() succeeded despite a failing output writer, want error")
+	}
+	if !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf("Run() error = %v, want wrapped write failed", err)
+	}
+}
+
+func TestRunUsesAltScreenWhenNotInline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	err := Run(ctx, strings.NewReader(""), &output, fakeLoader{}, fakeMetrics{}, Config{Inline: false})
+	if err == nil {
+		t.Fatal("Run() unexpectedly succeeded with a canceled context")
+	}
+	if !strings.HasPrefix(output.String(), clearScreenSequence) {
+		t.Fatalf("output did not start with terminal clear: %q", output.String())
+	}
+}
+
+func TestUpdateTickReloadsDataAndReschedules(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{RefreshInterval: time.Millisecond})
+	updated, cmd := m.Update(tickMsg(time.Now()))
+	if _, ok := updated.(Model); !ok {
+		t.Fatalf("Update(tickMsg) returned %T, want Model", updated)
+	}
+	if cmd == nil {
+		t.Fatal("Update(tickMsg) returned a nil command, want batched reload+tick")
+	}
+}
+
+func TestUpdateKeyQuitsOnQOrCtrlC(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	for _, key := range []string{"q", "ctrl+c"} {
+		_, cmd := m.updateKey(key)
+		if cmd == nil {
+			t.Fatalf("updateKey(%q) returned a nil command, want quit", key)
+		}
+		if _, ok := cmd().(tea.QuitMsg); !ok {
+			t.Fatalf("updateKey(%q) command produced %T, want tea.QuitMsg", key, cmd())
+		}
+	}
+}
+
+func TestUpdateKeyEscClosesSessionsView(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.showSessions = true
+	updated, cmd := m.updateKey("esc")
+	next := updated.(Model)
+	if next.showSessions {
+		t.Fatal("esc did not close the sessions view")
+	}
+	if cmd == nil {
+		t.Fatal("esc did not return a clear-screen command")
+	}
+}
+
+func TestUpdateKeyEscIsNoOpOutsideSessionsView(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, cmd := m.updateKey("esc")
+	next := updated.(Model)
+	if next.showSessions {
+		t.Fatal("esc unexpectedly opened the sessions view")
+	}
+	if cmd != nil {
+		t.Fatal("esc outside sessions view returned a non-nil command")
+	}
+}
+
+func TestUpdateKeyRefreshClearsAndReloads(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	_, cmd := m.updateKey("r")
+	if cmd == nil {
+		t.Fatal("updateKey(\"r\") returned a nil command, want clear+reload")
+	}
+}
+
+func TestUpdateKeyUpDownNavigateSessionsView(t *testing.T) {
+	now := time.Now()
+	snapshots := []statusmodel.Snapshot{
+		{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "a"}},
+		{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "b"}},
+	}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(dataMsg{snapshots: snapshots})
+	m = updated.(Model)
+	m.showSessions = true
+
+	updated, _ = m.updateKey("up")
+	m = updated.(Model)
+	if m.sessionCursor != len(snapshots)-1 {
+		t.Fatalf("updateKey(\"up\") cursor = %d, want %d", m.sessionCursor, len(snapshots)-1)
+	}
+	updated, _ = m.updateKey("down")
+	m = updated.(Model)
+	if m.sessionCursor != 0 {
+		t.Fatalf("updateKey(\"down\") cursor = %d, want 0", m.sessionCursor)
+	}
+	updated, _ = m.updateKey("k")
+	m = updated.(Model)
+	if m.sessionCursor != len(snapshots)-1 {
+		t.Fatalf("updateKey(\"k\") cursor = %d, want %d", m.sessionCursor, len(snapshots)-1)
+	}
+	updated, _ = m.updateKey("j")
+	m = updated.(Model)
+	if m.sessionCursor != 0 {
+		t.Fatalf("updateKey(\"j\") cursor = %d, want 0", m.sessionCursor)
+	}
+}
+
+func TestMoveSessionCursorNoOpOutsideSessionsViewOrEmptyList(t *testing.T) {
+	now := time.Now()
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{
+		{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "a"}},
+	}})
+	m = updated.(Model)
+
+	// Sessions view closed: moveSessionCursor must no-op.
+	updated, _ = m.updateKey("down")
+	m = updated.(Model)
+	if m.sessionCursor != 0 {
+		t.Fatalf("cursor moved outside sessions view: %d", m.sessionCursor)
+	}
+
+	// Sessions view open but the list is empty: moveSessionCursor must no-op.
+	m.showSessions = true
+	m.snapshots = nil
+	updated, _ = m.updateKey("down")
+	m = updated.(Model)
+	if m.sessionCursor != 0 {
+		t.Fatalf("cursor moved with an empty session list: %d", m.sessionCursor)
+	}
+}
+
+func TestReconcileSelectionResetsCursorOnEmptySnapshots(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.sessionCursor = 3
+	updated, _ := m.Update(dataMsg{snapshots: nil})
+	m = updated.(Model)
+	if m.sessionCursor != 0 {
+		t.Fatalf("reconcileSelection with no snapshots left cursor = %d, want 0", m.sessionCursor)
+	}
+}
+
+func TestReconcileSelectionResetsAndUnpinsWhenPinnedSessionDisappears(t *testing.T) {
+	now := time.Now()
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{
+		{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "a"}},
+	}})
+	m = updated.(Model)
+	m.selectionPinned = true
+	m.selectedID = "gone"
+	updated, _ = m.Update(dataMsg{snapshots: []statusmodel.Snapshot{
+		{SchemaVersion: modelSchema(), CapturedAt: now, Session: statusmodel.Session{ID: "a"}},
+	}})
+	m = updated.(Model)
+	if m.selectionPinned {
+		t.Fatal("pinned selection was not cleared when the pinned session disappeared")
+	}
+	if m.selectedID != "a" {
+		t.Fatalf("selectedID = %q, want %q", m.selectedID, "a")
+	}
+	if m.sessionCursor != 0 {
+		t.Fatalf("sessionCursor = %d, want 0", m.sessionCursor)
+	}
+}
+
+func TestDashboardViewClampsFutureCapturedAtToZeroAge(t *testing.T) {
+	now := time.Now()
+	snapshot := statusmodel.Snapshot{SchemaVersion: modelSchema(), CapturedAt: now.Add(time.Hour), Session: statusmodel.Session{ID: "future"}}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	if !strings.Contains(m.View(), "just now") {
+		t.Fatalf("future CapturedAt was not clamped to zero age:\n%s", m.View())
+	}
+}
+
+func TestFullDashboardFrameShowsModeText(t *testing.T) {
+	now := time.Now()
+	thinkingOn := true
+	snapshot := statusmodel.Snapshot{
+		SchemaVersion:   modelSchema(),
+		CapturedAt:      now,
+		Session:         statusmodel.Session{ID: "mode"},
+		Effort:          "high",
+		ThinkingEnabled: &thinkingOn,
+	}
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.now = func() time.Time { return now }
+	updated, _ := m.Update(dataMsg{snapshots: []statusmodel.Snapshot{snapshot}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	view := m.View()
+	for _, want := range []string{"effort high", "thinking on"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("full dashboard frame does not contain %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestWaitingFrameShowsLoadError(t *testing.T) {
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	updated, _ := m.Update(dataMsg{snapshots: nil, err: errors.New("boom load failure")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 66, Height: 20})
+	m = updated.(Model)
+	if !strings.Contains(m.View(), "boom load failure") {
+		t.Fatalf("waiting frame does not surface the load error:\n%s", m.View())
+	}
+}
+
+func TestSystemTextIncludesLoadAverage(t *testing.T) {
+	load := 1.23
+	m := NewModel(fakeLoader{}, fakeMetrics{}, Config{})
+	m.stats = systeminfo.Stats{Load1: &load}
+	if got := m.systemText(); !strings.Contains(got, "Load 1.23") {
+		t.Fatalf("systemText() = %q, want it to contain %q", got, "Load 1.23")
+	}
+}
+
+func TestFinalizeFrameUsesLineCountWhenHeightIsZeroOrNegative(t *testing.T) {
+	lines := []string{"a", "b", "c"}
+	want := strings.Join(lines, "\n")
+	if got := finalizeFrame(append([]string{}, lines...), 10, 0); got != want {
+		t.Fatalf("finalizeFrame(height=0) = %q, want %q", got, want)
+	}
+	if got := finalizeFrame(append([]string{}, lines...), 10, -1); got != want {
+		t.Fatalf("finalizeFrame(height=-1) = %q, want %q", got, want)
+	}
+}
+
+func TestFinalizeFrameTruncatesOverflowingLines(t *testing.T) {
+	lines := []string{"a", "b", "c", "d", "e"}
+	got := finalizeFrame(lines, 10, 3)
+	want := strings.Join([]string{"a", "b", bottomBorder(10)}, "\n")
+	if got != want {
+		t.Fatalf("finalizeFrame() = %q, want %q", got, want)
+	}
+}
+
+func TestContextColorThresholds(t *testing.T) {
+	red, yellow, blue := 90.0, 75.0, 74.9
+	if got := contextColor(&red); got != colorRed {
+		t.Fatalf("contextColor(90) = %v, want red", got)
+	}
+	if got := contextColor(&yellow); got != colorYellow {
+		t.Fatalf("contextColor(75) = %v, want yellow", got)
+	}
+	if got := contextColor(&blue); got != colorBlue {
+		t.Fatalf("contextColor(74.9) = %v, want blue", got)
+	}
+	if got := contextColor(nil); got != colorMuted {
+		t.Fatalf("contextColor(nil) = %v, want muted", got)
+	}
+}
+
+func TestResetCountdownVariants(t *testing.T) {
+	now := time.Now()
+	if got := resetCountdown(nil, now); got != "reset --" {
+		t.Fatalf("resetCountdown(nil) = %q, want %q", got, "reset --")
+	}
+	zero := int64(0)
+	if got := resetCountdown(&zero, now); got != "reset --" {
+		t.Fatalf("resetCountdown(0) = %q, want %q", got, "reset --")
+	}
+	past := now.Add(-time.Minute).Unix()
+	if got := resetCountdown(&past, now); got != "reset due" {
+		t.Fatalf("resetCountdown(past) = %q, want %q", got, "reset due")
+	}
+	future := now.Add(90 * time.Second).Unix()
+	if got := resetCountdown(&future, now); !strings.HasPrefix(got, "resets ") {
+		t.Fatalf("resetCountdown(future) = %q, want prefix %q", got, "resets ")
+	}
+}
+
+func TestDisplayModelNameFallsBackByProvider(t *testing.T) {
+	if got := displayModelName(statusmodel.Snapshot{Provider: "codex"}); got != "Codex" {
+		t.Fatalf("displayModelName(codex) = %q, want %q", got, "Codex")
+	}
+	if got := displayModelName(statusmodel.Snapshot{}); got != "Claude" {
+		t.Fatalf("displayModelName(claude) = %q, want %q", got, "Claude")
+	}
+}
+
+func TestTokenTextHandlesNil(t *testing.T) {
+	if got := tokenText(nil); got != "--" {
+		t.Fatalf("tokenText(nil) = %q, want %q", got, "--")
+	}
+}
+
+func TestThresholdColorBoundaries(t *testing.T) {
+	if got := thresholdColor(90); got != colorRed {
+		t.Fatalf("thresholdColor(90) = %v, want red", got)
+	}
+	if got := thresholdColor(70); got != colorYellow {
+		t.Fatalf("thresholdColor(70) = %v, want yellow", got)
+	}
+	if got := thresholdColor(50); got != colorGreen {
+		t.Fatalf("thresholdColor(50) = %v, want green", got)
+	}
+}
+
+func TestContextTextComputesUsedFromPercentageWhenTokensAreZero(t *testing.T) {
+	window := int64(1000)
+	pct := 50.0
+	got := contextText(statusmodel.Context{WindowSize: &window, UsedPercentage: &pct})
+	if got != "500 / 1k" {
+		t.Fatalf("contextText() = %q, want %q", got, "500 / 1k")
+	}
+}
+
+func TestHumanTokensFormatsMillions(t *testing.T) {
+	if got := humanTokens(2_500_000); got != "2.5M" {
+		t.Fatalf("humanTokens(2500000) = %q, want %q", got, "2.5M")
+	}
+	if got := humanTokens(3_000_000); got != "3M" {
+		t.Fatalf("humanTokens(3000000) = %q, want %q", got, "3M")
+	}
+}
+
+func TestFormatClockClampsNegativeDuration(t *testing.T) {
+	if got := formatClock(-5 * time.Second); got != "00:00:00" {
+		t.Fatalf("formatClock(-5s) = %q, want %q", got, "00:00:00")
+	}
+}
+
+func TestModeTextVariants(t *testing.T) {
+	if got := modeText(statusmodel.Snapshot{}); got != "" {
+		t.Fatalf("modeText(empty) = %q, want empty", got)
+	}
+	if got := modeText(statusmodel.Snapshot{Effort: "high"}); got != "effort high" {
+		t.Fatalf("modeText(effort) = %q, want %q", got, "effort high")
+	}
+	on, off := true, false
+	if got := modeText(statusmodel.Snapshot{ThinkingEnabled: &on}); got != "thinking on" {
+		t.Fatalf("modeText(thinking on) = %q, want %q", got, "thinking on")
+	}
+	if got := modeText(statusmodel.Snapshot{ThinkingEnabled: &off}); got != "thinking off" {
+		t.Fatalf("modeText(thinking off) = %q, want %q", got, "thinking off")
+	}
+	if got := modeText(statusmodel.Snapshot{Effort: "low", ThinkingEnabled: &on}); got != "effort low · thinking on" {
+		t.Fatalf("modeText(effort+thinking) = %q, want %q", got, "effort low · thinking on")
+	}
+}
+
+func TestCompactDurationFormatsDays(t *testing.T) {
+	if got := compactDuration(50*time.Hour + 15*time.Minute); got != "2d02h" {
+		t.Fatalf("compactDuration(50h15m) = %q, want %q", got, "2d02h")
+	}
+}
+
+func TestClipEdgeCases(t *testing.T) {
+	if got := clip("hello", 0); got != "" {
+		t.Fatalf("clip(width=0) = %q, want empty", got)
+	}
+	if got := clip("hello", -1); got != "" {
+		t.Fatalf("clip(width=-1) = %q, want empty", got)
+	}
+	if got := clip("hello", 1); got != "…" {
+		t.Fatalf("clip(width=1) = %q, want %q", got, "…")
+	}
+	if got := clip("hi", 5); got != "hi" {
+		t.Fatalf("clip(short) = %q, want unchanged", got)
+	}
+	if got := clip("hello world", 5); got != "hell…" {
+		t.Fatalf("clip(long) = %q, want %q", got, "hell…")
+	}
+}
+
 func modelSchema() int { return statusmodel.CurrentSchemaVersion }

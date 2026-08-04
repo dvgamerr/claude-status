@@ -6,10 +6,6 @@
       <rect x="34" y="9" width="32" height="8"/>
       <rect x="46" y="4" width="8" height="6"/>
     </g>
-    <g id="hatCross" fill="#F6F2EA">
-      <rect x="47" y="11" width="6" height="4"/>
-      <rect x="48.5" y="9.5" width="3" height="7"/>
-    </g>
     <g id="body" fill="#D97757">
       <rect x="22" y="33" width="56" height="34"/>
     </g>
@@ -34,7 +30,7 @@
   </g>
   <g id="armHammer">
     <animateTransform attributeName="transform" type="rotate"
-      values="0 82 50;10 82 50;0 82 50" dur="0.45s" repeatCount="indefinite"/>
+      values="-45 82 50;10 82 50;-45 82 50" dur="0.9s" repeatCount="indefinite"/>
     <g fill="#D97757">
       <rect x="77" y="43" width="10" height="14"/>
     </g>

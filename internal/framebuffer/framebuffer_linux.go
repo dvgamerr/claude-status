@@ -22,6 +22,11 @@ const (
 	kdGraphics = 0x01
 )
 
+// sysfsGraphicsRoot is overridden in tests so Open's metadata-reading
+// branches can be exercised against a fake sysfs tree instead of the
+// real /sys/class/graphics.
+var sysfsGraphicsRoot = "/sys/class/graphics"
+
 // Screen owns a memory-mapped framebuffer and its graphics-mode TTY.
 type Screen struct {
 	framebuffer *os.File
@@ -37,7 +42,7 @@ type Screen struct {
 // Open validates framebuffer metadata, maps the device, and enables graphics mode.
 func Open(framebufferPath, ttyPath string) (*Screen, error) {
 	name := filepath.Base(filepath.Clean(framebufferPath))
-	sysfs := filepath.Join("/sys/class/graphics", name)
+	sysfs := filepath.Join(sysfsGraphicsRoot, name)
 	width, height, err := readPair(filepath.Join(sysfs, "virtual_size"))
 	if err != nil {
 		return nil, err

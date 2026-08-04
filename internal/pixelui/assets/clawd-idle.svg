@@ -3,6 +3,12 @@
   <g id="figure">
     <animateTransform attributeName="transform" type="translate"
       values="0,0;0,-3;0,0" dur="1.6s" repeatCount="indefinite"/>
+    <g id="leftArm" fill="#D97757">
+      <rect x="12" y="43" width="10" height="14"/>
+    </g>
+    <g id="rightArm" fill="#D97757">
+      <rect x="78" y="43" width="10" height="14"/>
+    </g>
     <g id="body" fill="#D97757">
       <rect x="22" y="33" width="56" height="34"/>
     </g>

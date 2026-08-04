@@ -23,6 +23,16 @@ import (
 // hardcoded to /home/pi.
 const tty1UnitName = "claude-status-tty1.service"
 
+// systemdUnitDir and geteuid are overridden in tests so runPiInstall's
+// root-owned branch can be exercised against a temp directory instead of
+// the real /etc/systemd/system, and without needing the test process to
+// actually run as root.
+var (
+	systemdUnitDir = "/etc/systemd/system"
+	geteuid        = os.Geteuid
+	goos           = runtime.GOOS
+)
+
 // runPi is the display-side counterpart to `service` (which sets up the
 // relay on the machine running Claude Code/Codex): `claude-status pi
 // install` sets up the framebuffer dashboard on the Raspberry Pi itself.
@@ -59,7 +69,7 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 	if !parsed {
 		return exitCode
 	}
-	if runtime.GOOS != "linux" {
+	if goos != "linux" {
 		logger.Error().Msg("only supported on Linux (Raspberry Pi OS)")
 		return 1
 	}
@@ -76,7 +86,7 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 	// Writing the unit file and calling systemctl both need root; the
 	// tty1 device itself is owned by the target user via SupplementaryGroups,
 	// not by running the dashboard process as root.
-	if os.Geteuid() != 0 {
+	if geteuid() != 0 {
 		return reExecWithSudo(exePath, args, stderr)
 	}
 
@@ -113,7 +123,7 @@ func runPiInstall(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	unitDestination := filepath.Join("/etc/systemd/system", tty1UnitName)
+	unitDestination := filepath.Join(systemdUnitDir, tty1UnitName)
 	if err := atomicfile.Write(unitDestination, []byte(unit), 0o644); err != nil {
 		logger.Error().Err(err).Str("path", unitDestination).Msg("write unit file")
 		return 1
