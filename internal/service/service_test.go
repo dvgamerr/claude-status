@@ -3,8 +3,31 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
+
+func TestValidateName(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"valid", "claude-status-relay", false},
+		{"valid with dots and at", "claude.status@1", false},
+		{"empty", "", true},
+		{"whitespace only", "   ", true},
+		{"too long", strings.Repeat("a", 201), true},
+		{"invalid character", "claude status", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateName(tt.value); (err != nil) != tt.wantErr {
+				t.Fatalf("validateName(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+		})
+	}
+}
 
 func TestStateString(t *testing.T) {
 	tests := map[State]string{
